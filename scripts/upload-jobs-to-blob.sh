@@ -70,6 +70,11 @@ fi
 echo "Blob URL: $blob_url"
 echo
 
+mkdir -p config
+printf '%s\n' "$blob_url" > config/jobs_tar_url.txt
+echo "Updated fallback URL in config/jobs_tar_url.txt"
+echo
+
 echo "Updating JOBS_TAR_URL env var on Vercel..."
 for env in production preview development; do
   printf '%s' "$blob_url" | vercel env add JOBS_TAR_URL "$env" --yes --force >/dev/null

@@ -35,6 +35,7 @@ CACHE_ROOT = Path("/tmp/harbor-jobs")
 ARCHIVE_PATH = CACHE_ROOT / "jobs.tgz"
 MARKER_PATH = CACHE_ROOT / ".source-url"
 EXTRACT_DIR = CACHE_ROOT / "jobs"
+FALLBACK_URL_PATH = ROOT / "config" / "jobs_tar_url.txt"
 
 
 def _download_file(url: str, destination: Path) -> None:
@@ -56,6 +57,8 @@ def _safe_extract(tar: tarfile.TarFile, destination: Path) -> None:
 
 def _prepare_jobs_dir() -> Path:
     jobs_tar_url = os.getenv("JOBS_TAR_URL", "").strip()
+    if not jobs_tar_url and FALLBACK_URL_PATH.exists():
+        jobs_tar_url = FALLBACK_URL_PATH.read_text().strip()
     if not jobs_tar_url:
         return ROOT / "jobs"
 
