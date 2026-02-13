@@ -1,0 +1,84 @@
+[?2004hroot@74a8d03f-6e18-4e29-8314-82f247838732:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@74a8d03f-6e18-4e29-8314-82f247838732:~# clear
+[?2004l[H[J[?2004hroot@74a8d03f-6e18-4e29-8314-82f247838732:~# cd /home/user/hardening_test
+[?2004l[?2004hroot@74a8d03f-6e18-4e29-8314-82f247838732:/home/user/hardening_test# pwd
+[?2004l/home/user/hardening_test
+[?2004hroot@74a8d03f-6e18-4e29-8314-82f247838732:/home/user/hardening_test# ls -la
+[?2004ltotal 16
+drwxr-xr-x 1 root root  99 Feb 13 18:50 [0m[01;34m.[0m
+drwxr-xr-x 1 root root  36 Feb 13 18:50 [01;34m..[0m
+-rw-r--r-- 1 root root 160 Feb 13 18:50 login.defs
+-rw-r--r-- 1 root root 150 Feb 13 18:50 rules.txt
+-rw-r--r-- 1 root root 211 Feb 13 18:50 sshd_config
+-rw-r--r-- 1 root root  83 Feb 13 18:50 sysctl.conf
+[?2004hroot@74a8d03f-6e18-4e29-8314-82f247838732:/home/user/hardening_test# if [ -f apply_hardening.sh ]; then cp apply_hardening.sh apply_hardening.sh.bak; fi
+[?2004l[?2004hroot@74a8d03f-6e18-4e29-8314-82f247838732:/home/user/hardening_test# cat > apply_hardening.sh << 'EOF'
+[?2004l[?2004h> #!/bin/sh
+[?2004l[?2004h> 
+[?2004l[?2004h> # POSIX-sh compatible hardening automation script
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize empty log file and clear any previous log
+[?2004l[?2004h> > hardening.log
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to add entry to sorted log file
+[?2004l[?2004h> log_entry() {
+[?2004l[?2004h>     file=$1
+[?2004l[?2004h>     action=$2
+[?2004l[?2004h>     echo "$file:$action" >> hardening.log
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process rules from rules.txt
+[?2004l[?2004h> while IFS="|" read -r filename search_pattern enforced_line; do
+[?2004l[?2004h>     # Skip empty lines or lines starting with #
+[?2004l[?2004h>     if [ -z "$filename" ] || [ "${filename:0:1}" = "#" ]; then
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Safety backup: create .bak if not exists
+[?2004l[?2004h>     if [ ! -f "${filename}.bak" ]; then
+[?2004l[?2004h>         cp "$filename" "${filename}.bak"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check if enforced_line already exists (exact line match)
+[?2004l[?2004h>     if grep -Fxq "$enforced_line" "$filename"; then
+[?2004l[?2004h>         log_entry "$filename" "SKIPPED"
+[?2004l[?2004h>         chmod 0600 "$filename"
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check if search_pattern exists in file
+[?2004l[?2004h>     if grep -q "$search_pattern" "$filename"; then
+[?2004l[?2004h>         # In-place repair: replace first matching line with enforced_line
+[?2004l[?2004h>         # Using temporary file for atomic replacement
+[?2004l[?2004h>         temp_file="${filename}.tmp"
+[?2004l[?2004h>         line_number=$(grep -Fn "$search_pattern" "$filename" | cut -d: -f1 | head -n1)
+[?2004l[?2004h>         sed "${line_number}s|.*|${enforced_line}|" "$filename" > "$temp_file"
+[?2004l[?2004h>         # Preserve original file permissions before replacement
+[?2004l[?2004h>         permissions=$(stat -c "%a" "$filename")
+[?2004l[?2004h>         mv -f "$temp_file" "$filename"
+[?2004l[?2004h>         chmod "${permissions}" "$filename"
+[?2004l[?2004h>         log_entry "$filename" "REPAIRED"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         # Append enforced_line if search_pattern not found
+[?2004l[?2004h>         echo "$enforced_line" >> "$filename"
+[?2004l[?2004h>         log_entry "$filename" "APPENDED"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Enforce strict permissions after processing
+[?2004l[?2004h>     if [ "$filename" = "sshd_config" ]; then
+[?2004l[?2004h>         chmod 0600 "$filename"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         chmod 0644 "$filename"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h> done < rules.txt
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort the log file alphabetically by filename
+[?2004l[?2004h> sort -o hardening.log hardening.log
+[?2004l[?2004h> 
+[?2004l[?2004h> # User feedback
+[?2004l[?2004h> echo "Hardening completed"
+[?2004l[?2004h> EOFchmod +x apply_hardening.sh
+[?2004l[?2004h> 

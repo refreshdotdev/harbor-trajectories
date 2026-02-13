@@ -1,0 +1,152 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# QA Environment Setup & Legacy Compliance Task
+
+You have been assigned to the Internal Tooling Team. We are currently migrating our CI/CD pipelines, but we still have strict dependencies on legacy auditing systems. Your task is to set up a transient test environment, deploy a specific test case from our archives, and generate a compliance report.
+
+## 1. Configuration & Discovery
+
+Unlike modern setups, this environment relies on a mix of environment variables and configuration files. 
+
+*   **Configuration File**: You must locate the active configuration file. The path to this file is stored in the environment variable `QA_SETTINGS`. If that variable is not set, you should default to `~/.config/qa/default.ini`.
+*   **Log Location**: Inside the configuration file (which is in standard INI format), look for the `[Reporting]` section. The `log_path` key defines where the output report must be saved. 
+    *   *Crucial:* If the path provided is relative, it must be resolved relative to the user's home directory (`/home/user`), regardless of your current working directory.
+
+## 2. Source Code Recovery
+
+We do not store source code in plain text due to ancient mailing list software that corrupted indentation. 
+
+*   **Archives**: Source archives are located in `/usr/local/src/archives`. 
+*   **Selection Logic**: There may be multiple files in this directory. You must select the **most recently modified** file.
+*   **Extraction**: inside the selected archive, look for the content between the markers `---BEGIN_PY_PAYLOAD---` and `---END_PY_PAYLOAD---`. 
+    *   The content between these markers is **Base64 encoded**.
+    *   You must decode this content to get the actual Python source code.
+
+## 3. Workspace Preparation
+
+Prepare a clean workspace at `/home/user/qa_env`. 
+
+*   **Warning**: This directory is often cluttered with debris from failed runs. Ensure it is completely clean before starting. Watch out for files with unusual permissions or types.
+*   **Deployment**: Place the decoded Python source code into `/home/user/qa_env/test_sample.py`.
+*   **Intermediate Checkpoint**: Before proceeding, you must calculate the **MD5 hash** of the *decoded* Python source content (the raw bytes of the file you just created). Save this hash, as it is required for the final report.
+
+## 4. Environment Construction
+
+Create a standard Python virtual environment in `/home/user/qa_env/venv`.
+
+*   **Dependency Management**: You must install `pytest`. However, **do not hardcode the version**. 
+    *   Read the required version from the project manifest file located at `/usr/local/share/qa_manifest.json`. The JSON schema is `{"dependencies": {"pytest": "<version>"}}`.
+    *   Install exactly that version into the virtual environment.
+
+## 5. Execution & Reporting
+
+Execute the tests using `pytest` in quiet mode. Then, generate the final report at the location identified in Step 1.
+
+### Report Format & Legacy Compliance
+
+Our auditing system runs on legacy Windows servers. Therefore, the output file must strictly adhere to the following binary formats:
+
+*   **Encoding**: The file must be encoded in **ISO-8859-1** (Latin-1). UTF-8 is NOT accepted.
+*   **Line Endings**: Every line must end with **CRLF** (`\r\n`), not Unix LF.
+
+**Content Structure** (3 lines total):
+1.  The first line of `pytest`'s output (usually a single dot `.` or similar status char).
+2.  The current **Session ID**. This is found in the environment variable `QA_SESSION_ID`. If that variable is missing, read it from `/etc/qa_session`.
+3.  The **MD5 hash** of the decoded `test_sample.py` calculated in Step 3.
+
+**Final Deliverable Checklist**:
+*   `/home/user/qa_env/test_sample.py` exists with correct decoded content.
+*   Virtual environment is active and has the correct pytest version.
+*   The log file exists at the configured path, has ISO-8859-1 encoding, CRLF line endings, and exactly 3 lines of content.
+
+Current terminal state:
+Current Terminal Screen:
+root@3bd80891-0052-4be0-ba88-585d75ecd9c3:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

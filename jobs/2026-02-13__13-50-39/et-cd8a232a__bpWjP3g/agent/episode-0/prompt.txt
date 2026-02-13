@@ -1,0 +1,157 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are helping a script-developer who maintains a collection of tiny shell utilities under `/home/user/scripts`.
+A new requirement has arrived: the developer wants a **regex-based log filtering utility** that extracts “critical” lines from an application log and produces both
+ a) a filtered log with redactions and metadata,
+ b) a tiny CSV summary of error categories seen.
+
+Your goal is to create everything needed so that, after you are done, the following will be true:
+
+1. The directory `/home/user/scripts` contains an **executable Bash script** called `filter_errors.sh`.
+2. Running the command
+
+   `/home/user/scripts/filter_errors.sh /home/user/logs/app_2023-08-15.log /home/user/output`
+
+   produces exactly two files inside `/home/user/output`:
+   • `critical_errors.log` (the filtered lines with header and redactions)
+   • `error_summary.csv` (the sorted category counts)
+
+3. **Filtering & Multi-line Handling**:
+   The filtered log must contain lines that match at least one of these regexes (case-sensitive):
+   • `ERROR`
+   • `FATAL`
+   • `HTTP\/1\.1 5[0-9]{2}`
+
+   **Crucially**, the log contains multi-line entries (e.g., stack traces). A log entry begins with a timestamp in brackets (e.g., `[2023-08-15...]`).
+   • If a line starting with a timestamp matches a critical regex, you must preserve that line **AND** any subsequent lines that do **not** start with a timestamp (indented stack traces, etc.).
+   • If a line starting with a timestamp does not match, ignore it and its subsequent continuation lines.
+
+4. **Header & Redaction**:
+   • The `critical_errors.log` file must start with a single header line: `# Source: <absolute_path_to_input_log>`.
+   • Following the header, append the filtered log entries maintaining their original order.
+   • **Redaction**: For privacy, any substring matching an email address (regex: `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`) within the filtered content must be replaced with the string `<REDACTED>`.
+
+5. **CSV Summary & Sorting**:
+   The script must classify each **log entry** (based on the content of the timestamped line) into exactly one of the following categories (first matching rule wins):
+   • contains substring “Payment failed” → category `PAYMENT_FAILURE`
+   • matches regex `HTTP\/1\.1 5[0-9]{2}` → category `HTTP_5XX`
+   • contains substring “FATAL” → category `FATAL`
+
+   The CSV must have the header `error_category,count`.
+   **Sorting Rule**: The data rows must be sorted first by **count (descending)**, and then by **category name (alphabetically ascending)**.
+
+   Expected CSV layout example:
+   ```
+   error_category,count
+   PAYMENT_FAILURE,2
+   FATAL,1
+   HTTP_5XX,1
+   ```
+
+6. The script must:
+   • Accept exactly two positional arguments: `<input_log>` and `<output_dir>`.
+   • Create `<output_dir>` if it does not already exist.
+   • Overwrite output files if they already exist.
+   • Use only standard POSIX/Linux utilities (bash, awk, sed, grep, sort, etc.).
+
+7. When finished, append a short execution log to `/home/user/filter_run.log` containing one line with this exact pipe-separated format:
+   ```
+   YYYY-MM-DD|HH:MM:SS|input=<absolute_input_path>|output_dir=<absolute_output_dir>|status=OK
+   ```
+   • Use the current local time.
+
+When the grader checks your work it will:
+a) run the script as shown above,
+b) verify strict file existence, content, redaction, sorting, and formatting.
+
+Current terminal state:
+Current Terminal Screen:
+root@a6c8e3be-6726-4ee5-9f78-2c5dba1b4482:/home/user#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

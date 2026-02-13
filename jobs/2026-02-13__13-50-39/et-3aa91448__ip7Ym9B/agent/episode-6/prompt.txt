@@ -1,0 +1,61 @@
+New Terminal Output:
+
+user@20d4b0d1-d68a-4eb4-b56b-12e8a6151092:~/data$ cat > analyze_traffic.py << 'EOF'
+> #!/usr/bin/env python3
+> import re
+> from datetime import datetime
+>
+> # Read exclusion windows
+> exclusion_windows = []
+> with open('exclusion_windows.txt', 'r') as f:
+>     for line in f:
+>         try:
+>             ts = datetime.strptime(line.strip(), '%Y-%m-%d %H:%M:%S')
+>             exclusion_windows.append(ts)
+>         except:
+>             pass
+>
+> # Group windows into pairs (start, end)
+> window_pairs = []
+> if len(exclusion_windows) % 2 == 0:
+>     for i in range(0, len(exclusion_windows), 2):
+>         window_pairs.append((exclusion_windows[i], exclusion_windows[i+1]))
+> else:
+>     window_pairs = []
+>
+> def in_exclusion_window(log_time, pairs):
+>     """Check if log_time is within any exclusion window pair"""
+>     for start, end in pairs:
+>         if start <= log_time <= end:
+>             return True
+>     return False
+>
+> # Read traffic log and count suspicious packets
+> active_ips = ['192.168.1.100', '172.16.0.8']
+> packet_counts = {ip: 0 for ip in active_ips}
+>
+> with open('traffic.log', 'r') as f:
+>     for line in f:
+>         try:
+>             # Parse log line format: Jan 15 08:45:23 pkt SRC=... DST=...
+>             date_str = line[0:15].strip()  # e.g., 'Jan 15 08:45:23'
+>             log_time = datetime.strptime(date_str, '%b %d %H:%M:%S')
+>             log_time = log_time.replace(year=2024)  # Set year based on context
+>
+>             # Extract source IP
+>             src_match = re.search(r'SRC=([0-9.]+)', line)
+>             if not src_match:
+>                 continue
+>             src_ip = src_match.group(1)
+>
+>             if src_ip in active_ips and not in_exclusion_window(log_time, window_pairs):
+>                 packet_counts[src_ip] += 1
+>         except Exception as e:
+>             print(f"Error processing line: '{line}' - {e}")
+>
+> print("Packet counts after filtering:", packet_counts)
+>
+> EOF
+user@20d4b0d1-d68a-4eb4-b56b-12e8a6151092:~/data$ python3 analyze_traffic.py
+Packet counts after filtering: {'192.168.1.100': 3, '172.16.0.8': 3}
+user@20d4b0d1-d68a-4eb4-b56b-12e8a6151092:~/data$

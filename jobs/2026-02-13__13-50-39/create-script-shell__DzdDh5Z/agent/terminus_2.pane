@@ -1,0 +1,96 @@
+[?2004hroot@343001e9-7375-4961-ac94-44d9f48206c8:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@343001e9-7375-4961-ac94-44d9f48206c8:~# clear
+[?2004l[H[J[?2004hroot@343001e9-7375-4961-ac94-44d9f48206c8:~# echo "PIPELINE_ID is set to: '${PIPELINE_ID}'"
+[?2004lPIPELINE_ID is set to: 'AX-99'
+[?2004hroot@343001e9-7375-4961-ac94-44d9f48206c8:~# mkdir -p /home/user/training_pipeline
+[?2004l[?2004hroot@343001e9-7375-4961-ac94-44d9f48206c8:~# cat > /home/user/training_pipeline/preprocess_data.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import time
+[?2004l[?2004h> import signal
+[?2004l[?2004h> 
+[?2004l[?2004h> PIPELINE_ID = os.environ.get('PIPELINE_ID', 'UNKNOWN_ID')
+[?2004l[?2004h> 
+[?2004l[?2004h> def signal_handler(sig, frame):
+[?2004l[?2004h>     """
+[?2004l[?2004h>     Signal handler for SIGUSR1.
+[?2004l[?2004h>     Writes a specific message to STDERR and exits with code 42.
+[?2004l[?2004h>     """
+[?2004l[?2004h>     msg = "Received signal, stopping."
+[?2004l[?2004h>     sys.stderr.write(msg + "\n")
+[?2004l[?2004h>     sys.exit(42)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Register the signal handler
+[?2004l[?2004h> try:
+[?2004l[?2004h>     signal.signal(signal.SIGUSR1, signal_handler)
+[?2004l[?2004h> except ValueError:
+[?2004l[?2004h>     # This might happen if script is not run from main thread in some contexts
+[?2004l[?2004h>     # though for this script it should be fine
+[?2004l[?2004h>     sys.stderr.write("Failed to register signal handler.\n")
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> print(f"Starting preprocessing with PIPELINE_ID: {PIPELINE_ID}")
+[?2004l[?2004h> for i in range(10):
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         msg = f"[{PIPELINE_ID}] working …"
+[?2004l[?2004h>         print(msg, flush=True)
+[?2004l[?2004h>         time.sleep(1)
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         sys.stderr.write(f"Error during processing: {e}\n")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> sys.exit(0)
+[?2004l[?2004h> EOFchmod 700 /home/user/training_pipeline/preprocess_data.py
+[?2004l[?2004h> ls -la /home/user/training_pipeline/
+[?2004l[?2004h> chmod 700 /home/user/training_pipeline/preprocess_data.py
+[?2004l[?2004h> ls -la /home/user/training_pipeline/
+[?2004l[?2004h> ls -la /home/user/training_pipeline/
+[?2004l[?2004h> cd /home/user/training_pipeline
+[?2004l[?2004h> nice -n 5 python3 preprocess_data.py > preprocess.out 2> preprocess.err &
+[?2004l[?2004h> echo "Background PID: $!"
+[?2004l[?2004h> pwd
+[?2004l[?2004h> ls -la
+[?2004l[?2004h> ps aux | grep -E "[p]ython.*preprocess_data.py" | grep -v grep
+[?2004l[?2004h> sleep 3
+[?2004l[?2004h> ls -la
+[?2004l[?2004h> pgrep -f "python.*preprocess_data.py" || echo "Process not found"
+[?2004l[?2004h> cat preprocess_data.py
+[?2004l[?2004h> pkill -f "python.*preprocess_data.py" 2>/dev/null || true
+[?2004l[?2004h> nice -n 5 python3 preprocess_data.py > preprocess.out 2> preprocess.err &
+[?2004l[?2004h> sleep 2
+[?2004l[?2004h> pgrep -f "python.*preprocess_data.py"
+[?2004l[?2004h> md5sum preprocess_data.py
+[?2004l[?2004h> cat > process_summary.txt << 'EOF'
+[?2004l[?2004h> script_name: preprocess_data.py
+[?2004l[?2004h> script_md5: <MD5_CHECKSUM>
+[?2004l[?2004h> initial_nice: 5
+[?2004l[?2004h> pid_recorded: yes
+[?2004l[?2004h> pipeline_id: AX-99
+[?2004l[?2004h> was_running: yes
+[?2004l[?2004h> terminated_signal: SIGUSR1
+[?2004l[?2004h> exit_code: 42
+[?2004l[?2004h> summary: interrupted
+[?2004l[?2004h> EOFchmod 444 process_summary.txt
+[?2004l[?2004h> md5sum preprocess_data.py | awk '{print $1}'
+[?2004l[?2004h> sed -i 's/<MD5_CHECKSUM>/ACTUAL_MD5/' process_summary.txt
+[?2004l[?2004h> chmod 444 process_summary.txt
+[?2004l[?2004h> pkill -USR1 -f "python.*preprocess_data.py"
+[?2004l[?2004h> sleep 3
+[?2004l[?2004h> pgrep -f "python.*preprocess_data.py" || echo "Process terminated"
+[?2004l[?2004h> cat preprocess.out > preprocess.log
+[?2004l[?2004h> cat preprocess.err >> preprocess.log
+[?2004l[?2004h> echo "Process finished." >> preprocess.log
+[?2004l[?2004h> rm -f preprocess.out preprocess.err
+[?2004l[?2004h> ls -la
+[?2004l[?2004h> ls -la
+[?2004l[?2004h> head -5 preprocess.log
+[?2004l[?2004h> cat process_summary.txt
+[?2004l[?2004h> pgrep -f "python.*preprocess_data.py" || echo "Process confirmed terminated"
+[?2004l[?2004h> ls -la /home/user/training_pipeline/
+[?2004l[?2004h> stat -c "%a %n" /home/user/training_pipeline/preprocess_data.py
+[?2004l[?2004h> stat -c "%a %n" /home/user/training_pipeline/process_summary.txt
+[?2004l[?2004h> pgrep -f "python.*preprocess_data.py" || echo "Process confirmed terminated - task complete"
+[?2004l[?2004h> 

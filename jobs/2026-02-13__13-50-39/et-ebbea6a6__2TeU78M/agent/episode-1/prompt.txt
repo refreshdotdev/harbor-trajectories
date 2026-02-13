@@ -1,0 +1,258 @@
+Current terminal state:
+New Terminal Output:
+
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~# export POLICY_TLS="true"
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~# export POLICY_LOG="INFO"
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~# mkdir -p /home/user/policy/configs
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~# mkdir -p /home/user/policy/reports
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~# mkdir -p /tmp/ini_remediation
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~# cat > /tmp/ini_remediation/process_ini_file.sh << 'EOF'
+> #!/bin/bash
+>
+> # Exit on any error
+> set -e
+>
+> # Set environment variables if not already set
+> : ${POLICY_TLS:="true"}
+> : ${POLICY_LOG:="INFO"}
+>
+> # Define the absolute path to the current INI file
+> file_abspath="$1"
+>
+> # Create backup file with correct permissions and ownership
+> backup_file="${file_abspath}.bak"
+> if [[ -f "${file_abspath}" ]]; then
+>     cp -p -- "${file_abspath}" "${backup_file}"
+>     chmod 0400 "${backup_file}"
+> fi
+>
+> # Calculate SHA256 hash of the original file content
+> original_hash=$(sha256sum "${file_abspath}" | awk '{print $1}')
+>
+> # Define the temporary file for processing
+> temp_file="${file_abspath}.tmp"
+>
+> # Initialize remediation status
+> status="NO_ACTION_REQUIRED"
+>
+> # Define the awk script for INI file processing
+> awk_script='\
+> BEGIN {\
+>     FS="=| \\[|\\]"  # Custom field separator for INI format
+>     OFS="="            # Output field separator
+>     sec_security=0
+>     sec_logging=0
+>     sec_network=0
+>     key_enforce_tls=0
+>     key_level=0
+>     key_trusted_hosts=0
+>     enforce_tls_value="MISSING"
+>     level_value="MISSING"
+>     trusted_hosts_value="MISSING"
+>     original_enforce_tls="MISSING"
+>     original_level="MISSING"
+>     original_trusted_hosts="MISSING"
+>     new_enforce_tls="MISSING"
+>     new_level="MISSING"
+>     new_trusted_hosts="MISSING"
+>     remediated=0
+> }
+>
+> # Process section headers
+> sec_security == 1 || $0 ~ /^\[security\]/ { sec_security=!sec_security; next }
+> sec_logging == 1 || $0 ~ /^\[logging\]/ { sec_logging=!sec_logging; next }
+> sec_network == 1 || $0 ~ /^\[network\]/ { sec_network=!sec_network; next }
+>
+> # In security section, handle enforce_tls key
+> sec_security && $1 ~ /^enforce_tls$/i {
+>     key_enforce_tls=1
+>     original_enforce_tls=$2
+>     # Convert to lowercase for case-insensitive comparison
+>     original_enforce_tls_lower=tolower($2)
+>     # Use POLICY_TLS environment variable, default to "true"
+>     new_enforce_tls=(original_enforce_tls_lower != ENVIRON["POLICY_TLS"]) ? ENVIRON["POLICY_TLS"] : original_enforce_tls
+>     if (original_enforce_tls != new_enforce_tls) {
+>         remediated=1
+>     }
+>     $2=new_enforce_tls
+>     key_enforce_tls=0
+>     next
+> }
+>
+> # In logging section, handle level key
+> sec_logging && $1 ~ /^level$/i {
+>     key_level=1
+>     original_level=$2
+>     original_level_lower=tolower($2)
+>     new_level_lower=tolower(ENVIRON["POLICY_LOG"])
+>     # Define allowed levels (more restrictive levels are acceptable)
+>     allowed_levels= "WARN|ERROR|FATAL|" new_level_lower
+>     if (!match(allowed_levels, new_level_lower)) {
+>         new_level=ENVIRON["POLICY_LOG"]
+>     } else {
+>         new_level=$2
+>     }
+>     if (original_level != new_level) {
+>         remediated=1
+>     }
+>     $2=new_level
+>     key_level=0
+>     next
+> }
+>
+> # In network section, handle trusted_hosts key
+> sec_network && $1 ~ /^trusted_hosts$/i {
+>     key_trusted_hosts=1
+>     original_trusted_hosts=$2
+>     # Split comma-separated list and filter non-compliant hostnames
+>     if (original_trusted_hosts != "") {
+>         split(original_trusted_hosts, hosts, /, */)
+>         new_trusted_hosts=""
+>         for (i in hosts) {
+>             host=hosts[i]
+>             gsub(/^\s+|\s+$/, "", host)  # Trim whitespace
+>             if (host ~ /\.corp\.local$/ && host != "") {
+>                 if (new_trusted_hosts != "") {
+>                     new_trusted_hosts = new_trusted_hosts ", " host
+>                 } else {
+>                     new_trusted_hosts = host
+>                 }
+>             }
+>         }
+>         if (original_trusted_hosts != new_trusted_hosts) {
+>             remediated=1
+>         }
+>     } else {
+>         new_trusted_hosts=""
+>     }
+>     $2=new_trusted_hosts
+>     key_trusted_hosts=0
+>     next
+> }
+>
+> # Save original values for logging purposes
+> {\
+>     if (sec_security && $1 ~ /^enforce_tls$/i) original_enforce_tls=$2
+>     if (sec_logging && $1 ~ /^level$/i) original_level=$2
+>     if (sec_network && $1 ~ /^trusted_hosts$/i) original_trusted_hosts=$2
+> }
+>
+> # Save new values (for when keys are missing and need to be added)
+> END {
+>     # If enforce_tls is missing in security section, add it
+>     if (original_enforce_tls == "MISSING" && sec_security) {
+>         print "[security]"
+>         print "enforce_tls=" ENVIRON["POLICY_TLS"]
+>         remediated=1
+>     }
+>     if (original_level == "MISSING" && sec_logging) {
+>         print "[logging]"
+>         print "level=" ENVIRON["POLICY_LOG"]
+>         remediated=1
+>     }
+>     # Do not add network section or trusted_hosts key if missing
+> }
+>
+> # Print the modified line
+> { print }'
+>
+> # Process the INI file using awk
+> awk -v POLICY_TLS="$POLICY_TLS" -v POLICY_LOG="$POLICY_LOG" \
+>     -v ENFORCE_TLS="$POLICY_TLS" -v LOG_LEVEL="$POLICY_LOG" \
+>     "${awk_script}" "${file_abspath}" > "${temp_file}"
+>
+> # If remediation occurred, replace the original file with the temp file
+> if [ $remediated -eq 1 ]; then
+>     mv -f "${temp_file}" "${file_abspath}"
+>     status="REMEDIATED"
+> else
+>     rm -f "${temp_file}"
+>     # Remove backup file if no remediation occurred
+>     rm -f "${backup_file}"
+> fi
+>
+> # Log the remediation result to a temporary log file
+> log_file="/tmp/ini_remediation/$(basename "${file_abspath}")_log.txt"
+> echo "FILE: ${file_abspath}" > "${log_file}"
+> echo "ORIGINAL_HASH: ${original_hash}" >> "${log_file}"
+> echo "SECURITY_ENFORCED: was=${original_enforce_tls} -> ${new_enforce_tls}" >> "${log_file}"
+> echo "LOG_LEVEL:          was=${original_level} -> ${new_level}" >> "${log_file}"
+> echo "NETWORK_HOSTS:      was=${original_trusted_hosts} -> ${new_trusted_hosts}" >> "${log_file}"
+> echo "STATUS: ${status}" >> "${log_file}"
+> echo "----" >> "${log_file}"
+> EOF
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~# chmod +x /tmp/ini_remediation/process_ini_file.sh
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~# cat > /tmp/ini_remediation/run_scan.sh << 'EOF'
+> #!/bin/bash
+>
+> # Set environment variables
+> export POLICY_TLS="${POLICY_TLS:-true}"
+> export POLICY_LOG="${POLICY_LOG:-INFO}"
+>
+> # Create a temporary directory for parallel processing
+> work_dir="/tmp/ini_remediation"
+> mkdir -p "${work_dir}"
+>
+> # Find all INI files under /home/user/policy/configs
+> find /home/user/policy/configs -type f -name '*.ini' > "${work_dir}/files.txt"
+>
+> # Check if any INI files were found
+> if [ ! -s "${work_dir}/files.txt" ]; then
+>     echo "No INI files found under /home/user/policy/configs." >&2
+>     exit 1
+> fi
+>
+> # Process files concurrently using GNU Parallel
+> cat "${work_dir}/files.txt" | parallel -j +0 --no-notice \
+>     "${work_dir}/process_ini_file.sh {}"
+>
+> # Collect all individual log files
+> log_files=($(ls -1 "${work_dir}"/*.txt 2>/dev/null))
+>
+> # Create the final log file path
+> final_log="/home/user/policy/reports/after_remediation.log"
+>
+> # Write header to the final log file
+> echo "" > "${final_log}"
+>
+> # Concatenate log files in alphabetical order
+> cat "${work_dir}"/*.txt | sort >> "${final_log}"
+>
+> # Calculate summary statistics
+> files_scanned=$(wc -l < "${work_dir}/files.txt")
+> remediated=0
+> compliant=0
+> for log in "${log_files[@]}"; do
+>     if grep -q "STATUS: REMEDIATED" "${log}"; then
+>         ((remediated++))
+>     else
+>         ((compliant++))
+>     fi
+> done
+>
+> # Append summary to the final log file
+> echo "Summary:" >> "${final_log}"
+> echo "FILES_SCANNED=${files_scanned}" >> "${final_log}"
+> echo "REMEDIATED=${remediated}" >> "${final_log}"
+> echo "COMPLIANT=${compliant}" >> "${final_log}"
+>
+> # Clean up temporary files
+> rm -rf "${work_dir}"
+> EOF
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~# chmod +x /tmp/ini_remediation/run_scan.sh
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~# /tmp/ini_remediation/run_scan.sh
+/tmp/ini_remediation/run_scan.sh: line 21: parallel: command not found
+cat: write error: Broken pipe
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~# cat /home/user/policy/reports/after_remediation.log
+
+/home/user/policy/configs/app1.ini
+/home/user/policy/configs/app2.ini
+/home/user/policy/configs/app3.ini
+Summary:
+FILES_SCANNED=3
+REMEDIATED=0
+COMPLIANT=1
+root@e57fa77a-c8b3-43bf-9486-659f3eb3ba8b:~#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

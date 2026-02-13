@@ -1,0 +1,543 @@
+[?2004hroot@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user# clear
+[?2004l[H[J[?2004hroot@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user# mkdir -p /home/user/query_optimization/staging
+[?2004l[?2004hroot@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user# cd /home/user/query_optimization
+[?2004l[?2004hroot@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# python3 -m venv env
+[?2004lsource env/bin/activate
+pip install sqlparse==0.4.4 psycopg2-binary==2.9.7
+[?2004hroot@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# source env/bin/activate
+[?2004l[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# pip install sqlparse==0.4.4 psycopg2-binary==2.9.7
+[?2004lCollecting sqlparse==0.4.4
+  Downloading sqlparse-0.4.4-py3-none-any.whl (41 kB)
+[?25l     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/41.2 KB[0m [31m?[0m eta [36m-:--:--[0m[2K     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m41.2/41.2 KB[0m [31m9.5 MB/s[0m eta [36m0:00:00[0m
+[?25hCollecting psycopg2-binary==2.9.7
+  Downloading psycopg2_binary-2.9.7-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.0 MB)
+[?25l     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/3.0 MB[0m [31m?[0m eta [36m-:--:--[0m[2K     [91m━━━━━━━━━━━━━━━━━━━━━━━━━━[0m[90m╺[0m[90m━━━━━━━━━━━━━[0m [32m2.0/3.0 MB[0m [31m63.2 MB/s[0m eta [36m0:00:01[0m[2K     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m3.0/3.0 MB[0m [31m69.0 MB/s[0m eta [36m0:00:00[0m
+[?25hInstalling collected packages: sqlparse, psycopg2-binary
+Successfully installed psycopg2-binary-2.9.7 sqlparse-0.4.4
+[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# cat > analyze_and_optimize.py << 'EOF'
+[?2004lstion."""
+    table_name = None
+    columns = []
+    try:
+        parsed = sqlparse.parse(query_text)[0]
+        # Find FROM clause to get table name (simple approach)
+        from_seen = False
+        for token in parsed.tokens:
+            if from_seen and isinstance(token, Identifier):
+                table_name = token.get_real_name()
+                break
+            if isinstance(token, Keyword) and token.normalized == 'FROM':
+                from_seen = True
+        
+        # Find WHERE clause
+        where_clause = None
+        for token in parsed.tokens:
+            if isinstance(token, Where):
+                where_clause = token
+                break
+        
+        if where_clause:
+            # Extract conditions from WHERE clause
+            conditions = []
+            # Simple recursive walk to find comparisons
+            def walk_tokens(tokens):
+                for token in tokens:
+                    if isinstance(token, Comparison) and token.tokens:
+                        # Check if it's an equality comparison
+                        if len(token.tokens) >= 3 and \
+                           isinstance(token.tokens[1], sql_tokens.Operator) and \
+                           token.tokens[1].normalized == '=':
+                            # token.tokens[0] is the left side (column), token.tokens[2] is the right side
+                            # Try to get the column name from the left side
+                            col_token = token.tokens[0]
+                            if isinstance(col_token, Identifier):
+                                col_name = col_token.get_real_name()
+                                conditions.append(col_name)
+                            elif isinstance(col_token, Function) and col_token.get_type() == 'name':
+                                # Try to extract name from function-like identifiers
+                                col_name = col_token.get_name()
+                                conditions.append(col_name)
+                            elif isinstance(col_token, Token) and col_token.ttype is not None:[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> """
+[?2004l[?2004h> SQL Query Log Analysis & Optimization Script
+[?2004l[?2004h> """
+[?2004l[?2004h> 
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import csv
+[?2004l[?2004h> import re
+[?2004l[?2004h> import json
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import argparse
+[?2004l[?2004h> from configparser import ConfigParser
+[?2004l[?2004h> from sqlparse import format as sql_format, tokens as sql_tokens
+[?2004l[?2004h> from sqlparse.sql import Identifier, Comparison, Parenthesis, Where
+[?2004l[?2004h> from sqlparse.sql import Token, Function, Keyword, DML
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Configuration & Argument Parsing ---
+[?2004l[?2004h> CONFIG_FILE = "/home/user/db_tools/db_config.ini"
+[?2004l[?2004h> STAGING_FILE = "/home/user/query_optimization/staging/raw_extract.csv"
+[?2004l[?2004h> REPORT_FILE = "/home/user/query_optimization/report.json"
+[?2004l[?2004h> 
+[?2004l[?2004h> def read_config():
+[?2004l[?2004h>     """Read configuration from INI file."""
+[?2004l[?2004h>     parser = ConfigParser()
+[?2004l[?2004h>     parser.read(CONFIG_FILE)
+[?2004l[?2004h>     config = {
+[?2004l[?2004h>         'log_file_path': parser.get('DEFAULT', 'log_file_path', fallback=''),
+[?2004l[?2004h>         'min_duration_ms': parser.getint('DEFAULT', 'min_duration_ms', fallback=0)
+[?2004l[?2004h>     }
+[?2004l[?2004h>     return config
+[?2004l[?2004h> 
+[?2004l[?2004h> def parse_duration(duration_str):
+[?2004l[?2004h>     """Parse duration string (e.g., '15ms') to milliseconds."""
+[?2004l[?2004h>     match = re.search(r'^([0-9.]+)ms$', duration_str.strip())
+[?2004l[?2004h>     if match:
+[?2004l[?2004h>         return float(match.group(1))
+[?2004l[?2004h>     return 0.0
+[?2004l[?2004h> 
+[?2004l[?2004h> def normalize_sql(sql_query):
+[?2004l[?2004h>     """Normalize SQL query using sqlparse."""
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         # sqlparse.format can raise exceptions, handle them
+[?2004l[?2004h>         formatted = sql_format(
+[?2004l[?2004h>             sql_query,
+[?2004l[?2004h>             keyword_case='upper',
+[?2004l[?2004h>             strip_comments=True,
+[?2004l[?2004h>             reindent=False,
+[?2004l[?2004h>             truncate_strings=1000  # Truncate very long strings for safety
+[?2004l[?2004h>         )
+[?2004l[?2004h>         # Remove trailing semicolon if present
+[?2004l[?2004h>         if formatted.endswith(';'):
+[?2004l[?2004h>             formatted = formatted[:-1].strip()
+[?2004l[?2004h>         return formatted
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         # In case of parsing errors, return the original query
+[?2004l[?2004h>         print(f"Warning: Could not format SQL: {sql_query}. Error: {e}", file=sys.stderr)
+[?2004l[?2004h>         return sql_query
+[?2004l[?2004h> 
+[?2004l[?2004h> def extract_table_and_columns(query_text):
+[?2004l[?2004h>     """Extract table and columns from WHERE clause for index suggestion."""
+[?2004l[?2004h>     table_name = None
+[?2004l[?2004h>     columns = []
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         parsed = sqlparse.parse(query_text)[0]
+[?2004l[?2004h>         # Find FROM clause to get table name (simple approach)
+[?2004l[?2004h>         from_seen = False
+[?2004l[?2004h>         for token in parsed.tokens:
+[?2004l[?2004h>             if from_seen and isinstance(token, Identifier):
+[?2004l[?2004h>                 table_name = token.get_real_name()
+[?2004l[?2004h>                 break
+[?2004l[?2004h>             if isinstance(token, Keyword) and token.normalized == 'FROM':
+[?2004l[?2004h>                 from_seen = True
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Find WHERE clause
+[?2004l[?2004h>         where_clause = None
+[?2004l[?2004h>         for token in parsed.tokens:
+[?2004l[?2004h>             if isinstance(token, Where):
+[?2004l[?2004h>                 where_clause = token
+[?2004l[?2004h>                 break
+[?2004l[?2004h>         
+[?2004l[?2004h>         if where_clause:
+[?2004l[?2004h>             # Extract conditions from WHERE clause
+[?2004l[?2004h>             conditions = []
+[?2004l[?2004h>             # Simple recursive walk to find comparisons
+[?2004l[?2004h>             def walk_tokens(tokens):
+[?2004l[?2004h>                 for token in tokens:
+[?2004l[?2004h>                     if isinstance(token, Comparison) and token.tokens:
+[?2004l[?2004h>                         # Check if it's an equality comparison
+[?2004l[?2004h>                         if len(token.tokens) >= 3 and \
+[?2004l[?2004h>                            isinstance(token.tokens[1], sql_tokens.Operator) and \
+[?2004l[?2004h>                            token.tokens[1].normalized == '=':
+[?2004l[?2004h>                             # token.tokens[0] is the left side (column), token.tokens[2] is the right side
+[?2004l[?2004h>                             # Try to get the column name from the left side
+[?2004l[?2004h>                             col_token = token.tokens[0]
+[?2004l[?2004h>                             if isinstance(col_token, Identifier):
+[?2004l[?2004h>                                 col_name = col_token.get_real_name()
+[?2004l[?2004h>                                 conditions.append(col_name)
+[?2004l[?2004h>                             elif isinstance(col_token, Function) and col_token.get_type() == 'name':
+[?2004l[?2004h>                                 # Try to extract name from function-like identifiers
+[?2004l[?2004h>                                 col_name = col_token.get_name()
+[?2004l[?2004h>                                 conditions.append(col_name)
+[?2004l[?2004h>                             elif isinstance(col_token, Token) and col_token.ttype is not None:
+[?2004l[?2004h>                                 # Fallback to text representation
+[?2004l[?2004h>                                 col_name = col_token.value.strip()
+[?2004l[?2004h>                                 if col_name:
+[?2004l[?2004h>                                     conditions.append(col_name)
+[?2004l[?2004h>                     elif isinstance(token, Parenthesis):
+[?2004l[?2004h>                         walk_tokens(token.tokens[1:-1])  # Skip parentheses tokens themselves
+[?2004l[?2004h>                     elif hasattr(token, 'tokens'):
+[?2004l[?2004h>                         walk_tokens(token.tokens)
+[?2004l[?2004h>             
+[?2004l[?2004h>             walk_tokens(where_clause.tokens)
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Filter out non-column like tokens and duplicates
+[?2004l[?2004h>             seen_columns = set()
+[?2004l[?2004h>             for cond in conditions:
+[?2004l[?2004h>                 # Basic check if it looks like a column name (alphanumeric plus underscores)
+[?2004l[?2004h>                 if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', cond):
+[?2004l[?2004h>                     if cond not in seen_columns:
+[?2004l[?2004h>                         seen_columns.add(cond)
+[?2004l[?2004h>                         columns.append(cond)
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Warning: Could not extract table/columns from: {query_text}. Error: {e}", file=sys.stderr)
+[?2004l[?2004h>     
+[?2004l[?2004h>     return table_name, columns
+[?2004l[?2004h> 
+[?2004l[?2004h> def suggest_index(table_name, columns):
+[?2004l[?2004h>     """Suggest an index creation SQL statement."""
+[?2004l[?2004h>     if not table_name or not columns:
+[?2004l[?2004h>         return None
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sanitize column names for index name
+[?2004l[?2004h>     safe_cols_for_name = [re.sub(r'[^a-zA-Z0-9_]', '', col) for col in columns]
+[?2004l[?2004h>     index_name = f"idx_{table_name}_{'_'.join(safe_cols_for_name)}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create a safe index name, truncate if too long
+[?2004l[?2004h>     index_name = index_name[:63]  # Max length for Postgres index names
+[?2004l[?2004h>     index_name = index_name[:63].strip('_')  # Ensure it doesn't end with an underscore
+[?2004l[?2004h>     
+[?2004l[?2004h>     return f"CREATE INDEX {index_name} ON {table_name}({', '.join(columns)});"
+[?2004l[?2004h> 
+[?2004l[?2004h> def calculate_sha256(filepath):
+[?2004l[?2004h>     """Calculate SHA-256 checksum of a file."""
+[?2004l[?2004h>     sha256 = hashlib.sha256()
+[?2004l[?2004h>     with open(filepath, 'rb') as f:
+[?2004l[?2004h>         while True:
+[?2004l[?2004h>             data = f.read(65536)  # Read in 64k chunks
+[?2004l[?2004h>             if not data:
+[?2004l[?2004h>                 break
+[?2004l[?2004h>             sha256.update(data)
+[?2004l[?2004h>     return sha256.hexdigest()
+[?2004l[?2004h> 
+[?2004l[?2004h> def main():
+[?2004l[?2004h>     parser = argparse.ArgumentParser(description='SQL Query Log Analysis & Optimization')
+[?2004l[?2004h>     parser.add_argument('--date', required=True, help='Date to analyze (YYYY-MM-DD)')
+[?2004l[?2004h>     args = parser.parse_args()
+[?2004l[?2004h>     
+[?2004l[?2004h>     target_date = args.date
+[?2004l[?2004h>     
+[?2004l[?2004h>     print(f"Starting analysis for date: {target_date}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     config = read_config()
+[?2004l[?2004h>     log_file_path = config['log_file_path']
+[?2004l[?2004h>     min_duration_ms = config['min_duration_ms']
+[?2004l[?2004h>     
+[?2004l[?2004h>     print(f"Config: log_file='{log_file_path}', min_duration_ms={min_duration_ms}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create staging directory if it doesn't exist
+[?2004l[?2004h>     staging_dir = os.path.dirname(STAGING_FILE)
+[?2004l[?2004h>     if not os.path.exists(staging_dir):
+[?2004l[?2004h>         os.makedirs(staging_dir, exist_ok=True)
+[?2004l[?2004h>         print(f"Created directory: {staging_dir}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     extracted_queries = []
+[?2004l[?2004h>     
+[?2004l[?2004h>     if not os.path.exists(log_file_path):
+[?2004l[?2004h>         print(f"Error: Log file not found at '{log_file_path}'. Cannot continue.", file=sys.stderr)
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     
+[?2004l[?2004h>     print(f"Processing log file: {log_file_path}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(log_file_path, 'r', encoding='utf-8') as log_f:
+[?2004l[?2004h>         # Prepare CSV writer
+[?2004l[?2004h>         with open(STAGING_FILE, 'w', encoding='ISO-8859-1', newline='') as csv_f:
+[?2004l[?2004h>             csv_writer = csv.writer(csv_f, lineterminator='\r\n') # CRLF line endings
+[?2004l[?2004h>             csv_writer.writerow(['timestamp', 'duration_ms', 'query_text']) # Header
+[?2004l[?2004h>             
+[?2004l[?2004h>             for line_num, line in enumerate(log_f, 1):
+[?2004l[?2004h>                 line = line.strip()
+[?2004l[?2004h>                 if not line:
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 parts = [p.strip() for p in line.split('|')]
+[?2004l[?2004h>                 if len(parts) != 4:
+[?2004l[?2004h>                     print(f"Warning: Skipping malformed line {line_num}: '{line}'")
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 timestamp, duration_str, level, message = parts
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # 1. Date Match
+[?2004l[?2004h>                 try:
+[?2004l[?2004h>                     # Use the first 10 chars for YYYY-MM-DD
+[?2004l[?2004h>                     log_date = timestamp[:10]
+[?2004l[?2004h>                     if log_date != target_date:
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>                 except Exception:
+[?2004l[?2004h>                     print(f"Warning: Skipping line {line_num} due to date format error: '{timestamp}'")
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # 2. Type Match
+[?2004l[?2004h>                 if level != '[QUERY]':
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # 3. Performance Threshold
+[?2004l[?2004h>                 duration_val = parse_duration(duration_str)
+[?2004l[?2004h>                 if duration_val < min_duration_ms:
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # If all conditions met, write to CSV
+[?2004l[?2004h>                 # Duration for CSV is just the numeric part
+[?2004l[?2004h>                 csv_writer.writerow([timestamp, duration_val, message])
+[?2004l[?2004h>                 extracted_queries.append({'timestamp': timestamp, 'query_text': message})
+[?2004l[?2004h>             
+[?2004l[?2004h>     print(f"Extracted {len(extracted_queries)} queries to {STAGING_FILE}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Phase 2: Analysis & Normalization
+[?2004l[?2004h>     staging_file_sha256 = calculate_sha256(STAGING_FILE)
+[?2004l[?2004h>     print(f"SHA-256 of staging file: {staging_file_sha256}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Process queries for normalization, deduplication, and index suggestions
+[?2004l[?2004h>     normalized_queries = {}
+[?2004l[?2004h>     
+[?2004l[?2004h>     for item in extracted_queries:
+[?2004l[?2004h>         original_query = item['query_text']
+[?2004l[?2004h>         normalized_query_text = normalize_sql(original_query)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Use normalized text as key for deduplication
+[?2004l[?2004h>         if normalized_query_text not in normalized_queries:
+[?2004l[?2004h>             table_name, columns = extract_table_and_columns(normalized_query_text)
+[?2004l[?2004h>             index_suggestion = suggest_index(table_name, columns)
+[?2004l[?2004h>             
+[?2004l[?2004h>             normalized_queries[normalized_query_text] = {
+[?2004l[?2004h>                 'first_timestamp': item['timestamp'], # Store first occurrence timestamp
+[?2004l[?2004h>                 'count': 1,
+[?2004l[?2004h>                 'normalized_sql': normalized_query_text,
+[?2004l[?2004h>                 'index_suggestion': index_suggestion
+[?2004l[?2004h>             }
+[?2004l[?2004h>         else:
+[?2004l[?2004h>             # Increment count for already seen query
+[?2004l[?2004h>             normalized_queries[normalized_query_text]['count'] += 1
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Prepare suggestions for report, sorted by first_timestamp
+[?2004l[?2004h>     suggestions_list = sorted(
+[?2004l[?2004h>         normalized_queries.values(), 
+[?2004l[?2004h>         key=lambda x: x['first_timestamp']
+[?2004l[?2004h>     )
+[?2004l[?2004h>     
+[?2004l[?2004h>     total_queries_extracted = len(extracted_queries)
+[?2004l[?2004h>     unique_patterns = len(suggestions_list)
+[?2004l[?2004h>     
+[?2004l[?2004h>     print(f"Analysis complete. Total extracted: {total_queries_extracted}, Unique patterns: {unique_patterns}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Phase 3: Reporting
+[?2004l[?2004h>     report_data = {
+[?2004l[?2004h>         "meta": {
+[?2004l[?2004h>             "date_analyzed": target_date,
+[?2004l[?2004h>             "staging_file_sha256": staging_file_sha256
+[?2004l[?2004h>         },
+[?2004l[?2004h>         "stats": {
+[?2004l[?2004h>             "total_queries_extracted": total_queries_extracted,
+[?2004l[?2004h>             "unique_patterns": unique_patterns
+[?2004l[?2004h>         },
+[?2004l[?2004h>         "suggestions": []
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     for suggestion in suggestions_list:
+[?2004l[?2004h>         report_data["suggestions"].append({
+[?2004l[?2004h>            "id": suggestion['first_timestamp'],
+[?2004l[?2004h>            "normalized_sql": suggestion['normalized_sql'],
+[?2004l[?2004h>            "index_suggestion": suggestion['index_suggestion']
+[?2004l[?2004h>         })
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(REPORT_FILE, 'w', encoding='utf-8', newline='\n') as report_f: # Unix line endings
+[?2004l[?2004h>         json.dump(report_data, report_f, indent=2)
+[?2004l[?2004h>     
+[?2004l[?2004h>     print(f"Report generated at: {REPORT_FILE}")
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == "__main__":
+[?2004l[?2004h>     main()
+[?2004l[?2004h> EOF
+[?2004l[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# chmod +x analyze_and_optimize.py
+[?2004l[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# ./analyze_and_optimize.py --date 2023-03-15
+[?2004lTraceback (most recent call last):
+  File "/home/user/query_optimization/./analyze_and_optimize.py", line 16, in <module>
+    from sqlparse.sql import Token, Function, Keyword, DML
+ImportError: cannot import name 'Keyword' from 'sqlparse.sql' (/home/user/query_optimization/env/lib/python3.10/site-packages/sqlparse/sql.py)
+[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# cat report.json
+[?2004lcat: report.json: No such file or directory
+[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# sed -i 's/from sqlparse.sql import Token, Function, Keyword, DML/from sqlparse.tokens import Keyword, DML, Token; from sqlparse.sql import Function/' analyze_and_optimize.py
+[?2004l[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# python3 analyze_and_optimize.py --date 2023-03-15
+[?2004lStarting analysis for date: 2023-03-15
+Config: log_file='', min_duration_ms=0
+Error: Log file not found at ''. Cannot continue.
+[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# cat report.json
+[?2004lcat: report.json: No such file or directory
+[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# mkdir -p /home/user/db_tools
+[?2004l[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# cat > /home/user/db_tools/db_config.ini << 'EOF'
+[?2004l[?2004h> [DEFAULT]
+[?2004l[?2004h> log_file_path = /home/user/query_logs/sample.log
+[?2004l[?2004h> min_duration_ms = 10
+[?2004l[?2004h> EOF
+[?2004l[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# mkdir -p /home/user/query_logs
+[?2004l[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# cat > /home/user/query_logs/sample.log << 'EOF'
+[?2004l[?2004h> 2023-03-15T10:00:00Z | 15ms | [QUERY] | SELECT * FROM users WHERE id = 1;
+[?2004l[?2004h> 2023-03-15T10:01:00Z | 5ms | [QUERY] | SELECT name FROM products WHERE category_id = 10;
+[?2004l[?2004h> 2023-03-15T10:02:00Z | 20ms | [QUERY] | SELECT * FROM users WHERE id = 1;
+[?2004l[?2004h> 2023-03-15T10:03:00Z | 2ms | [INFO] | System startup complete.
+[?2004l[?2004h> 2023-03-15T10:04:00Z | 12ms | [QUERY] | SELECT name, email FROM customers WHERE status = 'active';
+[?2004l[?2004h> 2023-03-15T10:05:00Z | 22ms | [QUERY] | SELECT * FROM orders WHERE customer_id = 123 AND order_date > '2023-01-01';
+[?2004l[?2004h> 2023-03-15T10:06:00Z | 8ms | [QUERY] | SELECT name FROM products WHERE category_id = 10; -- get product names
+[?2004l[?2004h> 2023-03-15T11:00:00Z | 50ms | [QUERY] | UPDATE users SET last_login = NOW() WHERE id = 100;
+[?2004l[?2004h> EOF
+[?2004l[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# python3 analyze_and_optimize.py --date 2023-03-15
+[?2004lStarting analysis for date: 2023-03-15
+Config: log_file='/home/user/query_logs/sample.log', min_duration_ms=10
+Processing log file: /home/user/query_logs/sample.log
+Extracted 5 queries to /home/user/query_optimization/staging/raw_extract.csv
+SHA-256 of staging file: 901803ac828f19b83a041a599d4255def673f6d0fd1c5cc516e654209ceec8fd
+Warning: Could not extract table/columns from: SELECT * FROM users WHERE id = 1. Error: name 'sqlparse' is not defined
+Warning: Could not extract table/columns from: SELECT name, email FROM customers WHERE status = 'active'. Error: name 'sqlparse' is not defined
+Warning: Could not extract table/columns from: SELECT * FROM orders WHERE customer_id = 123 AND order_date > '2023-01-01'. Error: name 'sqlparse' is not defined
+Warning: Could not extract table/columns from: UPDATE users SET last_login = NOW() WHERE id = 100. Error: name 'sqlparse' is not defined
+Analysis complete. Total extracted: 5, Unique patterns: 4
+Report generated at: /home/user/query_optimization/report.json
+[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# cat report.json
+[?2004l{
+  "meta": {
+    "date_analyzed": "2023-03-15",
+    "staging_file_sha256": "901803ac828f19b83a041a599d4255def673f6d0fd1c5cc516e654209ceec8fd"
+  },
+  "stats": {
+    "total_queries_extracted": 5,
+    "unique_patterns": 4
+  },
+  "suggestions": [
+    {
+      "id": "2023-03-15T10:00:00Z",
+      "normalized_sql": "SELECT * FROM users WHERE id = 1",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T10:04:00Z",
+      "normalized_sql": "SELECT name, email FROM customers WHERE status = 'active'",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T10:05:00Z",
+      "normalized_sql": "SELECT * FROM orders WHERE customer_id = 123 AND order_date > '2023-01-01'",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T11:00:00Z",
+      "normalized_sql": "UPDATE users SET last_login = NOW() WHERE id = 100",
+      "index_suggestion": null
+    }
+  ]
+}[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# sed -i '/def extract_table_and_columns(query_text):/a\\timport sqlparse' analyze_and_optimize.py
+[?2004l[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# python3 analyze_and_optimize.py --date 2023-03-15
+[?2004l  File "/home/user/query_optimization/analyze_and_optimize.py", line 62
+    """Extract table and columns from WHERE clause for index suggestion."""
+                                                                           ^
+IndentationError: unindent does not match any outer indentation level
+[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# cat report.json
+[?2004l{
+  "meta": {
+    "date_analyzed": "2023-03-15",
+    "staging_file_sha256": "901803ac828f19b83a041a599d4255def673f6d0fd1c5cc516e654209ceec8fd"
+  },
+  "stats": {
+    "total_queries_extracted": 5,
+    "unique_patterns": 4
+  },
+  "suggestions": [
+    {
+      "id": "2023-03-15T10:00:00Z",
+      "normalized_sql": "SELECT * FROM users WHERE id = 1",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T10:04:00Z",
+      "normalized_sql": "SELECT name, email FROM customers WHERE status = 'active'",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T10:05:00Z",
+      "normalized_sql": "SELECT * FROM orders WHERE customer_id = 123 AND order_date > '2023-01-01'",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T11:00:00Z",
+      "normalized_sql": "UPDATE users SET last_login = NOW() WHERE id = 100",
+      "index_suggestion": null
+    }
+  ]
+}[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# sed -i '0,/^def extract_table_and_columns(query_text):$/ s//&\\n\timport sqlparse/' analyze_and_optimize.py
+[?2004l[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# python3 analyze_and_optimize.py --date 2023-03-15
+[?2004l  File "/home/user/query_optimization/analyze_and_optimize.py", line 60
+    def extract_table_and_columns(query_text):\n	import sqlparse
+                                               ^
+SyntaxError: unexpected character after line continuation character
+[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# cat report.json
+[?2004l{
+  "meta": {
+    "date_analyzed": "2023-03-15",
+    "staging_file_sha256": "901803ac828f19b83a041a599d4255def673f6d0fd1c5cc516e654209ceec8fd"
+  },
+  "stats": {
+    "total_queries_extracted": 5,
+    "unique_patterns": 4
+  },
+  "suggestions": [
+    {
+      "id": "2023-03-15T10:00:00Z",
+      "normalized_sql": "SELECT * FROM users WHERE id = 1",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T10:04:00Z",
+      "normalized_sql": "SELECT name, email FROM customers WHERE status = 'active'",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T10:05:00Z",
+      "normalized_sql": "SELECT * FROM orders WHERE customer_id = 123 AND order_date > '2023-01-01'",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T11:00:00Z",
+      "normalized_sql": "UPDATE users SET last_login = NOW() WHERE id = 100",
+      "index_suggestion": null
+    }
+  ]
+}[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# python3 analyze_and_optimize.py --date 2023-03-15
+[?2004l  File "/home/user/query_optimization/analyze_and_optimize.py", line 60
+    def extract_table_and_columns(query_text):\n	import sqlparse
+                                               ^
+SyntaxError: unexpected character after line continuation character
+[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# cat report.json
+[?2004l{
+  "meta": {
+    "date_analyzed": "2023-03-15",
+    "staging_file_sha256": "901803ac828f19b83a041a599d4255def673f6d0fd1c5cc516e654209ceec8fd"
+  },
+  "stats": {
+    "total_queries_extracted": 5,
+    "unique_patterns": 4
+  },
+  "suggestions": [
+    {
+      "id": "2023-03-15T10:00:00Z",
+      "normalized_sql": "SELECT * FROM users WHERE id = 1",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T10:04:00Z",
+      "normalized_sql": "SELECT name, email FROM customers WHERE status = 'active'",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T10:05:00Z",
+      "normalized_sql": "SELECT * FROM orders WHERE customer_id = 123 AND order_date > '2023-01-01'",
+      "index_suggestion": null
+    },
+    {
+      "id": "2023-03-15T11:00:00Z",
+      "normalized_sql": "UPDATE users SET last_login = NOW() WHERE id = 100",
+      "index_suggestion": null
+    }
+  ]
+}[?2004h(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# 

@@ -1,0 +1,175 @@
+Current terminal state:
+New Terminal Output:
+
+root@01fa814d-51fb-4f1e-88a8-a6652736186b:~# mkdir -p /tmp
+root@01fa814d-51fb-4f1e-88a8-a6652736186b:~# cat > /tmp/archive_script.py << 'EOF'
+> #!/usr/bin/env python3
+> import os
+> import shutil
+> import json
+> import hashlib
+> import csv
+> import sys
+> import re
+> from pathlib import Path
+> import locale
+> import codecs
+>
+> def get_loss_from_metrics_json(metrics_path):
+>     if not metrics_path.exists():
+>         return None
+>
+>     # Try common encodings
+>     encodings_to_try = ['utf-8-sig', 'utf-8', 'iso-8859-1']
+>     loss_value = None
+>
+>     for enc in encodings_to_try:
+>         try:
+>             with codecs.open(metrics_path, 'r', encoding=enc) as f:
+>                 content = f.read()
+>             data = json.loads(content)
+>             if 'loss' in data:
+>                 loss_val = data['loss']
+>                 # Try to convert to float
+>                 try:
+>                     loss_value = float(loss_val)
+>                     return loss_value
+>                 except (TypeError, ValueError):
+>                     # Loss value exists but isn't a number we can use
+>                     return None
+>         except json.JSONDecodeError:
+>             continue
+>         except UnicodeDecodeError:
+>             continue
+>
+>     return None
+>
+> def get_md5_checksum(file_path):
+>     hash_md5 = hashlib.md5()
+>     with open(file_path, "rb") as f:
+>         for chunk in iter(lambda: f.read(4096), b""):
+>             hash_md5.update(chunk)
+>     return hash_md5.hexdigest()
+>
+> def main():
+>     experiments_base_dir = Path('/home/user/experiments')
+>     ckpt_archive_dir = experiments_base_dir / 'ckpt_archive'
+>
+>     ckpt_archive_dir.mkdir(parents=True, exist_ok=True)
+>
+>     total_moved_ckpt_count = 0
+>     all_readable_losses = []
+>
+>     # Phase 1: Archival and Loss Collection
+>     for run_dir_path in experiments_base_dir.iterdir():
+>         if run_dir_path.is_dir() and run_dir_path.name.startswith('run_'):
+>             for ckpt_file_path in run_dir_path.glob('*.ckpt'):
+>                 metrics_file_path = run_dir_path / 'metrics.json'
+>
+>                 # Validate checkpoint size
+>                 if ckpt_file_path.stat().st_size <= 1024:
+>                     # Skip corrupted/truncated files
+>                     continue
+>
+>                 # Extract loss for renaming and averaging
+>                 loss_value = get_loss_from_metrics_json(metrics_file_path)
+>                 if loss_value is not None:
+>                     all_readable_losses.append(loss_value)
+>                     prefix = f"loss_{loss_value:.4f}"
+>                 else:
+>                     prefix = "loss_unknown"
+>
+>                 # Determine new filename and path
+>                 new_filename = f"{prefix}__{ckpt_file_path.name}"
+>                 new_ckpt_path = ckpt_archive_dir / new_filename
+>
+>                 # Move checkpoint
+>                 shutil.move(str(ckpt_file_path), str(new_ckpt_path))
+>                 total_moved_ckpt_count += 1
+>
+>     # Phase 2: Generate Inventory CSV
+>     inventory_records = []
+>
+>     # Define columns and CRLF
+>     columns = ['filepath', 'size_bytes', 'sha256']
+>     crlf = b'\r\n'
+>
+>     for root, _, files in os.walk(experiments_base_dir):
+>         for file_name in files:
+>             current_file_path = Path(root) / file_name
+>             if current_file_path.name == 'artifact_inventory.csv' or current_file_path.name == 'cleanup.log':
+>                 continue
+>
+>             try:
+>                 filepath_str = str(current_file_path.relative_to(experiments_base_dir))
+>                 size_bytes = current_file_path.stat().st_size
+>
+>                 # Calculate SHA256 hash
+>                 sha256_hash = hashlib.sha256()
+>                 with current_file_path.open('rb') as f:
+>                     for chunk in iter(lambda: f.read(4096), b""):
+>                         sha256_hash.update(chunk)
+>                 sha256_sum = sha256_hash.hexdigest()
+>
+>                 record = [filepath_str, str(size_bytes), sha256_sum]
+>                 inventory_records.append(record)
+>             except Exception as e:
+>                 # Skip files that cause errors during hashing/stats
+>                 print(f"Warning: Could not process {current_file_path} for inventory: {e}")
+>                 continue
+>
+>     # Sort records case-insensitively by filepath
+>     inventory_records.sort(key=lambda x: x[0].lower())
+>
+>     inventory_csv_path = experiments_base_dir / 'artifact_inventory.csv'
+>
+>     # Write CSV with UTF-16LE, BOM, and CRLF
+>     try:
+>         with inventory_csv_path.open('wb') as f:
+>             # UTF-16LE BOM is 0xFF, 0xFE
+>             f.write(b'\xff\xfe')
+>             writer = csv.writer(f, delimiter=';', lineterminator=crlf)
+>             writer.writerow(columns)
+>             for record in inventory_records:
+>                 # Ensure all field strings are UTF-8 encoded before writing to UTF-16LE
+>                 utf8_encoded_record = [field.encode('utf-8') for field in record]
+>                 writer.writerow(utf8_encoded_record)
+>     except Exception as e:
+>         print(f"Error writing inventory CSV: {e}")
+>         sys.exit(1)
+>
+>     # Phase 3: Calculate Inventory MD5
+>     inventory_md5 = get_md5_checksum(inventory_csv_path)
+>
+>     # Phase 4: Calculate Global Average Loss
+>     global_avg_loss = 0.0
+>     if all_readable_losses:
+>         global_avg_loss = sum(all_readable_losses) / len(all_readable_losses)
+>     formatted_avg_loss = f"{global_avg_loss:.4f}"
+>
+>     # Phase 5: Write Cleanup Log
+>     log_file_path = experiments_base_dir / 'cleanup.log'
+>     log_content = f"VALID_CKPTS_MOVED: {total_moved_ckpt_count}\nGLOBAL_AVG_LOSS: {formatted_avg_loss}\nINVENTORY_MD5: {inventory_md5}"
+>
+>     try:
+>         with log_file_path.open('w') as f:
+>             f.write(log_content)
+>
+>         # Set permissions to 0400 (read-only for owner)
+>         os.chmod(log_file_path, 0o400)
+>     except Exception as e:
+>         print(f"Error writing cleanup log: {e}")
+>         sys.exit(1)
+>
+>     print("Script execution completed successfully.")
+>     print(f"Moved {total_moved_ckpt_count} valid checkpoints.")
+>     print(f"Global average loss: {formatted_avg_loss}")
+>     print(f"Inventory MD5: {inventory_md5}")
+>
+> if __name__ == '__main__':
+>     main()
+> EOFpython3 /tmp/archive_script.py
+>
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

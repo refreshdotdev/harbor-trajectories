@@ -1,0 +1,253 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# cat > analyze_and_optimize.py << 'EOF'
+stion."""
+    table_name = None
+    columns = []
+    try:
+        parsed = sqlparse.parse(query_text)[0]
+        # Find FROM clause to get table name (simple approach)
+        from_seen = False
+        for token in parsed.tokens:
+            if from_seen and isinstance(token, Identifier):
+                table_name = token.get_real_name()
+                break
+            if isinstance(token, Keyword) and token.normalized == 'FROM':
+                from_seen = True
+
+        # Find WHERE clause
+        where_clause = None
+        for token in parsed.tokens:
+            if isinstance(token, Where):
+                where_clause = token
+                break
+
+        if where_clause:
+            # Extract conditions from WHERE clause
+            conditions = []
+            # Simple recursive walk to find comparisons
+            def walk_tokens(tokens):
+                for token in tokens:
+                    if isinstance(token, Comparison) and token.tokens:
+                        # Check if it's an equality comparison
+                        if len(token.tokens) >= 3 and \
+                           isinstance(token.tokens[1], sql_tokens.Operator) and \
+                           token.tokens[1].normalized == '=':
+                            # token.tokens[0] is the left side (column), token.tokens[2] is the right side
+                            # Try to get the column name from the left side
+                            col_token = token.tokens[0]
+                            if isinstance(col_token, Identifier):
+                                col_name = col_token.get_real_name()
+                                conditions.append(col_name)
+                            elif isinstance(col_token, Function) and col_token.get_type() == 'name':
+                                # Try to extract name from function-like identifiers
+                                col_name = col_token.get_name()
+                                conditions.append(col_name)
+                            elif isinstance(col_token, Token) and col_token.ttype is not None:> #!/usr/bin/env python3
+> """
+> SQL Query Log Analysis & Optimization Script
+> """
+>
+> import os
+> import sys
+> import csv
+> import re
+> import json
+> import hashlib
+> import argparse
+> from configparser import ConfigParser
+> from sqlparse import format as sql_format, tokens as sql_tokens
+> from sqlparse.sql import Identifier, Comparison, Parenthesis, Where
+> from sqlparse.sql import Token, Function, Keyword, DML
+>
+> # --- Configuration & Argument Parsing ---
+> CONFIG_FILE = "/home/user/db_tools/db_config.ini"
+> STAGING_FILE = "/home/user/query_optimization/staging/raw_extract.csv"
+> REPORT_FILE = "/home/user/query_optimization/report.json"
+>
+> def read_config():
+>     """Read configuration from INI file."""
+>     parser = ConfigParser()
+>     parser.read(CONFIG_FILE)
+>     config = {
+>         'log_file_path': parser.get('DEFAULT', 'log_file_path', fallback=''),
+>         'min_duration_ms': parser.getint('DEFAULT', 'min_duration_ms', fallback=0)
+>     }
+>     return config
+>
+> def parse_duration(duration_str):
+>     """Parse duration string (e.g., '15ms') to milliseconds."""
+>     match = re.search(r'^([0-9.]+)ms$', duration_str.strip())
+>     if match:
+>         return float(match.group(1))
+>     return 0.0
+>
+> def normalize_sql(sql_query):
+>     """Normalize SQL query using sqlparse."""
+>     try:
+>         # sqlparse.format can raise exceptions, handle them
+>         formatted = sql_format(
+>             sql_query,
+>             keyword_case='upper',
+>             strip_comments=True,
+>             reindent=False,
+>             truncate_strings=1000  # Truncate very long strings for safety
+>         )
+>         # Remove trailing semicolon if present
+>         if formatted.endswith(';'):
+>             formatted = formatted[:-1].strip()
+>         return formatted
+>     except Exception as e:
+>         # In case of parsing errors, return the original query
+>         print(f"Warning: Could not format SQL: {sql_query}. Error: {e}", file=sys.stderr)
+>         return sql_query
+>
+> def extract_table_and_columns(query_text):
+>     """Extract table and columns from WHERE clause for index suggestion."""
+>     table_name = None
+>     columns = []
+>     try:
+>         parsed = sqlparse.parse(query_text)[0]
+>         # Find FROM clause to get table name (simple approach)
+>         from_seen = False
+>         for token in parsed.tokens:
+>             if from_seen and isinstance(token, Identifier):
+>                 table_name = token.get_real_name()
+>                 break
+>             if isinstance(token, Keyword) and token.normalized == 'FROM':
+>                 from_seen = True
+>
+>         # Find WHERE clause
+>         where_clause = None
+>         for token in parsed.tokens:
+>             if isinstance(token, Where):
+>                 where_clau
+[... output limited to 10000 bytes; 70 interior bytes omitted ...]
+ing_dir = os.path.dirname(STAGING_FILE)
+>     if not os.path.exists(staging_dir):
+>         os.makedirs(staging_dir, exist_ok=True)
+>         print(f"Created directory: {staging_dir}")
+>
+>     extracted_queries = []
+>
+>     if not os.path.exists(log_file_path):
+>         print(f"Error: Log file not found at '{log_file_path}'. Cannot continue.", file=sys.stderr)
+>         sys.exit(1)
+>
+>     print(f"Processing log file: {log_file_path}")
+>
+>     with open(log_file_path, 'r', encoding='utf-8') as log_f:
+>         # Prepare CSV writer
+>         with open(STAGING_FILE, 'w', encoding='ISO-8859-1', newline='') as csv_f:
+>             csv_writer = csv.writer(csv_f, lineterminator='\r\n') # CRLF line endings
+>             csv_writer.writerow(['timestamp', 'duration_ms', 'query_text']) # Header
+>
+>             for line_num, line in enumerate(log_f, 1):
+>                 line = line.strip()
+>                 if not line:
+>                     continue
+>
+>                 parts = [p.strip() for p in line.split('|')]
+>                 if len(parts) != 4:
+>                     print(f"Warning: Skipping malformed line {line_num}: '{line}'")
+>                     continue
+>
+>                 timestamp, duration_str, level, message = parts
+>
+>                 # 1. Date Match
+>                 try:
+>                     # Use the first 10 chars for YYYY-MM-DD
+>                     log_date = timestamp[:10]
+>                     if log_date != target_date:
+>                         continue
+>                 except Exception:
+>                     print(f"Warning: Skipping line {line_num} due to date format error: '{timestamp}'")
+>                     continue
+>
+>                 # 2. Type Match
+>                 if level != '[QUERY]':
+>                     continue
+>
+>                 # 3. Performance Threshold
+>                 duration_val = parse_duration(duration_str)
+>                 if duration_val < min_duration_ms:
+>                     continue
+>
+>                 # If all conditions met, write to CSV
+>                 # Duration for CSV is just the numeric part
+>                 csv_writer.writerow([timestamp, duration_val, message])
+>                 extracted_queries.append({'timestamp': timestamp, 'query_text': message})
+>
+>     print(f"Extracted {len(extracted_queries)} queries to {STAGING_FILE}")
+>
+>     # Phase 2: Analysis & Normalization
+>     staging_file_sha256 = calculate_sha256(STAGING_FILE)
+>     print(f"SHA-256 of staging file: {staging_file_sha256}")
+>
+>     # Process queries for normalization, deduplication, and index suggestions
+>     normalized_queries = {}
+>
+>     for item in extracted_queries:
+>         original_query = item['query_text']
+>         normalized_query_text = normalize_sql(original_query)
+>
+>         # Use normalized text as key for deduplication
+>         if normalized_query_text not in normalized_queries:
+>             table_name, columns = extract_table_and_columns(normalized_query_text)
+>             index_suggestion = suggest_index(table_name, columns)
+>
+>             normalized_queries[normalized_query_text] = {
+>                 'first_timestamp': item['timestamp'], # Store first occurrence timestamp
+>                 'count': 1,
+>                 'normalized_sql': normalized_query_text,
+>                 'index_suggestion': index_suggestion
+>             }
+>         else:
+>             # Increment count for already seen query
+>             normalized_queries[normalized_query_text]['count'] += 1
+>
+>     # Prepare suggestions for report, sorted by first_timestamp
+>     suggestions_list = sorted(
+>         normalized_queries.values(),
+>         key=lambda x: x['first_timestamp']
+>     )
+>
+>     total_queries_extracted = len(extracted_queries)
+>     unique_patterns = len(suggestions_list)
+>
+>     print(f"Analysis complete. Total extracted: {total_queries_extracted}, Unique patterns: {unique_patterns}")
+>
+>     # Phase 3: Reporting
+>     report_data = {
+>         "meta": {
+>             "date_analyzed": target_date,
+>             "staging_file_sha256": staging_file_sha256
+>         },
+>         "stats": {
+>             "total_queries_extracted": total_queries_extracted,
+>             "unique_patterns": unique_patterns
+>         },
+>         "suggestions": []
+>     }
+>
+>     for suggestion in suggestions_list:
+>         report_data["suggestions"].append({
+>            "id": suggestion['first_timestamp'],
+>            "normalized_sql": suggestion['normalized_sql'],
+>            "index_suggestion": suggestion['index_suggestion']
+>         })
+>
+>     with open(REPORT_FILE, 'w', encoding='utf-8', newline='\n') as report_f: # Unix line endings
+>         json.dump(report_data, report_f, indent=2)
+>
+>     print(f"Report generated at: {REPORT_FILE}")
+>
+> if __name__ == "__main__":
+>     main()
+> EOF
+(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization# chmod +x analyze_and_optimize.py
+(env) root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user/query_optimization#

@@ -1,0 +1,156 @@
+Current terminal state:
+New Terminal Output:
+
+root@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user# mkdir -p /home/user/scripts
+root@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user# cat > /home/user/scripts/filter_errors.sh << 'EOF'
+nts
+# Create temporary file for sorted CSV
+csv_tem> #!/bin/bash
+>
+> # filter_errors.sh - Regex-based log filtering utility
+> # Extracts "critical" lines from application log and produces filtered log with redactions
+> # and CSV summary of error categories.
+>
+> # Function to print usage information
+> usage() {
+>     echo "Usage: $0 <input_log> <output_dir>" >&2
+>     echo "Filters critical errors from input log and generates output files in output_dir." >&2
+>     exit 1
+> }
+>
+t> # Check if exactly two positional arguments are provided
+> if [ "$#" -ne 2 ]; then
+>     usage
+> fi
+>
+> input_log="$1"
+> output_dir="$2"
+>
+> # Validate input log exists and is readable
+> if [ ! -f "$input_log" ] || [ ! -r "$input_log" ]; then
+>     echo "Error: Input log file '${input_log}' not found or not readable." >&2
+>     exit 1
+> fi
+>
+> # Create output directory if it doesn't exist
+> mkdir -p "$output_dir"
+>
+> # Get absolute paths for logging
+> abs_input_log="$(realpath "$input_log")"
+> abs_output_dir="$(realpath "$output_dir")"
+>
+> # Initialize output files (overwrite if exist)
+> critical_log="${output_dir}/critical_errors.log"
+> csv_summary="${output_dir}/error_summary.csv"
+>
+> # Write header to critical_errors.log
+> echo "# Source: ${abs_input_log}" > "${critical_log}"
+>
+> echo "error_category,count" > "${csv_summary}"
+>
+> # Initialize variables for CSV summary
+> declare -A error_counts
+>
+> # Process log file line by line
+> current_entry=""
+> entry_category=""
+> in_entry=false
+>
+> # Read input log file
+> while IFS= read -r line; do
+>     # Check if line starts with timestamp pattern [YYYY-MM-DD...
+>     if [[ "$line" =~ ^\[[0-9]{4}-[0-9]{2}-[0-9]{2} ]]; then
+>         # If we were in an entry, process the completed previous entry
+>         if $in_entry; then
+>             # If previous entry matched critical criteria, write to critical log
+>             if [ -n "$entry_category" ]; then
+>                 # Redact email addresses
+>                 current_entry="$(echo "$current_entry" | sed -E 's/\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/<REDACTED>/g')"
+>                 echo -e "$current_entry" >> "${critical_log}"
+>
+>                 # Update error counts in associative array
+>                 if [ -n "${error_counts[$entry_category]}" ]; then
+>                     error_counts[$entry_category]=$((error_counts[$entry_category] + 1))
+>                 else
+>                     error_counts[$entry_category]=1
+>                 fi
+>             fi
+>
+>             # Reset for new entry
+>             current_entry=""
+>             entry_category=""
+>             in_entry=false
+>         fi
+>
+>         # Check if current line matches any critical regex patterns
+>         entry_category=""
+>         if [[ "$line" == *"ERROR"* ]] || [[ "$line" == *"FATAL"* ]] || [[ "$line" =~ HTTP\/1\.1\ 5[0-9]{2} ]]; then
+>             in_entry=true
+>             # Determine error category (first match wins)
+>             if [[ "$line" == *"Payment failed"* ]]; then
+>                 entry_category="PAYMENT_FAILURE"
+>             elif [[ "$line" =~ HTTP\/1\.1\ 5[0-9]{2} ]]; then
+>                 entry_category="HTTP_5XX"
+>             elif [[ "$line" == *"FATAL"* ]]; then
+>                 entry_category="FATAL"
+>             fi
+>         else
+>             # Line doesn't match critical patterns, skip entry
+>             continue
+>         fi
+>     else
+>         # Line doesn't start with timestamp - continuation of previous entry
+>         if $in_entry; then
+>             # Only continue if we're in a critical entry
+>             current_entry+="$line\n"
+>         fi
+>     fi
+>
+>     # If we're in an entry, add the current line
+>     if $in_entry; then
+>         current_entry+="$line\n"
+>     fi
+> done < "$input_log"
+>
+> # Process the last entry in the file
+> if $in_entry && [ -n "$entry_category" ]; then
+>     current_entry="$(echo "$current_entry" | sed -E 's/\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/<REDACTED>/g')"
+>     echo -e "$current_entry" >> "${critical_log}"
+>
+>     if [ -n "${error_counts[$entry_category]}" ]; then
+>         error_counts[$entry_category]=$((error_counts[$entry_category] + 1))
+>     else
+>         error_counts[$entry_category]=1
+>     fi
+> fi
+>
+> # Generate CSV summary from error counts
+> # Create temporary file for sorted CSV
+> csv_temp="${output_dir}/error_summary_temp.csv"
+>
+> # Write header to temp file
+> echo "error_category,count" > "${csv_temp}"
+>
+> # Write error counts to temp file
+> for category in "${!error_counts[@]}"; do
+>     echo "$category,${error_counts[$category]}" >> "${csv_temp}"
+> done
+>
+> # Sort CSV: first by count descending, then by category ascending
+> sort -t, -k2,2nr -k1,1 ${csv_temp} | tail -n +2 >> "${csv_summary}"
+>
+> # Remove temporary file
+> rm -f "${csv_temp}"
+>
+> # Log successful execution
+> timestamp=$(date '+%Y-%m-%d|%H:%M:%S')
+> echo "${timestamp}|input=${abs_input_log}|output_dir=${abs_output_dir}|status=OK" >> /home/user/filter_run.log
+>
+> EOF
+root@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user# chmod +x /home/user/scripts/filter_errors.sh
+root@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user# echo "Script created successfully at /home/user/scripts/filter_errors.sh"
+Script created successfully at /home/user/scripts/filter_errors.sh
+root@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

@@ -1,0 +1,173 @@
+Current terminal state:
+New Terminal Output:
+
+root@8bd869f5-5134-42f9-860c-2916ba4a9bab:~# cd /home/user
+root@8bd869f5-5134-42f9-860c-2916ba4a9bab:/home/user# cat > backup_legacy.py << 'EOF'
+> #!/usr/bin/env python3
+>
+> import os
+> import sys
+> import json
+> import hashlib
+> import tarfile
+> import datetime
+> import subprocess
+> import re
+> from pathlib import Path
+>
+> def get_utc_timestamp_iso8601():
+>     """Returns current UTC timestamp in ISO 8601 format."""
+>     return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+>
+> def read_ignore_file_rules(filepath):
+>     """Reads .backupignore file, parses glob patterns, ignoring comments."""
+>     rules = []
+>     try:
+>         with open(filepath, 'r', encoding='utf-8') as f:
+>             for line in f:
+>                 line = line.strip()
+>                 if line and not line.startswith('#'):
+>                     rules.append(line)
+>     except FileNotFoundError:
+>         pass # No ignore file, proceed with an empty list of rules
+>     return rules
+>
+> def main():
+>     print("Starting legacy backup process...")
+>
+>     # Define paths
+>     source_dir = Path("/home/user/tickets/issue_20230815")
+>     backup_parent_dir = Path("/home/user/backups")
+>     backup_filename = "support_issue_20230815_legacy.tar.gz"
+>     backup_path = backup_parent_dir / backup_filename
+>
+>     manifest_filename = "backup_manifest.json"
+>     manifest_path = backup_parent_dir / manifest_filename
+>
+>     summary_filename = "backup_summary.txt"
+>     summary_path = backup_parent_dir / summary_filename
+>
+>     # Create backups directory if it doesn't exist
+>     try:
+>         backup_parent_dir.mkdir(parents=True, exist_ok=True)
+>         print(f"Created directory: {backup_parent_dir}")
+>     except OSError as e:
+>         print(f"Error creating directory {backup_parent_dir}: {e}")
+>         sys.exit(1)
+>
+>     # 1. Create the Archive
+>     print(f"Creating archive: {backup_path}")
+>
+>     ignore_file = source_dir / ".backupignore"
+>     ignore_patterns = read_ignore_file_rules(ignore_file)
+>     print(f"Parsed {len(ignore_patterns)} rules from .backupignore")
+>
+>     # Create a temporary file with --exclude options for tar
+>     exclude_list_path = backup_parent_dir / "exclude_list.txt"
+>     with open(exclude_list_path, 'w', encoding='utf-8') as f_excl:
+>         for pattern in ignore_patterns:
+>             f_excl.write(f"{pattern}\n")
+>
+>     try:
+>         # Using tar with --exclude-from to handle .backupignore patterns.
+>         # --dereference will include contents of symlinks.
+>         # tar will handle broken symlinks by skipping them and continuing; errors will be printed to stderr but won't stop the script unless tar itself fails
+fatally.
+>         # find -P ensures find itself doesn't follow symlinks, avoiding loops during listing if it were used directly for file selection (though here tar does
+ the work).
+>
+>         tar_cmd = [
+>             "tar",
+>             "-czf", str(backup_path),
+>             "-C", str(source_dir.parent),
+>             source_dir.name,
+>             "--dereference",
+>             "--exclude-from", str(exclude_list_path)
+>         ]
+>         print(f"Executing tar command: {tar_cmd}")
+>         result = subprocess.run(tar_cmd, capture_output=True, text=True, check=True)
+>         print("Tar process completed.")
+>         if result.stderr:
+>             print(f"Tar stderr output:")
+>             print(result.stderr)
+>     except subprocess.CalledProcessError as e:
+>         print(f"Error creating tar archive: {e}")
+>         print(f"Stderr from tar: {e.stderr}")
+>         sys.exit(1)
+>     finally:
+>         # Clean up the temporary exclude list file
+>         exclude_list_path.unlink(missing_ok=True)
+>
+>     # 2. Generate the Manifest
+>     print(f"Generating manifest: {manifest_path}")
+>     manifest_data = {}
+>     try:
+>         manifest_data["archive_name"] = backup_filename
+>
+>         stat_info = backup_path.stat()
+>         manifest_data["file_size_bytes"] = stat_info.st_size
+>
+>         md5_hash = hashlib.md5()
+>         with open(backup_path, 'rb') as f:
+>             for chunk in iter(lambda: f.read(4096), b''):
+>                 md5_hash.update(chunk)
+>         manifest_data["md5_hash"] = md5_hash.hexdigest()
+>
+>         sha256_hash = hashlib.sha256()
+>         with open(backup_path, 'rb') as f:
+>             for chunk in iter(lambda: f.read(4096), b''):
+>                 sha256_hash.update(chunk)
+>         manifest_data["sha256_hash"] = sha256_hash.hexdigest()
+>
+>         manifest_data["created_at_utc"] = get_utc_timestamp_iso8601()
+>
+>         with open(manifest_path, 'w', encoding='utf-8') as f_manifest:
+>             json.dump(manifest_data, f_manifest, indent=2)
+>         print("Manifest generated successfully.")
+>     except Exception as e:
+>         print(f"Error generating manifest: {e}")
+>         sys.exit(1)
+>
+>     # 3. Generate the Legacy Summary Report
+>     print(f"Generating summary report: {summary_path}")
+>     try:
+>         # Calculate SHA256 hash of the manifest file
+>         manifest_sha256 = hashlib.sha256()
+>         with open(manifest_path, 'rb') as f:
+>             for chunk in iter(lambda: f.read(4096), b''):
+>                 manifest_sha256.update(chunk)
+>
+>         # Content for the summary file
+>         line1 = "Legacy Backup Operation © 2023"
+>         line2 = f"Manifest SHA256: {manifest_sha256.hexdigest()}"
+>
+>         # Encode content to ISO-8859-1 and use CRLF line endings
+>         content_bytes = (line1 + "\r\n" + line2).encode('iso-8859-1')
+>
+>         with open(summary_path, 'wb') as f_summary:
+>             f_summary.write(content_bytes)
+>         print("Summary report generated successfully.")
+>     except Exception as e:
+>         print(f"Error generating summary report: {e}")
+>         sys.exit(1)
+>
+>     print("Legacy backup process completed successfully.")
+>
+> if __name__ == "__main__":
+>     main()
+> EOF
+root@8bd869f5-5134-42f9-860c-2916ba4a9bab:/home/user# chmod +x backup_legacy.py
+root@8bd869f5-5134-42f9-860c-2916ba4a9bab:/home/user# python3 backup_legacy.py
+Starting legacy backup process...
+Created directory: /home/user/backups
+Creating archive: /home/user/backups/support_issue_20230815_legacy.tar.gz
+Parsed 2 rules from .backupignore
+Executing tar command: ['tar', '-czf', '/home/user/backups/support_issue_20230815_legacy.tar.gz', '-C', '/home/user/tickets', 'issue_20230815', '--dereference',
+ '--exclude-from', '/home/user/backups/exclude_list.txt']
+echo "Backup script execution finished. Verifying outputs..."
+ls -la backups/
+wc -l backups/backup_manifest.json backups/backup_summary.txt
+
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

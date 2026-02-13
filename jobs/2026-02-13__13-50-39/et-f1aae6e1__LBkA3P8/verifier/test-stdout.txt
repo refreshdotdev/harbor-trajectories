@@ -1,0 +1,135 @@
+Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:3 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.81.0-1ubuntu1.21).
+0 upgraded, 0 newly installed, 0 to remove and 4 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading cpython-3.12.12-linux-x86_64-gnu (download) (31.1MiB)
+ Downloading cpython-3.12.12-linux-x86_64-gnu (download)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 5 packages in 25ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/mTeuLE5oDsO6p5QC4kpJm/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 5 items
+
+../../tests/test_final_state.py::test_step1_normalization FAILED         [ 20%]
+../../tests/test_final_state.py::test_step2_batch_id FAILED              [ 40%]
+../../tests/test_final_state.py::test_step3_high_spend_logic FAILED      [ 60%]
+../../tests/test_final_state.py::test_step4_csv_encoding_and_content FAILED [ 80%]
+../../tests/test_final_state.py::test_validation_log PASSED              [100%]
+
+=================================== FAILURES ===================================
+___________________________ test_step1_normalization ___________________________
+
+    def test_step1_normalization():
+        assert NORMALIZED_FILE.is_file(), "Normalized file missing"
+        # Must be valid UTF-8
+        try:
+            content = NORMALIZED_FILE.read_text(encoding="utf-8")
+            data = json.loads(content)
+        except UnicodeDecodeError:
+            pytest.fail("normalized_data.json is not valid UTF-8")
+    
+        # Check content matches raw (which was latin-1)
+        raw_content = RAW_FILE.read_text(encoding="iso-8859-1")
+        raw_data = json.loads(raw_content)
+        assert len(data) == len(raw_data)
+>       assert data[0]['account_id'] == raw_data[0]['account_id']
+               ^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'account_id'
+
+/tests/test_final_state.py:64: KeyError
+_____________________________ test_step2_batch_id ______________________________
+
+    def test_step2_batch_id():
+        assert BATCH_ID_FILE.is_file(), "Batch ID file missing"
+    
+        # Calculate expected hash from the normalized file on disk
+        norm_bytes = NORMALIZED_FILE.read_bytes()
+        expected_hash = hashlib.sha256(norm_bytes).hexdigest()
+    
+        actual_hash = BATCH_ID_FILE.read_text().strip()
+        assert actual_hash == expected_hash, "Batch ID does not match SHA256 of normalized file"
+>       assert "\n" not in BATCH_ID_FILE.read_text(), "Batch ID file should not have trailing newline"
+E       AssertionError: Batch ID file should not have trailing newline
+E       assert '\n' not in 'a4497244030...e59fc931e2\n'
+E         
+E         '\n' is contained here:
+E           a44972440308b39fdcc45f3ce266ad65bea806725d0cca3d4f91ace59fc931e2
+E         ?                                                                 +
+
+/tests/test_final_state.py:75: AssertionError
+_________________________ test_step3_high_spend_logic __________________________
+
+    def test_step3_high_spend_logic():
+        assert HIGH_SPEND_JSON_FILE.is_file()
+        data = json.loads(HIGH_SPEND_JSON_FILE.read_text(encoding="utf-8"))
+    
+        # Reconstruct logic to verify median and filtering
+        raw_data = json.loads(RAW_FILE.read_text(encoding="iso-8859-1"))
+>       rates = _load_real_rates()
+                ^^^^^^^^^^^^^^^^^^
+
+/tests/test_final_state.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _load_real_rates():
+        rates = {}
+        with open(REAL_RATES_FILE, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+>               rates[row['Currency']] = float(row['Rate'])
+                                               ^^^^^^^^^^^
+E               KeyError: 'Rate'
+
+/tests/test_final_state.py:35: KeyError
+_____________________ test_step4_csv_encoding_and_content ______________________
+
+    def test_step4_csv_encoding_and_content():
+        assert SUMMARY_CSV_FILE.is_file()
+    
+        # 1. Verify Encoding is Latin-1 (ISO-8859-1)
+        try:
+            content = SUMMARY_CSV_FILE.read_text(encoding="iso-8859-1")
+        except Exception as e:
+            pytest.fail(f"Could not read CSV as ISO-8859-1: {e}")
+    
+        lines = content.splitlines()
+        header = lines[0]
+        assert header == "ACCOUNT_ID,USD_COST,Original_Currency", "CSV Header mismatch or case error"
+    
+        # Verify sort order (descending) and content
+        rows = lines[1:]
+        costs = []
+    
+        # Load JSON for content verification
+        json_data = json.loads(HIGH_SPEND_JSON_FILE.read_text(encoding="utf-8"))
+>       json_map = {item['account_id']: item for item in json_data}
+                    ^^^^^^^^^^^^^^^^^^
+E       KeyError: 'account_id'
+
+/tests/test_final_state.py:123: KeyError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_step1_normalization - KeyError: ...
+FAILED ../../tests/test_final_state.py::test_step2_batch_id - AssertionError:...
+FAILED ../../tests/test_final_state.py::test_step3_high_spend_logic - KeyErro...
+FAILED ../../tests/test_final_state.py::test_step4_csv_encoding_and_content
+========================= 4 failed, 1 passed in 0.04s ==========================

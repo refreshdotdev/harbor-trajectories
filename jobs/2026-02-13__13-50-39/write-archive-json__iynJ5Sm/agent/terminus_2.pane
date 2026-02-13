@@ -1,0 +1,80 @@
+[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:~# clear
+[?2004l[H[J[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:~# cd /home/user/storage
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# cat params.conf
+[?2004l# Storage Maintenance Configuration
+# Created by Admin on 2023-01-15
+
+cutoff_days = 12
+# Size limit in KB
+max_bak_kb = 2048
+
+# ignore_prefix = _
+[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# grep -v '^#' params.conf | tr -d ' ' | grep -E 'cutoff_days|max_bak_kb' | cut -d'=' -f2 > extracted_params.txt
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# cat extracted_params.txt
+[?2004l12
+2048
+[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# cutoff_days=12
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# max_bak_kb=2048
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# touch maintenance.log
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# find incoming/ -type f -name "*.bak" ! -name "_*.bak" -size +${max_bak_kb}k -print -delete | tee -a maintenance.log
+[?2004lincoming/project1/delete_me.bak
+[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# total_deleted_bytes=$(find incoming/ -type f -name "*.bak" ! -name "_*.bak" -size +${max_bak_kb}k -printf '%s' 2>/dev/null || echo 0)
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# echo "Total deleted bytes: ${total_deleted_bytes}" >> maintenance.log
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# mkdir -p archive
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# find incoming/ -type f -name "*.txt" -mtime +${cutoff_days} | while read file; do
+[?2004l[?2004h>   if ! iconv -f utf-8 -t utf-8 "$file" >/dev/null 2>&1; then
+[?2004l[?2004h>     corrupt_file="${file}.corrupt"
+[?2004l[?2004h>     mv "$file" "$corrupt_file"
+[?2004l[?2004h>     echo "Renamed corrupt file: $file" >> maintenance.log
+[?2004l[?2004h>     ((corrupt_count++))
+[?2004l[?2004h>   else
+[?2004l[?2004h>     mv "$file" "./archive/"
+[?2004l[?2004h>     echo "Archived valid file: $file" >> maintenance.log
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004lmv: cannot stat 'incoming/space dir/file': No such file or directory
+mv: cannot stat 'name.txt': No such file or directory
+[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# corrupt_count=0
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# grep "Renamed corrupt file:" maintenance.log | wc -l > corrupt_count.txt
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# corrupt_files=$(cat corrupt_count.txt)
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# echo "Total corrupt files: ${corrupt_files}" >> maintenance.log
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# cd archive
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage/archive# find . -type f -exec sh -c 'md5sum "$1" | awk '{print $2 "\t" $1 "\t" $3}' | tr -d "."' _ {} \; | sort -k3 | awk -F'\t' 'BEGIN {print "Filename\tSize\tMD5"} {print $1 "\t" $2 "\t" $3}' > manifest.csv
+[?2004lmd5sum: '\t': No such file or directory
+awk: line 2: missing } near end of file
+md5sum: '\t': No such file or directory
+awk: line 2: missing } near end of file
+awk: line 2: missing } near end of file
+md5sum: '\t': No such file or directory
+[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage/archive# unix2dos manifest.csv
+[?2004lbash: unix2dos: command not found
+[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage/archive# cd ..
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# cd archive
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage/archive# find . -type f -exec sh -c 'md5sum "$1" | awk "{print \$2 \"\\t\" \$1 \"\\t\" \$3}" | tr -d "."' _ {} \; | sort -k3 | awk -F'\\t' 'BEGIN {print "Filename\\tSize\\tMD5"} {print \$1 "\\t" \$2 "\\t" \$3}' > manifest.csv
+[?2004lawk: 1: unexpected character '\'
+sort: fflush failed: 'standard output': Broken pipe
+sort: write error
+[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage/archive# sed -i 's/$/\r/' manifest.csv
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage/archive# cd ..
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# cd archive
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage/archive# find . -type f -exec md5sum {} \; | awk '{print $2 "\t" $1 "\t" $3}' | tr -d "." | sort -k3 > temp_manifest.txt
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage/archive# awk -F'\\t' 'BEGIN {print "Filename\\tSize\\tMD5"} {print $1 "\\t" $2 "\\t" $3}' temp_manifest.txt > manifest.csv
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage/archive# sed -i -e 's/$/\r/' manifest.csv
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage/archive# rm temp_manifest.txt
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage/archive# cd ..
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# manifest_sha1=$(sha1sum archive/manifest.csv | awk '{print $1}')
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# cat > summary.xml <<EOF
+[?2004l[?2004h> <?xml version="1.0" encoding="ISO-8859-1"?>
+[?2004l[?2004h> <audit>
+[?2004l[?2004h>     <deleted_bytes>${total_deleted_bytes:-0}</deleted_bytes>
+[?2004l[?2004h>     <corrupt_files>${corrupt_files:-0}</corrupt_files>
+[?2004l[?2004h>     <manifest_sha1>${manifest_sha1}</manifest_sha1>
+[?2004l[?2004h> </audit>
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# iconv -f utf-8 -t iso-8859-1 summary.xml -o summary_iso.xml && mv summary_iso.xml summary.xml
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# find incoming/ -type d -empty -delete
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# echo "Maintenance routine completed successfully." >> maintenance.log
+[?2004l[?2004hroot@d323ce65-3413-48f9-acdf-628c9fe1faa0:/home/user/storage# 

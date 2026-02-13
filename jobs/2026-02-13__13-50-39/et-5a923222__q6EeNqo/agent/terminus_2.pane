@@ -1,0 +1,190 @@
+[?2004hroot@6ea3f48e-da4b-4524-812f-cf2ed6237b6d:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@6ea3f48e-da4b-4524-812f-cf2ed6237b6d:~# clear
+[?2004l[H[J[?2004hroot@6ea3f48e-da4b-4524-812f-cf2ed6237b6d:~# cd /home/user/cloud_logs
+[?2004l[?2004hroot@6ea3f48e-da4b-4524-812f-cf2ed6237b6d:/home/user/cloud_logs# ls -la
+[?2004ltotal 12
+drwxrwxrwx 1 root root  97 Feb 12 20:31 [0m[34;42m.[0m
+drwxr-xr-x 1 root root  32 Feb 12 20:31 [01;34m..[0m
+-rw-r--r-- 1 root root 216 Feb 12 20:31 usage-2023-09.csv
+-rw-r--r-- 1 root root 230 Feb 12 20:31 usage-2023-10.csv
+-rw-r--r-- 1 root root 112 Feb 12 20:31 usage-2023-11.csv
+[?2004hroot@6ea3f48e-da4b-4524-812f-cf2ed6237b6d:/home/user/cloud_logs# ls usage-*.csv
+[?2004lusage-2023-09.csv  usage-2023-10.csv  usage-2023-11.csv
+[?2004hroot@6ea3f48e-da4b-4524-812f-cf2ed6237b6d:/home/user/cloud_logs# mkdir -p reports
+[?2004l[?2004hroot@6ea3f48e-da4b-4524-812f-cf2ed6237b6d:/home/user/cloud_logs# head -n 5 usage-2023-09.csv
+[?2004lresource_id, service , usage_hours , cost
+r1, Compute Engine , 720, 96.00
+r2,Cloud Storage,5000,25.00
+
+r3, BigQuery, 100, 150.00
+[?2004hroot@6ea3f48e-da4b-4524-812f-cf2ed6237b6d:/home/user/cloud_logs# echo "Tax rate: ${CORP_TAX_RATE:-0.08}"
+[?2004lTax rate: 0.05
+[?2004hroot@6ea3f48e-da4b-4524-812f-cf2ed6237b6d:/home/user/cloud_logs# cat > process_cloud_costs.awk << 'EOF'
+[?2004l[?2004h> #!/usr/bin/awk -f
+[?2004l[?2004h> 
+[?2004l[?2004h> BEGIN {
+[?2004l[?2004h>     # Force decimal arithmetic and set output field separator
+[?2004l[?2004h>     OFMT = "%.2f";
+[?2004lwith two decimal places.
+
+    print "Subtotal: $" sprintf("%.2f", subtotal);
+    print "Tax: $" sprintf("%.2f", tax);
+    print "Total: $" sprintf("%.2f", total);
+    print "Service Breakdown:";
+    
+    # Sort services by cost in descending order and print top N (here N=3 for full list)
+    # Store service names and their costs in an array suitable for sorting
+    n_services = asorti(service_costs_map, sorted_service_keys, "@ind_num_desc");
+    
+    # Print all service breakdowns, sorted by decreasing cost
+    for (i = 1; i <= n_services; i++) {
+        service_name = sorted_service_keys[i];
+        service_cost = service_costs_map[service_name];
+        print "  " service_name ": $" sprintf("%.2f", service_cost);
+    }
+    
+    # Prepare top 3 services string
+    top_services_str = "";
+    for (i = 1; i <= n_services && i <= 3; i++) {
+        service_name = sorted_service_keys[i];
+        if (i > 1) {
+            top_services_str = top_services_str ", ";
+        }
+        top_services_str = top_services_str service_name;
+    }
+    
+    print "Top 3 Services: " top_services_str;
+}
+EOF[?2004h>     OFS = ",";
+[?2004l[?2004h>     # Tax rate (0.05 as identified from environment)
+[?2004l[?2004h>     TAX_RATE = 0.05;
+[?2004l[?2004h>     # Month name for the current file (will be set in BEGIN_FILE)
+[?2004l[?2004h>     current_month_name = "";
+[?2004l[?2004h>     current_year = "";
+[?2004l[?2004h>     # Flags for output formatting
+[?2004l[?2004h>     first_file_processed = 1;
+[?2004l[?2004h>     first_service_in_section = 1;
+[?2004l[?2004h> }
+[?2004l[?2004h> # Skip empty lines
+[?2004l[?2004h> /^[ \t]*$/ { next; }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process header (first line of each file)
+[?2004l[?2004h> FNR == 1 {
+[?2004l[?2004h>     # Extract month and year from filename (e.g., usage-2023-09.csv -> 09, 2023)
+[?2004l[?2004h>     # Filename is provided as an argument to awk
+[?2004l[?2004h>     split(FILENAME, parts, ".");
+[?2004l[?2004h>     split(parts[1], date_parts, "-");
+[?2004l[?2004h>     current_year = date_parts[2];
+[?2004l[?2004h>     month_num = date_parts[3];
+[?2004l[?2004h>     # Convert month number to month name (e.g., 09 -> September)
+[?2004l[?2004h>     month_names = "January February March April May June July August September October November December";
+[?2004l[?2004h>     current_month_name = (month_num <= 12 && month_num >= 1) ? 
+[?2004l[?2004h>                         gensub("^[[:space:]]*([^[:space:]]+)" month_num "[[:space:]]*", "\1", "g", month_names) : "Unknown Month";
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Handle spacing between reports
+[?2004l[?2004h>     if (!first_file_processed) {
+[?2004l[?2004h>         print ""; # Blank line between reports
+[?2004l[?2004h>     } else {
+[?2004l[?2004h>         first_file_processed = 0;
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     print "== " current_month_name " " current_year " ==";
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Initialize accumulators for this file
+[?2004l[?2004h>     subtotal = 0.0;
+[?2004l[?2004h>     delete service_costs_map;
+[?2004l[?2004h>     next;
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process data rows after the header
+[?2004l[?2004h> {
+[?2004l[?2004h>     # Trim whitespace from all fields
+[?2004l[?2004h>     gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, $1, $1); # $1 is resource_id
+[?2004l[?2004h>     gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, $2, $2); # $2 is service
+[?2004l[?2004h>     gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, $3, $3); # $3 is usage_hours
+[?2004l[?2004h>     gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, $4, $4); # $4 is cost
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Filter rows where service contains "Trial" (case-insensitive)
+[?2004l[?2004h>     if (tolower($2) ~ /trial/) {
+[?2004l[?2004h>         next;
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Convert cost to a number and add to subtotal
+[?2004l[?2004h>     cost_val = $4 + 0; # Ensure it's numeric
+[?2004l[?2004h>     subtotal += cost_val;
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Accumulate costs per service (use trimmed service name as key)
+[?2004l[?2004h>     service_costs_map[$2] += cost_val;
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process END of each file
+[?2004l[?2004h> END_FILE {
+[?2004l[?2004h>     if (FNR == 1 && subtotal == 0 && length(service_costs_map) == 0) {
+[?2004l[?2004h>         # This file was empty or contained only header/empty lines after filtering.
+[?2004l[?2004h>         # The BEGIN_FILE block already printed the month header.
+[?2004l[?2004h>         # We don't want to print "Subtotal: $0.00" if no actual data was processed.
+[?2004l[?2004h>         # So, if subtotal is 0 and no services were found, we effectively cancel this report section.
+[?2004l[?2004h>         print "No data available for this month after filtering.";
+[?2004l[?2004h>         return; # Skip further END_FILE processing for this empty file
+[?2004l[?2004h>     }
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Calculate tax and total
+[?2004l[?2004h>     tax = subtotal * TAX_RATE;
+[?2004l[?2004h>     total = subtotal + tax;
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Format financial values to two decimal places for output
+[?2004l[?2004h>     # sprintf with %.2f handles rounding and padding.
+[?2004l[?2004h>     # OFMT=%.2f also ensures numbers are output with two decimal places.
+[?2004l[?2004h> 
+[?2004l[?2004h>     print "Subtotal: $" sprintf("%.2f", subtotal);
+[?2004l[?2004h>     print "Tax: $" sprintf("%.2f", tax);
+[?2004l[?2004h>     print "Total: $" sprintf("%.2f", total);
+[?2004l[?2004h>     print "Service Breakdown:";
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sort services by cost in descending order and print top N (here N=3 for full list)
+[?2004l[?2004h>     # Store service names and their costs in an array suitable for sorting
+[?2004l[?2004h>     n_services = asorti(service_costs_map, sorted_service_keys, "@ind_num_desc");
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Print all service breakdowns, sorted by decreasing cost
+[?2004l[?2004h>     for (i = 1; i <= n_services; i++) {
+[?2004l[?2004h>         service_name = sorted_service_keys[i];
+[?2004l[?2004h>         service_cost = service_costs_map[service_name];
+[?2004l[?2004h>         print "  " service_name ": $" sprintf("%.2f", service_cost);
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Prepare top 3 services string
+[?2004l[?2004h>     top_services_str = "";
+[?2004l[?2004h>     for (i = 1; i <= n_services && i <= 3; i++) {
+[?2004l[?2004h>         service_name = sorted_service_keys[i];
+[?2004l[?2004h>         if (i > 1) {
+[?2004l[?2004h>             top_services_str = top_services_str ", ";
+[?2004l[?2004h>         }
+[?2004l[?2004h>         top_services_str = top_services_str service_name;
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     print "Top 3 Services: " top_services_str;
+[?2004l[?2004h> }
+[?2004l[?2004h> EOFchmod +x process_cloud_costs.awk
+[?2004l[?2004h> echo "Processing CSV files and generating report..."
+[?2004l[?2004h> for csv_file in $(ls -t usage-*.csv); do
+[?2004l[?2004h>   echo "Processing $csv_file..."
+[?2004l[?2004h>   ./process_cloud_costs.awk "$csv_file" >> reports/cost_summary_report.txt
+[?2004l[?2004h>   echo "Processing $csv_file... done."
+[?2004l[?2004h> done
+[?2004l[?2004h> echo "Executing AWK script on CSV files and generating report..."
+[?2004l[?2004h> for csv_file in $(ls -t usage-*.csv); do echo "Processing $csv_file..."; ./process_cloud_costs.awk "$csv_file" >> reports/cost_summary_report.txt; echo "Processing $csv_file... done."; done
+[?2004l[?2004h> head -n 20 reports/cost_summary_report.txt
+[?2004l[?2004h> echo "" >> reports/cost_summary_report.txt
+[?2004l[?2004h> checksum_content=$(head -n -1 reports/cost_summary_report.txt | sha256sum -b | cut -d' ' -f1) && echo "[CHECKSUM]: ${checksum_content}" >> reports/cost_summary_report.txt
+[?2004l[?2004h> echo "Report generation complete. Final check of the end of the file:"
+[?2004l[?2004h> tail -n 5 reports/cost_summary_report.txt
+[?2004l[?2004h> echo "Executing AWK script on CSV files and generating report..."
+[?2004l[?2004h> for csv_file in $(ls -t usage-*.csv); do echo "Processing $csv_file..."; ./process_cloud_costs.awk "$csv_file" >> reports/cost_summary_report.txt; echo "Processing $csv_file... done."; done
+[?2004l[?2004h> head -n 20 reports/cost_summary_report.txt
+[?2004l[?2004h> echo "" >> reports/cost_summary_report.txt
+[?2004l[?2004h> checksum_content=$(head -n -1 reports/cost_summary_report.txt | sha256sum -b | cut -d' ' -f1) && echo "[CHECKSUM]: ${checksum_content}" >> reports/cost_summary_report.txt
+[?2004l[?2004h> echo "Report generation complete. Final check of the end of the file:"
+[?2004l[?2004h> tail -n 5 reports/cost_summary_report.txt
+[?2004l[?2004h> 

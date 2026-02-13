@@ -1,0 +1,112 @@
+[?2004hroot@664f1b5a-0d69-48a7-b370-55d4965f7588:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@664f1b5a-0d69-48a7-b370-55d4965f7588:~# clear
+[?2004l[H[J[?2004hroot@664f1b5a-0d69-48a7-b370-55d4965f7588:~# mkdir -p /home/user/diagnostics
+[?2004l[?2004hroot@664f1b5a-0d69-48a7-b370-55d4965f7588:~# cat > /home/user/diagnostics/run_net_checks.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Netcheck diagnostic script
+[?2004l[?2004h> # This script performs network diagnostics on specified targets
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration file path
+[?2004l[?2004h> TARGETS_FILE="/home/user/diagnostics/targets.txt"
+[?2004l[?2004h> LOG_FILE="/home/user/diagnostics/netcheck.log"
+[?2004l[?2004h> LOCK_FILE="/home/user/diagnostics/netcheck.lock"
+[?2004l[?2004h> PREV_LOG_GZ="/home/user/diagnostics/netcheck.previous.log.gz"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Ensure script is run as root
+[?2004l[?2004h> if [[ "$EUID" -ne 0 ]]; then
+[?2004l[?2004h>     echo "This script must be run as root" >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to handle log rotation
+[?2004l[?2004h> rotate_log() {
+[?2004l[?2004h>     if [[ -f "$LOG_FILE" ]]; then
+[?2004l[?2004h>         gzip -c "$LOG_FILE" > "$PREV_LOG_GZ"
+[?2004l[?2004h>         rm -f "$LOG_FILE"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     touch "$LOG_FILE"
+[?2004l[?2004h>     chmod 0600 "$LOG_FILE"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to run individual checks and log results
+[?2004l[?2004h> run_check() {
+[?2004l[?2004h>     local host="$1"
+[?2004l[?2004h>     local check_name="$2"
+[?2004l[?2004h>     local cmd="$3"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Execute command and capture both stdout and stderr
+[?2004l[?2004h>     local output
+[?2004l[?2004h>     output=$(eval "$cmd" 2>&1)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get exit code
+[?2004l[?2004h>     local exit_code=$?
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Base64 encode the output
+[?2004l[?2004h>     local encoded_output
+[?2004l[?2004h>     encoded_output=$(echo "$output" | base64)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write to log atomically using flock
+[?2004l[?2004h>     (
+[?2004l[?2004h>         flock -x 200
+[?2004l[?2004h> 
+[?2004l[?2004h>         echo "===== START host=$host check=$check_name ====="
+[?2004l[?2004h>         echo "$encoded_output"
+[?2004l[?2004h>         echo "===== END host=$host check=$check_name status=$exit_code ====="
+[?2004l[?2004h> 
+[?2004l[?2004h>     ) 200>"$LOCK_FILE"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Main script execution ===
+[?2004l[?2004h> 
+[?2004l[?2004h> # Check if targets file exists
+[?2004l[?2004h> if [[ ! -f "$TARGETS_FILE" ]]; then
+[?2004l[?2004h>     echo "Error: targets file $TARGETS_FILE not found" >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Rotate logs
+[?2004l[?2004h> rotate_log
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write header to log file
+[?2004l[?2004h> (
+[?2004l[?2004h>     flock -x 200
+[?2004l[?2004h>     echo "# Netcheck Report"
+[?2004l[?2004h>     echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+[?2004l[?2004h> ) 200>"$LOCK_FILE" > "$LOG_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Starting network diagnostics..."
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process targets file
+[?2004l[?2004h> while IFS= read -r line; do
+[?2004l[?2004h>     # Skip comments and empty lines
+[?2004l[?2004h>     [[ "$line" = \#* ]] && continue
+[?2004l[?2004h>     [[ -z "$line" ]] && continue
+[?2004l[?2004h>     
+[?2004l[?2004h>     host="$line"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Run all checks in parallel for current host
+[?2004l[?2004h>     (
+[?2004l[?2004h>         run_check "$host" "ping" "ping -n -c 1 $host"
+[?2004l[?2004h>         run_check "$host" "traceroute" "traceroute -n -m 5 $host"
+[?2004l[?2004h>         run_check "$host" "dig" "dig +short $host A"
+[?2004l[?2004h>     ) &
+[?2004l[?2004h> done < "$TARGETS_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Wait for all background jobs to complete
+[?2004l[?2004h> wait
+[?2004l[?2004h> echo "Network diagnostics completed."
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate SHA-256 checksum
+[?2004l[?2004h> sha256sum "$LOG_FILE" > "/home/user/diagnostics/netcheck.sha256"
+[?2004l[?2004h> echo "SHA-256 checksum generated."
+[?2004l[?2004h> EOFchmod +x /home/user/diagnostics/run_net_checks.sh
+[?2004l[?2004h> cat > /home/user/diagnostics/targets.txt << 'EOF'
+[?2004l[?2004h> # Example target hosts
+[?2004l[?2004h> # Comment line
+[?2004l[?2004h> example.com
+[?2004l[?2004h> 8.8.8.8
+[?2004l[?2004h> github.com
+[?2004l[?2004h> EOF

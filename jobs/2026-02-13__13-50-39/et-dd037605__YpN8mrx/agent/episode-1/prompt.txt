@@ -1,0 +1,46 @@
+Current terminal state:
+New Terminal Output:
+
+root@4cb99728-6897-453e-abfc-8b34175601e0:~# mkdir -p /home/user
+root@4cb99728-6897-453e-abfc-8b34175601e0:~# cd /home/user
+root@4cb99728-6897-453e-abfc-8b34175601e0:/home/user# iconv -f ISO-8859-1 -t UTF-8 /opt/monitoring/config/diagnostics.ini > /tmp/diagnostics_utf8.ini
+root@4cb99728-6897-453e-abfc-8b34175601e0:/home/user# NET_IFACE=$(grep '^NET_IFACE=' /tmp/diagnostics_utf8.ini | cut -d'=' -f2)
+root@4cb99728-6897-453e-abfc-8b34175601e0:/home/user# PING_HOST=$(grep '^PING_HOST=' /tmp/diagnostics_utf8.ini | cut -d'=' -f2)
+root@4cb99728-6897-453e-abfc-8b34175601e0:/home/user# timestamp_utc=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+root@4cb99728-6897-453e-abfc-8b34175601e0:/home/user# primary_ip=$(ip -4 addr show ${NET_IFACE} | grep -oP "inet \K[0-9.]+")
+root@4cb99728-6897-453e-abfc-8b34175601e0:/home/user# mtu=$(ip -d link show ${NET_IFACE} | awk -F': ' '/mtu/{print $2}' | cut -d' ' -f1)
+root@4cb99728-6897-453e-abfc-8b34175601e0:/home/user# gateway_ip=$(ip -4 route show default | awk 'NR==1{print $3}' | sort -k3,3 -t . | head -n1)
+root@4cb99728-6897-453e-abfc-8b34175601e0:/home/user# active_tcp_flows=$(ss -t state established | wc -l)
+root@4cb99728-6897-453e-abfc-8b34175601e0:/home/user# ping_jitter_ms=$(ping -c 5 -n ${PING_HOST} 2>&1 | awk -F'/|=' 'END{print $4}' | xargs printf "%.3f")
+echo '{"timestamp_utc": "${timestamp_utc}", "interface_config": {"name": "${NET_IFACE}", "primary_ip": "${primary_ip}", "mtu": ${mtu}}, "connectivity": {"gatewa
+y_ip": "${gateway_ip}", "active_tcp_flows": ${active_tcp_flows}, "ping_jitter_ms": ${ping_jitter_ms}}}' | iconv -t UTF-16LE | tee network_data.json > /dev/null
+link_status=$(cat /sys/class/net/${NET_IFACE}/operstate)
+data_hash=$(sha1sum network_data.json | cut -d' ' -f1)
+cat > network_summary.txt <<EOF
+GAMMA NODE DIAGNOSTIC SUMMARY
+Generated: ${timestamp_utc}
+Target Host: ${PING_HOST}
+Link Status: ${link_status}
+Data Hash: ${data_hash}
+EOF
+chmod 644 network_data.json network_summary.txt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

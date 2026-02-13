@@ -1,0 +1,54 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# parse_config_file() {
+>   local file="$1"
+>   awk '
+>     function tolower(str) {
+>       result = "";
+>       for (i = 1; i <= length(str); i++) {
+>         c = substr(str, i, 1);
+>         idx = index("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c);
+>         if (idx > 0) {
+>           result = result substr("abcdefghijklmnopqrstuvwxyz", idx, 1);
+>         } else {
+>           result = result c;
+>         }
+>       }
+>       return result;
+>     }
+>     /^[[:space:]]*#/ { next }
+>     /^[[:space:]]*$/ { next }
+>     {
+>       if (sub(/^[[:space:]]+/, "")) {}
+>       if (sub(/[[:space:]]+$/, "")) {}
+>       if ($0 ~ /^[[:space:]]*[^[:space:]]+[[:space:]]*=[[:space:]]*\"/ && !/\"[[:space:]]*#/) {
+>         split($0, a, /^[[:space:]]*[^[:space:]]+[[:space:]]*=[[:space:]]*\"[^[:space:]]*\"/)
+>         if (length(a) > 1) {
+>           key = tolower(a[1]);
+>           sub(/^[[:space:]]+/, "", key);
+>           sub(/[[:space:]]+$/, "", key);
+>           value = a[2];
+>           gsub(/^\"|\"$/, "", value);
+>           print key "=" value;
+>         }
+>       }
+>       else if ($0 ~ /^[[:space:]]*[^[:space:]]+[[:space:]]*=[[:space:]]*[^[:space:]]/) {
+>         split($0, a, /^[[:space:]]*[^[:space:]]+[[:space:]]*=[[:space:]]*[^[:space:]]*/)
+>         if (length(a) > 1) {
+>           key = tolower(a[1]);
+>           sub(/^[[:space:]]+/, "", key);
+>           sub(/[[:space:]]+$/, "", key);
+>           value = a[2];
+>           sub(/^[[:space:]]+/, "", value);
+>           sub(/[[:space:]]+$/, "", value);
+>           sub(/#.*$/, "", value);
+>           print key "=" value;
+>         }
+>       }
+>     }
+>   ' "$file"
+>

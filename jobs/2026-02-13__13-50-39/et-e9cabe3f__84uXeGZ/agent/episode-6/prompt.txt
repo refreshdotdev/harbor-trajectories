@@ -1,0 +1,143 @@
+New Terminal Output:
+
+root@c7d88999-3cf9-4c1a-8321-d74caa9ebb7b:/home/user/firewall# cat > process_firewall.py << 'EOF'
+> #!/usr/bin/env python3
+> import json, re, codecs, datetime, hashlib, os
+>
+> # Configuration
+> BASE_RULES = 'base_rules.v4'
+> CONFIG_DIR = 'configs'
+> INTERMEDIATE_JSON = 'intermediate.json'
+> FINAL_RULES = 'optimized_rules.v4'
+> AUDIT_MANIFEST = 'audit_manifest.csv'
+>
+> # Stage 1: Read and normalize base rules
+> with open(BASE_RULES, 'r', encoding='utf-8') as f:
+>     base_content = f.read()
+>
+> # Convert CRLF to LF
+> base_content = base_content.replace('\r\n', '\n')
+>
+> # Stage 2: Find most recent config file
+> config_files = [f for f in os.listdir(CONFIG_DIR) if f.endswith('.json')]
+> if not config_files:
+>     print("No JSON config files found")
+>     exit(1)
+>
+> config_files.sort(key=lambda f: os.path.getmtime(os.path.join(CONFIG_DIR, f)))
+> active_config = config_files[-1]
+> print(f"Using config: {active_config}")
+>
+> # Stage 3: Load and sanitize config
+> with open(os.path.join(CONFIG_DIR, active_config), 'r', encoding='utf-8') as f:
+>     config = json.load(f)
+>
+> # Sanitize values
+> config['trusted_ip'] = config['trusted_ip'].replace('\u200b', '')
+> for i in range(len(config['allow_ports'])):
+>     config['allow_ports'][i] = config['allow_ports'][i].replace('\u200b', '')
+> for i in range(len(config['block_ports'])):
+>     config['block_ports'][i] = config['block_ports'][i].replace('\u200b', '')
+>
+> # Stage 4: Parse base rules into structured format
+> rules = []
+> lines = base_content.split('\n')
+> state_rule = None
+>
+> for line in lines:
+>     line = line.strip()
+>     if not line or line == 'COMMIT' or line.startswith(':'):
+>         continue
+>
+>     if 'state RELATED,ESTABLISHED' in line:
+>         state_rule = line
+>         continue
+>
+>     rules.append(line)
+>
+> # Stage 5: Generate intermediate.json
+> intermediate_rules = []
+> if state_rule:
+>     intermediate_rules.append({"rule": state_rule, "type": "state_preservation"})
+>
+> for rule in rules:
+>     intermediate_rules.append({"rule": rule})
+>
+> with open(INTERMEDIATE_JSON, 'w', encoding='utf-8') as f:
+>     json.dump(intermediate_rules, f, indent=2)
+>
+> # Stage 6: Expand port ranges
+> allow_ports = []
+> for port in config['allow_ports']:
+>     if '-' in port:
+>         start, end = map(int, port.split('-'))
+>         allow_ports.extend(range(start, end + 1))
+>     else:
+>         allow_ports.append(int(port))
+>
+> block_ports = []
+> for port in config['block_ports']:
+>     if '-' in port:
+>         start, end = map(int, port.split('-'))
+>         block_ports.extend(range(start, end + 1))
+>     else:
+>         block_ports.append(int(port))
+>
+> # Stage 7: Generate final rules file
+> final_rules = []
+>
+> # Default policies
+> final_rules.append('*filter')
+> final_rules.append(':INPUT DROP [0:0]')
+> final_rules.append(':FORWARD DROP [0:0]')
+> final_rules.append(':OUTPUT ACCEPT [0:0]')
+>
+> # State preservation rule
+> if state_rule:
+>     final_rules.append(state_rule.replace('\r\n', ''))
+>
+> # Allow rules
+> for port in sorted(allow_ports):
+>     final_rules.append(f'-A INPUT -p tcp --dport {port} -s {config["trusted_ip"]} -j ACCEPT')
+>
+> # Block rules
+> for port in sorted(block_ports):
+>     final_rules.append(f'-A INPUT -p tcp --dport {port} -j DROP')
+>
+> final_rules.append('COMMIT')
+>
+> with open(FINAL_RULES, 'w', encoding='utf-8') as f:
+>     f.write('\n'.join(final_rules))
+>
+> # Stage 8: Generate audit manifest
+> timestamp = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+>
+> manifest_lines = []
+> manifest_lines.append(f'timestamp|action|detail')
+> manifest_lines.append(f'{timestamp}|changed|§INPUT policy set to DROP')
+> manifest_lines.append(f'{timestamp}|changed|§FORWARD policy set to DROP')
+> manifest_lines.append(f'{timestamp}|changed|§OUTPUT policy set to ACCEPT')
+>
+> # Add rules
+> for port in allow_ports:
+>     manifest_lines.append(f'{timestamp}|added|Allow {port} from {config["trusted_ip"]}')
+> for port in block_ports:
+>     manifest_lines.append(f'{timestamp}|added|Block {port}')
+>
+> # Footer verification
+> with open(INTERMEDIATE_JSON, 'rb') as f:
+>     md5_hash = hashlib.md5(f.read()).hexdigest()
+>
+> with open(FINAL_RULES, 'rb') as f:
+>     byte_count = len(f.read())
+>
+> manifest_lines.append(f'Check: {md5_hash}')
+> manifest_lines.append(f'Bytes: {byte_count}')
+>
+> # Write manifest in ISO-8859-1
+> with open(AUDIT_MANIFEST, 'w', encoding='iso-8859-1') as f:
+>     for line in manifest_lines:
+>         f.write(line + '\n')
+>
+> print(f"All files generated successfully in {os.getcwd()}")
+> EOF

@@ -1,0 +1,120 @@
+Current terminal state:
+New Terminal Output:
+
+root@e598ec01-fe1c-47f0-9521-36f9c576285a:/home/user# mkdir -p /home/user/scripts
+root@e598ec01-fe1c-47f0-9521-36f9c576285a:/home/user# cat > /home/user/scripts/filter_errors.sh << 'EOF'
+> #!/bin/bash
+>
+> # POSIX-compliant mode
+> set -o posix
+>
+> # Strict error checking
+> set -euo pipefail
+>
+> # Input validation
+> if [ $# -ne 2 ]; then
+>     echo "Usage: $0 <input_log> <output_dir>" >&2
+>     exit 1
+> fi
+>
+> input_log="$1"
+> output_dir="$2"
+>
+> # Create output directory
+> mkdir -p "$output_dir"
+>
+> # Get absolute paths
+> input_log_abs="$(realpath -s -- "${input_log}")"
+> output_dir_abs="$(realpath -s -- "${output_dir}")"
+>
+> # Define output files
+> filtered_log="${output_dir_abs}/critical_errors.log"
+> csv_summary="${output_dir_abs}/error_summary.csv"
+>
+> # --- AWK script for multi-line processing ---
+> awk -v input_log_abs="${input_log_abs}" '
+> BEGIN {
+>     FS = ""
+>     OFS = ""
+>     print "# Source: " input_log_abs > "'${filtered_log}'"
+>     print "error_category,count" > "'${csv_summary}'"
+>
+>     error_regex = "ERROR|FATAL|HTTP\/1\.1 5[0-9]{2}"
+>     email_regex = "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+>     payment_regex = "Payment failed"
+>     http5_regex = "HTTP\/1\.1 5[0-9]{2}"
+>     fatal_regex = "FATAL"
+>
+>     stats["PAYMENT_FAILURE"] = 0
+>     stats["HTTP_5XX"] = 0
+>     stats["FATAL"] = 0
+>
+>     state = 1
+>     in_entry = 0
+>     block_buffer = ""
+>     current_category = ""
+> }
+>
+> {
+>     if (substr($0, 1, 1) == "[") {
+>         if (in_entry) {
+>             process_block()
+>         }
+>
+>         block_buffer = $0 "\n"
+>         in_entry = 1
+>
+>         if ($0 ~ payment_regex) {
+>             current_category = "PAYMENT_FAILURE"
+>         } else if ($0 ~ http5_regex) {
+>             current_category = "HTTP_5XX"
+>         } else if ($0 ~ fatal_regex) {
+>             current_category = "FATAL"
+>         } else {
+>             current_category = "UNKNOWN"
+>         }
+>     } else {
+>         if (in_entry) {
+>             block_buffer = block_buffer $0 "\n"
+>         }
+>     }
+> }
+>
+> END {
+>     if (in_entry) {
+>         process_block()
+>     }
+>
+>     # Sort CSV: count descending, then category ascending
+>     "sort -t, -k2,2nr -k1,1" < "'${csv_summary}'" > "'${csv_summary}.tmp'"
+>     mv "'${csv_summary}.tmp'" "'${csv_summary}'"
+> }
+>
+> function process_block() {
+>     if (block_buffer ~ error_regex) {
+>         gsub(email_regex, "<REDACTED>", block_buffer)
+>         printf "%s", block_buffer >> "'${filtered_log}'"
+>
+>         if (current_category != "UNKNOWN") {
+>             stats[current_category]++
+>         }
+>     }
+>
+>     in_entry = 0
+>     block_buffer = ""
+> }
+>
+> function add_stats() {
+>     for (cat in stats) {
+>         if (stats[cat] > 0) {
+>             print cat "," stats[cat] >> "'${csv_summary}'"
+>         }
+>     }
+> }
+> ' EOF
+> chmod +x /home/user/scripts/filter_errors.sh
+> ls -la /home/user/scripts/
+>
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

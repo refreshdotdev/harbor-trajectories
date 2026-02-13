@@ -1,0 +1,164 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are a compliance analyst who has been asked to create a **re-runable performance benchmark** of the current host and to archive the raw measurements in a tightly-defined audit trail.
+All work **must be done only with utilities that are already available in a minimal Linux installation** (do not install extra packages).
+The resulting artefacts must match the exact paths and formats specified.
+
+### Artefact Location
+
+All output files must be placed in the directory specified by the environment variable `AUDIT_LOCATION`.
+*   If `AUDIT_LOCATION` is not set, default to `/home/user/audit`.
+*   Ensure the directory exists.
+*   **Log Rotation**: If the file `benchmark_audit.log` already exists in the target directory, you **must** rename it to `benchmark_audit.log.old` before starting the new benchmark. (If a `.old` file also exists, overwrite it).
+
+### Measurements
+
+Generate **five** measurements using built-in, non-interactive commands:
+1.  **CPU core count**
+2.  **Total installed memory** (in MiB)
+3.  **Sequential disk write speed** in MiB/s (measured with a temporary file that is later removed)
+4.  **Median network round-trip latency** to 8.8.8.8 in ms, calculated from **exactly five** ICMP echo requests.
+5.  **Network Jitter** in ms, calculated as the difference between the **maximum** and **minimum** round-trip times of the **same five** ICMP echo requests used for the latency measurement.
+
+### Audit Log
+
+Immediately after every measurement, append a single-line record to the log file `benchmark_audit.log` in the target directory.
+
+Each record **must** follow this pipe-delimited format (one physical line, no wrapping):
+`TIMESTAMP|MEASUREMENT_NAME|RAW_VALUE|UNIT|COMMAND`
+
+*   **TIMESTAMP**: ISO-8601 combined date and time in UTC, precise to whole seconds, e.g. `2024-05-14T18:03:21Z`
+*   **MEASUREMENT_NAME**: one of `CPU_CORES`, `MEM_TOTAL_MIB`, `DISK_WRITE_MIBPS`, `NET_LATENCY_MS`, `NET_JITTER_MS`
+*   **RAW_VALUE**: a positive decimal number (integer or float) extracted from the command output
+*   **UNIT**: “count”, “MiB”, “MiB/s”, or “ms” respectively
+*   **COMMAND**: exactly the full command line you executed to obtain the value
+
+Example (do **not** copy literally):
+`2024-05-14T18:03:21Z|CPU_CORES|4|count|nproc`
+
+### Summary Report
+
+After all five measurements have been logged, create a machine-readable summary file at `benchmark_summary.json` in the target directory with the following **exact key set and ordering**:
+
+```json
+{
+  "cpu_core_count": <number>,
+  "total_memory_bytes": <number>,
+  "disk_write_mib_per_sec": <number>,
+  "network_latency_ms": <number>,
+  "network_jitter_ms": <number>,
+  "benchmark_duration_seconds": <number>,
+  "timestamp": "ISO-8601 UTC string"
+}
+```
+
+**Constraints:**
+*   **total_memory_bytes**: Must be the memory value converted to **Bytes** (integer).
+*   **benchmark_duration_seconds**: The elapsed time in seconds between the timestamp of the **first** log entry and the **last** log entry. Must be a float formatted to 3 decimal places (e.g., `5.000`).
+*   The “timestamp” key in the JSON is the time the summary file is written.
+*   All other numeric values must match the `RAW_VALUE` in the log.
+
+### Final State
+
+Ensure that any temporary files created for measuring disk speed are deleted, leaving only the expected artefacts inside the audit directory.
+
+Finally, display the full contents of the `benchmark_audit.log` in the terminal.
+
+### Task Success Criteria
+*   The target directory contains `benchmark_audit.log` with **exactly five lines**.
+*   If a log existed previously, `benchmark_audit.log.old` exists.
+*   `benchmark_summary.json` exists, is valid JSON, and strictly follows the schema and value transformations defined above.
+*   No other files (like disk speed temp files) remain in the directory.
+*   The log's contents are displayed in the terminal.
+
+Current terminal state:
+Current Terminal Screen:
+root@749aab35-b3e7-4e4f-9379-e3c569ab36e2:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

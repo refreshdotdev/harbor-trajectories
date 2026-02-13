@@ -1,0 +1,149 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are a lead forensic analyst at a legacy data center. You have received an urgent directive from the CISO regarding a potential security breach involving the “Omega” service layer. 
+
+We need a forensic bundle immediately. Do not ask for clarifications; the CISO is offline.
+
+### Context & Protocol
+
+The environment is a mess of legacy and modern systems. Logs are scattered across `/home/user/app/logs`. You are looking for evidence of the “Omega” breach. The specific signature of the breach is the string `[SECURITY-AUDIT-FAIL]` appearing on any line within the log. 
+
+However, we cannot simply dump every file. We are subject to strict data minimization policies (DMP-2024). This means you must only archive files that contain that specific signature. Furthermore, to prove chain-of-custody, every file entry in your manifest must be cryptographically signed using the current **Daily Badge ID**. You will find the Daily Badge ID located inside the file `/home/user/app/config/system_settings.conf`. It is the value associated with the key `current_badge_id` (ignore the comments in that file).
+
+### Environment State
+
+1.  **Source:** `/home/user/app/logs` (recursive).
+2.  **Destination:** `/home/user/diag` (already exists).
+3.  **Filenames:** The developers were careless. Some filenames contain spaces, newlines, or non-ASCII characters. Your script must handle these robustly.
+4.  **Encodings:** Most logs are UTF-8, but some legacy subsystems write in ISO-8859-1. If you encounter a file that is not valid UTF-8, you must still process it, but treat it as binary for the purpose of checksums.
+
+### Deliverables
+
+You must produce exactly two artifacts in `/home/user/diag`.
+
+#### 1. The Evidence Archive
+
+*   **Path:** `/home/user/diag/forensic_bundle.tar.gz`
+*   **Format:** Gzipped tarball.
+*   **Structure:** Files must be stored with their relative paths from the search root (e.g., if the file is `/home/user/app/logs/server/a.log`, the tar member should be `server/a.log`).
+*   **Inclusion Criteria:**
+    *   File size must be strictly greater than 512 bytes (smaller files are heartbeats).
+    *   Modification time: Must be within the last 7 days.
+    *   **Content:** Must contain the string `[SECURITY-AUDIT-FAIL]`.
+    *   **Exclusion:** Do *not* include any files located inside directories named `test`, `mock`, or `staging` (case-insensitive), even if they match other criteria. These are red herrings.
+
+#### 2. The Chain-of-Custody Manifest
+
+*   **Path:** `/home/user/diag/custody_manifest.json`
+*   **Format:** A valid JSON array of objects.
+*   **Sorting:** The array must be sorted by the `filepath` field using standard byte-value sorting (i.e., `LC_COLLATE=C`).
+*   **Object Schema:**
+    ```json
+    {
+      "filepath": "absolute/path/to/file",
+      "size": <integer_bytes>,
+      "signature": "<HMAC-SHA256_HEX>"
+    }
+    ```
+*   **Signature Calculation:** The `signature` field is an HMAC-SHA256 hash. 
+    *   **Key:** The **Daily Badge ID** found in the config file (trim whitespace).
+    *   **Message:** The raw binary content of the file.
+
+### Constraints
+
+*   You may use Python 3 or standard GNU utilities.
+*   Do not install new packages.
+*   The JSON manifest must be compact (no indentation/pretty-printing) to save space, occupying a single line or minimal lines, though valid JSON structure is the priority.
+*   **Warning:** The directory `/home/user/app/logs/legacy` contains a trap file with a newline character in its filename. If your script crashes or produces a malformed manifest because of this, you fail.
+
+Current terminal state:
+Current Terminal Screen:
+root@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

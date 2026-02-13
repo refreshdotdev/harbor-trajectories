@@ -1,0 +1,244 @@
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# clear
+[?2004l[H[J[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# mkdir -p /home/user/cloud/output
+[?2004l[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# echo "Source Inventory File: $LEGACY_INVENTORY"
+[?2004lSource Inventory File: /home/user/cloud/legacy/mainframe_export.csv
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# cat /home/user/cloud/.config
+[?2004l.internal.corp
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# head -5 "$LEGACY_INVENTORY" | od -c
+[?2004lhead: cannot open '/home/user/cloud/legacy/mainframe_export.csv' for reading: No such file or directory
+0000000
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# echo "Verifying LEGACY_INVENTORY value:" $LEGACY_INVENTORY
+[?2004lVerifying LEGACY_INVENTORY value: /home/user/cloud/legacy/mainframe_export.csv
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# ls -la /home/user/cloud/legacy/
+[?2004ltotal 0
+drwxrwxrwx 1 root root  6 Feb 13 00:00 [0m[34;42m.[0m
+drwxrwxrwx 1 root root 90 Feb 13 00:00 [34;42m..[0m
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# find /home/user/cloud -name "*.csv" -type f 2>/dev/null
+[?2004l/home/user/cloud/inventory.csv
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# echo "Discrepancy: $LEGACY_INVENTORY points to a non-existent file. Found inventory.csv in current directory."
+[?2004lDiscrepancy: /home/user/cloud/legacy/mainframe_export.csv points to a non-existent file. Found inventory.csv in current directory.
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# head -3 /home/user/cloud/inventory.csv | od -c
+[?2004l0000000   S   e   r   v   i   c   e   N   a   m   e   ,   O   l   d   S
+0000020   e   r   v   e   r   ,   N   e   w   S   e   r   v   e   r   ,
+0000040   O   w   n   e   r  \n   a   u   t   h   -   a   p   i   ,   v
+0000060   m   -   o   l   d   -   0   1   ,   v   m   -   n   e   w   -
+0000100   0   1   ,   b   e   c   k   y  \n   b   i   l   l   i   n   g
+0000120   ,   v   m   -   o   l   d   -   0   2   ,   v   m   -   n   e
+0000140   w   -   0   2   ,   r   a   h   u   l  \n
+0000153
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# cat > /home/user/cloud/process_legacy.py << 'EOF'
+[?2004l           # Filter: Exclude rows where 'NewServer' is empty or contains only whitespace.
+            new_server_val = row.get('NewServer', '').strip()
+            if not new_server_val:
+                continue
+            
+            service_name = row['ServiceName'].lower()
+            
+            # Strip Zero Width Spaces (U+200B) from NewServer
+            # ZWSP is Unicode character U+200B
+            cleaned_new_server = re.sub(r'\u200b', '', new_server_val)
+            
+            target_fqdn = f"{cleaned_new_server}{domain_suffix}"
+            rows_to_write.append([service_name, target_fqdn])
+        
+        if not rows_to_write:
+            print(f"No valid rows found in {SOURCE_FILE_PATH} after filtering.")
+            # Create an empty TSV file as per requirements
+            Path(f"{OUTPUT_DIR}/{TSV_FILE_NAME}").touch()
+            # Create empty manifest
+            manifest_data = {
+                "source_file": SOURCE_FILE_PATH,
+                "record_count": 0,
+                "output_md5": "d41d8cd98f00b204e9800998ecf8427e"
+            }
+            with open(f"{OUTPUT_DIR}/{JSON_FILE_NAME}", 'w', encoding='utf-8') as f_json:
+                import json
+                json.dump(manifest_data, f_json, indent=2)
+            
+            with open(f"{OUTPUT_DIR}/{LOG_FILE_NAME}", 'w', encoding='utf-8') as f_log:
+                f_log.write("0 bytes generated")
+                
+            print("Task complete with empty output due to no valid rows.")
+            sys.exit(0)
+
+        # Sort alphabetically by ServiceName (first element of the list in rows_to_write)
+        rows_to_write.sort(key=lambda x: x[0])
+
+        # Prepare TSV content for ISO-8859-1 encoding and CRLF line endings
+        # Header: ServiceName\tTargetFQDN
+        tsv_content_lines = [f"ServiceName\tTargetFQDN"]
+        for service_name, target_fqdn in rows_to_write:
+            # Ensure ServiceName and TargetFQDN are encodable in Latin-1
+            try:
+                service_name_encodable = service_name.encode('iso-8859-1').decode('iso-8859-1')
+                targ[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> 
+[?2004l[?2004h> import csv
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import os
+[?2004l[?2004h> import re
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> from pathlib import Path
+[?2004l[?2004h> 
+[?2004lE[?2004h> SOURCE_FILE_PATH = "/home/user/cloud/inventory.csv"
+[?2004l[?2004h> # Using this as source due to discrepancy with $LEGACY_INVENTORY
+[?2004l[?2004h> # Original $LEGACY_INVENTORY: /home/user/cloud/legacy/mainframe_export.csv (not found)
+[?2004l[?2004h> DOMAIN_SUFFIX_FILE = "/home/user/cloud/.config"
+[?2004l[?2004h> OUTPUT_DIR = "/home/user/cloud/output"
+[?2004l[?2004h> TSV_FILE_NAME = "migration_plan.tsv"
+[?2004l[?2004h> JSON_FILE_NAME = "manifest.json"
+[?2004l[?2004h> LOG_FILE_NAME = "audit.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read domain suffix
+[?2004l[?2004h> try:
+[?2004l[?2004h>     with open(DOMAIN_SUFFIX_FILE, 'r', encoding='utf-8') as f:
+[?2004l[?2004h>         domain_suffix = f.readline().strip()
+[?2004l[?2004h> except FileNotFoundError:
+[?2004l[?2004h>     print(f"ERROR: Domain suffix file {DOMAIN_SUFFIX_FILE} not found.")
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> domain_suffix = domain_suffix.strip()
+[?2004l[?2004h> print(f"Using domain suffix: {domain_suffix}")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create output directory
+[?2004l[?2004h> Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+[?2004l[?2004h> 
+[?2004l[?2004h> print(f"Processing source file: {SOURCE_FILE_PATH}")
+[?2004l[?2004h> 
+[?2004l[?2004h> rows_to_write = []
+[?2004l[?2004h> header_processed = False
+[?2004l[?2004h> header = []
+[?2004l[?2004h> 
+[?2004lf[?2004h> try:
+[?2004l:[?2004h>     # inventory.csv is UTF-8, LF
+[?2004l[?2004h>     with open(SOURCE_FILE_PATH, 'r', encoding='utf-8', newline='') as infile:
+[?2004l[?2004h>         reader = csv.DictReader(infile)
+[?2004l[?2004h>         if not reader.fieldnames:
+[?2004l[?2004h>             print(f"ERROR: Source file {SOURCE_FILE_PATH} is empty or has no header.")
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Adapt to actual header: ServiceName,OldServer,NewServer,Owner
+[?2004l[?2004h>         # Task implied: ServiceName,Status,NewServer. No Status column found.
+[?2004l[?2004h>         if 'ServiceName' not in reader.fieldnames:
+[?2004l[?2004h>             print(f"ERROR: Source file {SOURCE_FILE_PATH} does not contain 'ServiceName' column.")
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>         if 'NewServer' not in reader.fieldnames:
+[?2004l[?2004h>             print(f"ERROR: Source file {SOURCE_FILE_PATH} does not contain 'NewServer' column.")
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h>         for row in reader:
+[?2004l[?2004h>             # Original: Filter by 'Status' column (Decom, Pending). This column is missing.
+[?2004l[?2004h>             # Adaptation: Cannot filter by Status.
+[?2004l[?2004h>             # Filter: Exclude rows where 'NewServer' is empty or contains only whitespace.
+[?2004l[?2004h>             new_server_val = row.get('NewServer', '').strip()
+[?2004l[?2004h>             if not new_server_val:
+[?2004l[?2004h>                 continue
+[?2004l[?2004h>             
+[?2004l[?2004h>             service_name = row['ServiceName'].lower()
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Strip Zero Width Spaces (U+200B) from NewServer
+[?2004l[?2004h>             # ZWSP is Unicode character U+200B
+[?2004l[?2004h>             cleaned_new_server = re.sub(r'\u200b', '', new_server_val)
+[?2004l[?2004h>             
+[?2004l[?2004h>             target_fqdn = f"{cleaned_new_server}{domain_suffix}"
+[?2004l[?2004h>             rows_to_write.append([service_name, target_fqdn])
+[?2004l[?2004h>         
+[?2004l[?2004h>         if not rows_to_write:
+[?2004l[?2004h>             print(f"No valid rows found in {SOURCE_FILE_PATH} after filtering.")
+[?2004l[?2004h>             # Create an empty TSV file as per requirements
+[?2004l[?2004h>             Path(f"{OUTPUT_DIR}/{TSV_FILE_NAME}").touch()
+[?2004l[?2004h>             # Create empty manifest
+[?2004l[?2004h>             manifest_data = {
+[?2004l[?2004h>                 "source_file": SOURCE_FILE_PATH,
+[?2004l[?2004h>                 "record_count": 0,
+[?2004l[?2004h>                 "output_md5": "d41d8cd98f00b204e9800998ecf8427e"
+[?2004l[?2004h>             }
+[?2004l[?2004h>             with open(f"{OUTPUT_DIR}/{JSON_FILE_NAME}", 'w', encoding='utf-8') as f_json:
+[?2004l[?2004h>                 import json
+[?2004l[?2004h>                 json.dump(manifest_data, f_json, indent=2)
+[?2004l[?2004h>             
+[?2004l[?2004h>             with open(f"{OUTPUT_DIR}/{LOG_FILE_NAME}", 'w', encoding='utf-8') as f_log:
+[?2004l[?2004h>                 f_log.write("0 bytes generated")
+[?2004l[?2004h>                 
+[?2004l[?2004h>             print("Task complete with empty output due to no valid rows.")
+[?2004l[?2004h>             sys.exit(0)
+[?2004l[?2004h> 
+[?2004l[?2004h>         # Sort alphabetically by ServiceName (first element of the list in rows_to_write)
+[?2004l[?2004h>         rows_to_write.sort(key=lambda x: x[0])
+[?2004l[?2004h> 
+[?2004l[?2004h>         # Prepare TSV content for ISO-8859-1 encoding and CRLF line endings
+[?2004l[?2004h>         # Header: ServiceName\tTargetFQDN
+[?2004l[?2004h>         tsv_content_lines = [f"ServiceName\tTargetFQDN"]
+[?2004l[?2004h>         for service_name, target_fqdn in rows_to_write:
+[?2004l[?2004h>             # Ensure ServiceName and TargetFQDN are encodable in Latin-1
+[?2004l[?2004h>             try:
+[?2004l[?2004h>                 service_name_encodable = service_name.encode('iso-8859-1').decode('iso-8859-1')
+[?2004l[?2004h>                 target_fqdn_encodable = target_fqdn.encode('iso-8859-1').decode('iso-8859-1')
+[?2004l[?2004h>             except UnicodeEncodeError as e:
+[?2004l[?2004h>                 print(f"WARNING: Could not encode data for Latin-1: {service_name} - {target_fqdn}. Error: {e}")
+[?2004l[?2004h>                 service_name_encodable = service_name
+[?2004l[?2004h>                 target_fqdn_encodable = target_fqdn
+[?2004l[?2004h>                 
+[?2004l[?2004h>             tsv_content_lines.append(f"{service_name_encodable}\t{target_fqdn_encodable}")
+[?2004l[?2004h> 
+[?2004l[?2004h>         # Join lines with CRLF and encode to Latin-1
+[?2004l[?2004h>         final_tsv_content = '\r\n'.join(tsv_content_lines).encode('iso-8859-1')
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Write TSV file
+[?2004l[?2004h>         tsv_file_path = f"{OUTPUT_DIR}/{TSV_FILE_NAME}"
+[?2004l[?2004h>         with open(tsv_file_path, 'wb') as f:
+[?2004l[?2004h>             f.write(final_tsv_content)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Create manifest.json
+[?2004l[?2004h>         # Calculate MD5 of the final, encoded TSV file
+[?2004l[?2004h>         md5_hash = hashlib.md5()
+[?2004l[?2004h>         md5_hash.update(final_tsv_content)
+[?2004l[?2004h>         output_md5 = md5_hash.hexdigest()
+[?2004l[?2004h>         
+[?2004l[?2004h>         manifest_data = {
+[?2004l[?2004h>             "source_file": SOURCE_FILE_PATH,
+[?2004l[?2004h>             "record_count": len(rows_to_write),
+[?2004l[?2004h>             "output_md5": output_md5
+[?2004l[?2004h>         }
+[?2004l[?2004h>         
+[?2004l[?2004h>         with open(f"{OUTPUT_DIR}/{JSON_FILE_NAME}", 'w', encoding='utf-8') as f_json:
+[?2004l[?2004h>             import json
+[?2004l[?2004h>             json.dump(manifest_data, f_json, indent=2)
+[?2004l[?2004h> 
+[?2004l[?2004h>         # Create audit.log
+[?2004l[?2004h>         tsv_file_size = len(final_tsv_content)
+[?2004l[?2004h>         with open(f"{OUTPUT_DIR}/{LOG_FILE_NAME}", 'w', encoding='utf-8') as f_log:
+[?2004l[?2004h>             f_log.write(f"{tsv_file_size} bytes generated")
+[?2004l[?2004h> 
+[?2004l[?2004h>         print(f"Successfully generated migration plan in {tsv_file_path}")
+[?2004l[?2004h>         print(f"Manifest generated: {OUTPUT_DIR}/{JSON_FILE_NAME}")
+[?2004l[?2004h>         print(f"Audit log generated: {OUTPUT_DIR}/{LOG_FILE_NAME}")
+[?2004l[?2004h>         print(f"Record count: {len(rows_to_write)}")
+[?2004l[?2004h>         print(f"MD5 of TSV: {output_md5}")
+[?2004l[?2004h> 
+[?2004l[?2004h> except FileNotFoundError:
+[?2004l[?2004h>     print(f"ERROR: Source file {SOURCE_FILE_PATH} not found.")
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> except Exception as e:
+[?2004l[?2004h>     print(f"An error occurred: {e}")
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# python3 /home/user/cloud/process_legacy.py
+[?2004lUsing domain suffix: .internal.corp
+Processing source file: /home/user/cloud/inventory.csv
+Successfully generated migration plan in /home/user/cloud/output/migration_plan.tsv
+Manifest generated: /home/user/cloud/output/manifest.json
+Audit log generated: /home/user/cloud/output/audit.log
+Record count: 2
+MD5 of TSV: 4c96e4779a2b0d7674fa40904126f690
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# ls -la /home/user/cloud/output/
+[?2004ltotal 12
+drwxrwxrwx 1 root root  86 Feb 13 18:55 [0m[34;42m.[0m
+drwxrwxrwx 1 root root  57 Feb 13 18:55 [34;42m..[0m
+-rw-r--r-- 1 root root  18 Feb 13 18:55 audit.log
+-rw-r--r-- 1 root root 126 Feb 13 18:55 manifest.json
+-rw-r--r-- 1 root root  89 Feb 13 18:55 migration_plan.tsv
+[?2004hroot@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud# 

@@ -1,0 +1,388 @@
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:~# clear
+[?2004l[H[J[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:~# ls -la /tmp/lock_file* 2>/dev/null; echo "Exit code: $?"
+[?2004lExit code: 2
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:~# cd /opt/backup/
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# grep -n "port" service.py
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# grep -n "9090\|8080" service.py
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# head -20 service.py
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# grep -n -i "environment\|config\|env" service.py | head -10
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# ls -la /opt/backup/
+[?2004ltotal 0
+drwxr-xr-x 1 root root 32 Feb 12 21:11 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 28 Feb 12 21:11 [01;34m..[0m
+-rw-r--r-- 1 root root  0 Feb 12 21:11 service.py
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# wc -l service.py
+[?2004l0 service.py
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# cat service.py
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# find /opt -name "service.py" -o -name "*backup*service*" -o -name "*backup*py*" 2>/dev/null
+[?2004l/opt/backup/service.py
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# ls -la /etc/backup_service/
+[?2004ltotal 8
+drwxr-xr-x 1 root root 51 Feb 12 21:11 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 51 Feb 13 19:10 [01;34m..[0m
+-rw-r--r-- 1 root root 27 Feb 12 21:11 dev.conf
+-rw-r--r-- 1 root root 57 Feb 12 21:11 prod.conf
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# cat /etc/backup_service/prod.conf 2>/dev/null || echo "prod.conf not readable or doesn't exist"
+[?2004l[security]
+# Production Credentials
+key = "  9d8f7e6a  "
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# TOKEN=$(grep -Po 'key = \K.*' /etc/backup_service/prod.conf | xargs | sed 's/ //g'); echo "Trimmed token: $TOKEN"
+[?2004lTrimmed token: 9d8f7e6a
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# cat >/opt/backup/service.py <<'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os
+[?2004l[?2004h> import json
+[?2004l[?2004h> from flask import Flask, request, jsonify, Response
+[?2004l[?2004h> 
+[?2004l[?2004h> app = Flask(__name__)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Default port if environment variable is not set
+[?2004l[?2004h> DEFAULT_PORT = int(os.getenv('BACKUP_SERVICE_PORT', '9090'))
+[?2004l[?2004h> 
+[?2004l[?2004h> @app.route('/status', methods=['GET'])
+[?2004l[?2004h> def get_status():
+[?2004l[?2004h>     return jsonify({"status": "operational"})
+[?2004l[?2004h> 
+[?2004l[?2004h> @app.route('/last-backup', methods=['GET'])
+[?2004l[?2004h> def get_last_backup():
+[?2004l[?2004h>     return jsonify({"last_backup": "2023-01-15T10:30:00Z"})
+[?2004l[?2004h> 
+[?2004l[?2004h> @app.route('/list', methods=['GET'])
+[?2004l[?2004h> def get_list():
+[?2004l[?2004h>     items = ["backup1", "backup2", "backup3"]
+[?2004l[?2004h>     return jsonify(items)
+[?2004l[?2004h> 
+[?2004l[?2004h> @app.route('/trigger-backup', methods=['POST'])
+[?2004l[?2004h> def trigger_backup():
+[?2004l[?2004h>     if not request.is_json:
+[?2004l[?2004h>         return jsonify({"error": "Expected JSON"}), 400
+[?2004l[?2004h>     return jsonify({"triggered": True, "job_id": "job-12345"})
+[?2004l[?2004h> 
+[?2004l[?2004h> @app.route('/download/<int:backup_id>', methods=['GET'])
+[?2004l[?2004h> def download_backup(backup_id):
+[?2004l[?2004h>     if backup_id == 2:
+[?2004l[?2004h>         content = b"dummy backup content for id 2"
+[?2004l[?2004h>         response = Response(content, mimetype='application/octet-stream')
+[?2004l[?2004h>         response.headers['Content-Disposition'] = f'attachment; filename="backup_2.dump"'
+[?2004l[?2004h>         return response
+[?2004l[?2004h>     return jsonify({"error": "backup not found"}), 404
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     app.run(host='0.0.0.0', port=DEFAULT_PORT, debug=False)
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# chmod +x /opt/backup/service.py
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# cd /opt/backup && python3 service.py &
+[?2004l[1] 956
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# Traceback (most recent call last):
+  File "/opt/backup/service.py", line 4, in <module>
+    from flask import Flask, request, jsonify, Response
+ModuleNotFoundError: No module named 'flask'
+sleep 3
+[?2004l[1]+  Exit 1                  cd /opt/backup && python3 service.py
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# ps aux | grep -E "python3.*service.py" | grep -v grep
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# netstat -tlnp | grep :9090
+[?2004lbash: netstat: command not found
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# apt update && apt install -y python3-flask
+[?2004l[33m0% [Working][0m            Hit:1 http://security.ubuntu.com/ubuntu jammy-security InRelease
+[33m0% [Connecting to archive.ubuntu.com (91.189.92.23)][0m[33m0% [Connecting to archive.ubuntu.com (91.189.92.23)][0m                                                    Hit:2 http://archive.ubuntu.com/ubuntu jammy InRelease
+[33m                                                    0% [Working][0m[33m0% [Waiting for headers][0m                        Hit:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+[33m                        0% [Working][0m[33m0% [Waiting for headers][0m                        Hit:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+[33m                        0% [Working][0m[33m20% [Working][0m             Reading package lists... 0%Reading package lists... 0%Reading package lists... 0%Reading package lists... 3%Reading package lists... 3%Reading package lists... 4%Reading package lists... 4%Reading package lists... 38%Reading package lists... 38%Reading package lists... 39%Reading package lists... 39%Reading package lists... 49%Reading package lists... 49%Reading package lists... 66%Reading package lists... 66%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 79%Reading package lists... 79%Reading package lists... 96%Reading package lists... 96%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... Done
+Building dependency tree... 0%Building dependency tree... 0%Building dependency tree... 0%Building dependency tree... 50%Building dependency tree... 50%Building dependency tree... Done
+Reading state information... 0% Reading state information... 2%Reading state information... Done
+4 packages can be upgraded. Run 'apt list --upgradable' to see them.
+Reading package lists... 0%Reading package lists... 0%Reading package lists... 0%Reading package lists... 3%Reading package lists... 3%Reading package lists... 4%Reading package lists... 4%Reading package lists... 38%Reading package lists... 38%Reading package lists... 39%Reading package lists... 39%Reading package lists... 49%Reading package lists... 49%Reading package lists... 66%Reading package lists... 66%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 79%Reading package lists... 79%Reading package lists... 96%Reading package lists... 96%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... Done
+Building dependency tree... 0%Building dependency tree... 0%Building dependency tree... 20%Building dependency tree... 50%Building dependency tree... 50%Building dependency tree... Done
+Reading state information... 0% Reading state information... 2%Reading state information... Done
+The following additional packages will be installed:
+  javascript-common libjs-jquery python-babel-localedata python3-babel python3-blinker python3-cffi-backend python3-click python3-colorama
+  python3-cryptography python3-itsdangerous python3-jinja2 python3-markupsafe python3-openssl python3-pyinotify python3-simplejson python3-six python3-tz
+  python3-werkzeug tzdata
+Suggested packages:
+  apache2 | lighttpd | httpd python-blinker-doc python-cryptography-doc python3-cryptography-vectors python3-asgiref python3-dotenv python-flask-doc
+  python-jinja2-doc python-openssl-doc python3-openssl-dbg python-pyinotify-doc ipython3 python-werkzeug-doc python3-lxml python3-watchdog
+The following NEW packages will be installed:
+  javascript-common libjs-jquery python-babel-localedata python3-babel python3-blinker python3-cffi-backend python3-click python3-colorama
+  python3-cryptography python3-flask python3-itsdangerous python3-jinja2 python3-markupsafe python3-openssl python3-pyinotify python3-simplejson python3-six
+  python3-tz python3-werkzeug tzdata
+0 upgraded, 20 newly installed, 0 to remove and 4 not upgraded.
+Need to get 6738 kB of archives.
+After this operation, 37.4 MB of additional disk space will be used.
+[33m0% [Working][0m            Get:1 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 tzdata all 2025b-0ubuntu0.22.04.1 [347 kB]
+[33m0% [1 tzdata 4052 B/347 kB 1%][0m[33m                              5% [Working][0m            Get:2 http://archive.ubuntu.com/ubuntu jammy/main amd64 javascript-common all 11+nmu1 [5936 B]
+[33m5% [2 javascript-common 5503 B/5936 B 93%][0m[33m                                          6% [Working][0m            Get:3 http://archive.ubuntu.com/ubuntu jammy/main amd64 libjs-jquery all 3.6.0+dfsg+~3.5.13-1 [321 kB]
+[33m6% [3 libjs-jquery 5500 B/321 kB 2%][0m[33m                                    11% [Working][0m             Get:4 http://archive.ubuntu.com/ubuntu jammy/main amd64 python-babel-localedata all 2.8.0+dfsg.1-7 [4982 kB]
+[33m11% [4 python-babel-localedata 1320 B/4982 kB 0%][0m[33m                                                 71% [Waiting for headers][0m                         Get:5 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 python3-tz all 2022.1-1ubuntu0.22.04.1 [30.7 kB]
+                         Get:6 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-babel all 2.8.0+dfsg.1-7 [85.1 kB]
+[33m73% [6 python3-babel 13.7 kB/85.1 kB 16%][0m[33m                                         75% [Waiting for headers][0m                         Get:7 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-blinker all 1.4+dfsg1-0.4 [14.0 kB]
+[33m76% [Waiting for headers][0m                         Get:8 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-cffi-backend amd64 1.15.0-1build2 [77.4 kB]
+[33m76% [8 python3-cffi-backend 34.0 kB/77.4 kB 44%][0m[33m                                                78% [Waiting for headers][0m                         Get:9 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-colorama all 0.4.4-1 [24.5 kB]
+[33m78% [9 python3-colorama 12.8 kB/24.5 kB 52%][0m[33m                                            79% [Waiting for headers][0m                         Get:10 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-click all 8.0.3-1 [78.3 kB]
+[33m80% [10 python3-click 53.1 kB/78.3 kB 68%][0m[33m                                          81% [Waiting for headers][0m                         Get:11 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 python3-cryptography amd64 3.4.8-1ubuntu2.2 [236 kB]
+[33m81% [11 python3-cryptography 36.4 kB/236 kB 15%][0m[33m                                                85% [Waiting for headers][0m                         Get:12 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-itsdangerous all 2.1.0-1 [14.7 kB]
+[33m85% [12 python3-itsdangerous 14.7 kB/14.7 kB 100%][0m[33m                                                  86% [Waiting for headers][0m                         Get:13 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-markupsafe amd64 2.0.1-2build1 [12.7 kB]
+[33m87% [Waiting for headers][0m                         Get:14 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 python3-jinja2 all 3.0.3-1ubuntu0.4 [108 kB]
+[33m87% [14 python3-jinja2 25.8 kB/108 kB 24%][0m[33m                                          89% [Waiting for headers][0m                         Get:15 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 python3-werkzeug all 2.0.2+dfsg1-1ubuntu0.22.04.3 [181 kB]
+[33m90% [15 python3-werkzeug 64.9 kB/181 kB 36%][0m[33m                                            92% [Waiting for headers][0m                         Get:16 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 python3-flask all 2.0.1-2ubuntu1.1 [81.5 kB]
+[33m93% [16 python3-flask 29.6 kB/81.5 kB 36%][0m[33m                                          94% [Working][0m             Get:17 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-six all 1.16.0-3ubuntu1 [12.6 kB]
+[33m96% [Waiting for headers][0m                         Get:18 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-openssl all 21.0.0-1 [45.2 kB]
+[33m96% [18 python3-openssl 44.6 kB/45.2 kB 99%][0m[33m                                            97% [Waiting for headers][0m                         Get:19 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-pyinotify all 0.9.6-1.3 [24.8 kB]
+[33m97% [19 python3-pyinotify 24.8 kB/24.8 kB 100%][0m[33m                                               98% [Waiting for headers][0m                         Get:20 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-simplejson amd64 3.17.6-1build1 [54.7 kB]
+[33m99% [20 python3-simplejson 54.7 kB/54.7 kB 100%][0m[33m                                                100% [Working][0m              Fetched 6738 kB in 1s (6659 kB/s)
+debconf: delaying package configuration, since apt-utils is not installed
+
+7[0;39r8[1ASelecting previously unselected package tzdata.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 7572 files and directories currently installed.)
+Preparing to unpack .../00-tzdata_2025b-0ubuntu0.22.04.1_all.deb ...
+7[40;0f[42m[30mProgress: [  0%][49m[39m [..........................................................................................................................................] 87[40;0f[42m[30mProgress: [  1%][49m[39m [#.........................................................................................................................................] 8Unpacking tzdata (2025b-0ubuntu0.22.04.1) ...
+7[40;0f[42m[30mProgress: [  2%][49m[39m [###.......................................................................................................................................] 8Selecting previously unselected package javascript-common.
+Preparing to unpack .../01-javascript-common_11+nmu1_all.deb ...
+7[40;0f[42m[30mProgress: [  4%][49m[39m [#####.....................................................................................................................................] 8Unpacking javascript-common (11+nmu1) ...
+7[40;0f[42m[30mProgress: [  5%][49m[39m [######....................................................................................................................................] 8Selecting previously unselected package libjs-jquery.
+Preparing to unpack .../02-libjs-jquery_3.6.0+dfsg+~3.5.13-1_all.deb ...
+7[40;0f[42m[30mProgress: [  6%][49m[39m [########..................................................................................................................................] 8Unpacking libjs-jquery (3.6.0+dfsg+~3.5.13-1) ...
+7[40;0f[42m[30mProgress: [  7%][49m[39m [##########................................................................................................................................] 8Selecting previously unselected package python-babel-localedata.
+Preparing to unpack .../03-python-babel-localedata_2.8.0+dfsg.1-7_all.deb ...
+7[40;0f[42m[30mProgress: [  9%][49m[39m [###########...............................................................................................................................] 8Unpacking python-babel-localedata (2.8.0+dfsg.1-7) ...
+7[40;0f[42m[30mProgress: [ 10%][49m[39m [#############.............................................................................................................................] 8Selecting previously unselected package python3-tz.
+Preparing to unpack .../04-python3-tz_2022.1-1ubuntu0.22.04.1_all.deb ...
+7[40;0f[42m[30mProgress: [ 11%][49m[39m [###############...........................................................................................................................] 8Unpacking python3-tz (2022.1-1ubuntu0.22.04.1) ...
+7[40;0f[42m[30mProgress: [ 12%][49m[39m [#################.........................................................................................................................] 8Selecting previously unselected package python3-babel.
+Preparing to unpack .../05-python3-babel_2.8.0+dfsg.1-7_all.deb ...
+7[40;0f[42m[30mProgress: [ 14%][49m[39m [##################........................................................................................................................] 8Unpacking python3-babel (2.8.0+dfsg.1-7) ...
+7[40;0f[42m[30mProgress: [ 15%][49m[39m [####################......................................................................................................................] 8Selecting previously unselected package python3-blinker.
+Preparing to unpack .../06-python3-blinker_1.4+dfsg1-0.4_all.deb ...
+7[40;0f[42m[30mProgress: [ 16%][49m[39m [######################....................................................................................................................] 8Unpacking python3-blinker (1.4+dfsg1-0.4) ...
+7[40;0f[42m[30mProgress: [ 17%][49m[39m [#######################...................................................................................................................] 8Selecting previously unselected package python3-cffi-backend:amd64.
+Preparing to unpack .../07-python3-cffi-backend_1.15.0-1build2_amd64.deb ...
+7[40;0f[42m[30mProgress: [ 19%][49m[39m [#########################.................................................................................................................] 8Unpacking python3-cffi-backend:amd64 (1.15.0-1build2) ...
+7[40;0f[42m[30mProgress: [ 20%][49m[39m [###########################...............................................................................................................] 8Selecting previously unselected package python3-colorama.
+Preparing to unpack .../08-python3-colorama_0.4.4-1_all.deb ...
+7[40;0f[42m[30mProgress: [ 21%][49m[39m [############################..............................................................................................................] 8Unpacking python3-colorama (0.4.4-1) ...
+7[40;0f[42m[30mProgress: [ 22%][49m[39m [##############################............................................................................................................] 8Selecting previously unselected package python3-click.
+Preparing to unpack .../09-python3-click_8.0.3-1_all.deb ...
+7[40;0f[42m[30mProgress: [ 23%][49m[39m [################################..........................................................................................................] 8Unpacking python3-click (8.0.3-1) ...
+7[40;0f[42m[30mProgress: [ 25%][49m[39m [##################################........................................................................................................] 8Selecting previously unselected package python3-cryptography.
+Preparing to unpack .../10-python3-cryptography_3.4.8-1ubuntu2.2_amd64.deb ...
+7[40;0f[42m[30mProgress: [ 26%][49m[39m [###################################.......................................................................................................] 8Unpacking python3-cryptography (3.4.8-1ubuntu2.2) ...
+7[40;0f[42m[30mProgress: [ 27%][49m[39m [#####################################.....................................................................................................] 8Selecting previously unselected package python3-itsdangerous.
+Preparing to unpack .../11-python3-itsdangerous_2.1.0-1_all.deb ...
+7[40;0f[42m[30mProgress: [ 28%][49m[39m [#######################################...................................................................................................] 8Unpacking python3-itsdangerous (2.1.0-1) ...
+7[40;0f[42m[30mProgress: [ 30%][49m[39m [########################################..................................................................................................] 8Selecting previously unselected package python3-markupsafe.
+Preparing to unpack .../12-python3-markupsafe_2.0.1-2build1_amd64.deb ...
+7[40;0f[42m[30mProgress: [ 31%][49m[39m [##########################################................................................................................................] 8Unpacking python3-markupsafe (2.0.1-2build1) ...
+7[40;0f[42m[30mProgress: [ 32%][49m[39m [############################################..............................................................................................] 8Selecting previously unselected package python3-jinja2.
+Preparing to unpack .../13-python3-jinja2_3.0.3-1ubuntu0.4_all.deb ...
+7[40;0f[42m[30mProgress: [ 33%][49m[39m [#############################################.............................................................................................] 8Unpacking python3-jinja2 (3.0.3-1ubuntu0.4) ...
+7[40;0f[42m[30mProgress: [ 35%][49m[39m [###############################################...........................................................................................] 8Selecting previously unselected package python3-werkzeug.
+Preparing to unpack .../14-python3-werkzeug_2.0.2+dfsg1-1ubuntu0.22.04.3_all.deb ...
+7[40;0f[42m[30mProgress: [ 36%][49m[39m [#################################################.........................................................................................] 8Unpacking python3-werkzeug (2.0.2+dfsg1-1ubuntu0.22.04.3) ...
+7[40;0f[42m[30mProgress: [ 37%][49m[39m [###################################################.......................................................................................] 8Selecting previously unselected package python3-flask.
+Preparing to unpack .../15-python3-flask_2.0.1-2ubuntu1.1_all.deb ...
+7[40;0f[42m[30mProgress: [ 38%][49m[39m [####################################################......................................................................................] 8Unpacking python3-flask (2.0.1-2ubuntu1.1) ...
+7[40;0f[42m[30mProgress: [ 40%][49m[39m [######################################################....................................................................................] 8Selecting previously unselected package python3-six.
+Preparing to unpack .../16-python3-six_1.16.0-3ubuntu1_all.deb ...
+7[40;0f[42m[30mProgress: [ 41%][49m[39m [########################################################..................................................................................] 8Unpacking python3-six (1.16.0-3ubuntu1) ...
+7[40;0f[42m[30mProgress: [ 42%][49m[39m [#########################################################.................................................................................] 8Selecting previously unselected package python3-openssl.
+Preparing to unpack .../17-python3-openssl_21.0.0-1_all.deb ...
+7[40;0f[42m[30mProgress: [ 43%][49m[39m [###########################################################...............................................................................] 8Unpacking python3-openssl (21.0.0-1) ...
+cd /opt/backup && python3 service.py &
+7[40;0f[42m[30mProgress: [ 44%][49m[39m [#############################################################.............................................................................] 8Selecting previously unselected package python3-pyinotify.
+Preparing to unpack .../18-python3-pyinotify_0.9.6-1.3_all.deb ...
+7[40;0f[42m[30mProgress: [ 46%][49m[39m [###############################################################...........................................................................] 8Unpacking python3-pyinotify (0.9.6-1.3) ...
+7[40;0f[42m[30mProgress: [ 47%][49m[39m [################################################################..........................................................................] 8Selecting previously unselected package python3-simplejson.
+Preparing to unpack .../19-python3-simplejson_3.17.6-1build1_amd64.deb ...
+7[40;0f[42m[30mProgress: [ 48%][49m[39m [##################################################################........................................................................] 8Unpacking python3-simplejson (3.17.6-1build1) ...
+7[40;0f[42m[30mProgress: [ 49%][49m[39m [####################################################################......................................................................] 8Setting up javascript-common (11+nmu1) ...
+7[40;0f[42m[30mProgress: [ 51%][49m[39m [#####################################################################.....................................................................] 87[40;0f[42m[30mProgress: [ 52%][49m[39m [#######################################################################...................................................................] 8Setting up python3-colorama (0.4.4-1) ...
+7[40;0f[42m[30mProgress: [ 53%][49m[39m [#########################################################################.................................................................] 87[40;0f[42m[30mProgress: [ 54%][49m[39m [##########################################################################................................................................] 8Setting up python3-pyinotify (0.9.6-1.3) ...
+7[40;0f[42m[30mProgress: [ 56%][49m[39m [############################################################################..............................................................] 87[40;0f[42m[30mProgress: [ 57%][49m[39m [##############################################################################............................................................] 8Setting up python3-itsdangerous (2.1.0-1) ...
+7[40;0f[42m[30mProgress: [ 58%][49m[39m [################################################################################..........................................................] 87[40;0f[42m[30mProgress: [ 59%][49m[39m [#################################################################################.........................................................] 8Setting up python3-click (8.0.3-1) ...
+7[40;0f[42m[30mProgress: [ 60%][49m[39m [###################################################################################.......................................................] 87[40;0f[42m[30mProgress: [ 62%][49m[39m [#####################################################################################.....................................................] 8Setting up python3-markupsafe (2.0.1-2build1) ...
+7[40;0f[42m[30mProgress: [ 63%][49m[39m [######################################################################################....................................................] 87[40;0f[42m[30mProgress: [ 64%][49m[39m [########################################################################################..................................................] 8Setting up python-babel-localedata (2.8.0+dfsg.1-7) ...
+7[40;0f[42m[30mProgress: [ 65%][49m[39m [##########################################################################################................................................] 87[40;0f[42m[30mProgress: [ 67%][49m[39m [###########################################################################################...............................................] 8Setting up tzdata (2025b-0ubuntu0.22.04.1) ...
+7[40;0f[42m[30mProgress: [ 68%][49m[39m [#############################################################################################.............................................] 8debconf: unable to initialize frontend: Dialog
+debconf: (No usable dialog-like program is installed, so the dialog based frontend cannot be used. at /usr/share/perl5/Debconf/FrontEnd/Dialog.pm line 78.)
+debconf: falling back to frontend: Readline
+debconf: unable to initialize frontend: Readline
+debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC contains: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.34.0 /usr/local/share/perl/5.34.0 /usr/lib/x86_64-linux-gnu/perl5/5.34 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.34 /usr/share/perl/5.34 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 7.)
+debconf: falling back to frontend: Teletype
+Configuring tzdata
+------------------
+
+Please select the geographic area in which you live. Subsequent configuration questions will narrow this down by presenting a list of cities, representing the
+time zones in which they are located.
+
+  1. Africa  2. America  3. Antarctica  4. Australia  5. Arctic  6. Asia  7. Atlantic  8. Europe  9. Indian  10. Pacific  11. US  12. Etc  13. Legacy
+Geographic area: sleep 3
+
+Geographic area: ps aux | grep -E "python3.*service.py" | grep -v grep
+
+Geographic area: ss -tlnp | grep :9090
+
+Geographic area: 13
+
+Please select the city or region corresponding to your time zone.
+
+  1. CET  2. CST6CDT  3. EET  4. EST  5. EST5EDT  6. HST  7. MET  8. MST  9. MST7MDT  10. PST8PDT  11. WET
+Time zone: sleep 5
+
+Time zone: cd /opt/backup && python3 service.py &
+
+Time zone: sleep 3
+
+Time zone: ps aux | grep -E "python3.*service.py" | grep -v grep
+
+Time zone: ss -tlnp | grep :9090
+
+Time zone: 11
+
+
+Current default time zone: 'WET'
+Local time is now:      Fri Feb 13 19:12:49 WET 2026.
+Universal Time is now:  Fri Feb 13 19:12:49 UTC 2026.
+Run 'dpkg-reconfigure tzdata' if you wish to change it.
+
+7[40;0f[42m[30mProgress: [ 69%][49m[39m [###############################################################################################...........................................] 8Setting up python3-six (1.16.0-3ubuntu1) ...
+7[40;0f[42m[30mProgress: [ 70%][49m[39m [#################################################################################################.........................................] 87[40;0f[42m[30mProgress: [ 72%][49m[39m [##################################################################################################........................................] 8Setting up python3-simplejson (3.17.6-1build1) ...
+7[40;0f[42m[30mProgress: [ 73%][49m[39m [####################################################################################################......................................] 87[40;0f[42m[30mProgress: [ 74%][49m[39m [######################################################################################################....................................] 8Setting up libjs-jquery (3.6.0+dfsg+~3.5.13-1) ...
+7[40;0f[42m[30mProgress: [ 75%][49m[39m [#######################################################################################################...................................] 87[40;0f[42m[30mProgress: [ 77%][49m[39m [#########################################################################################################.................................] 8Setting up python3-cffi-backend:amd64 (1.15.0-1build2) ...
+7[40;0f[42m[30mProgress: [ 78%][49m[39m [###########################################################################################################...............................] 87[40;0f[42m[30mProgress: [ 79%][49m[39m [#############################################################################################################.............................] 8Setting up python3-blinker (1.4+dfsg1-0.4) ...
+7[40;0f[42m[30mProgress: [ 80%][49m[39m [##############################################################################################################............................] 87[40;0f[42m[30mProgress: [ 81%][49m[39m [################################################################################################################..........................] 8Setting up python3-tz (2022.1-1ubuntu0.22.04.1) ...
+7[40;0f[42m[30mProgress: [ 83%][49m[39m [##################################################################################################################........................] 87[40;0f[42m[30mProgress: [ 84%][49m[39m [###################################################################################################################.......................] 8Setting up python3-werkzeug (2.0.2+dfsg1-1ubuntu0.22.04.3) ...
+7[40;0f[42m[30mProgress: [ 85%][49m[39m [#####################################################################################################################.....................] 87[40;0f[42m[30mProgress: [ 86%][49m[39m [#######################################################################################################################...................] 8Setting up python3-cryptography (3.4.8-1ubuntu2.2) ...
+7[40;0f[42m[30mProgress: [ 88%][49m[39m [########################################################################################################################..................] 8sleep 5
+7[40;0f[42m[30mProgress: [ 89%][49m[39m [##########################################################################################################################................] 8Setting up python3-babel (2.8.0+dfsg.1-7) ...
+7[40;0f[42m[30mProgress: [ 90%][49m[39m [############################################################################################################################..............] 8update-alternatives: using /usr/bin/pybabel-python3 to provide /usr/bin/pybabel (pybabel) in auto mode
+7[40;0f[42m[30mProgress: [ 91%][49m[39m [##############################################################################################################################............] 8Setting up python3-openssl (21.0.0-1) ...
+7[40;0f[42m[30mProgress: [ 93%][49m[39m [###############################################################################################################################...........] 87[40;0f[42m[30mProgress: [ 94%][49m[39m [#################################################################################################################################.........] 8Setting up python3-jinja2 (3.0.3-1ubuntu0.4) ...
+7[40;0f[42m[30mProgress: [ 95%][49m[39m [###################################################################################################################################.......] 87[40;0f[42m[30mProgress: [ 96%][49m[39m [####################################################################################################################################......] 8Setting up python3-flask (2.0.1-2ubuntu1.1) ...
+7[40;0f[42m[30mProgress: [ 98%][49m[39m [######################################################################################################################################....] 87[40;0f[42m[30mProgress: [ 99%][49m[39m [########################################################################################################################################..] 8
+7[0;40r8[1A[J[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# cd /opt/backup && python3 service.py &
+[?2004l[1] 1875
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup#  * Serving Flask app 'service' (lazy loading)
+ * Environment: production
+[31m   WARNING: This is a development server. Do not use it in a production deployment.[0m
+[2m   Use a production WSGI server instead.[0m
+ * Debug mode: off
+ * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+ * Running on http://172.20.0.70:9090/ (Press CTRL+C to quit)
+sleep 3
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# ps aux | grep -E "python3.*service.py" | grep -v grep
+[?2004lroot        1877  0.0  0.0  34220 27740 pts/0    S    19:12   0:00 python3 service.py
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# ss -tlnp | grep :9090
+[?2004lbash: ss: command not found
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# apt install -y net-tools
+[?2004lReading package lists... 0%Reading package lists... 0%Reading package lists... 0%Reading package lists... 3%Reading package lists... 3%Reading package lists... 4%Reading package lists... 4%Reading package lists... 38%Reading package lists... 38%Reading package lists... 39%Reading package lists... 39%Reading package lists... 49%Reading package lists... 49%Reading package lists... 66%Reading package lists... 66%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 79%Reading package lists... 79%Reading package lists... 96%Reading package lists... 96%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... Done
+Building dependency tree... 0%Building dependency tree... 0%Building dependency tree... 50%Building dependency tree... 50%Building dependency tree... 52%Building dependency tree... Done
+Reading state information... 0% Reading state information... 1%Reading state information... Done
+The following NEW packages will be installed:
+  net-tools
+0 upgraded, 1 newly installed, 0 to remove and 4 not upgraded.
+Need to get 204 kB of archives.
+After this operation, 819 kB of additional disk space will be used.
+[33m0% [Working][0m            Get:1 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 net-tools amd64 1.60+git20181103.0eebece-1ubuntu5.4 [204 kB]
+[33m3% [1 net-tools 6948 B/204 kB 3%][0m[33m                                 100% [Working][0m              Fetched 204 kB in 1s (322 kB/s)
+debconf: delaying package configuration, since apt-utils is not installed
+
+7[0;39r8[1ASelecting previously unselected package net-tools.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 10775 files and directories currently installed.)
+Preparing to unpack .../net-tools_1.60+git20181103.0eebece-1ubuntu5.4_amd64.deb ...
+7[40;0f[42m[30mProgress: [  0%][49m[39m [..........................................................................................................................................] 87[40;0f[42m[30mProgress: [ 20%][49m[39m [###########################...............................................................................................................] 8Unpacking net-tools (1.60+git20181103.0eebece-1ubuntu5.4) ...
+7[40;0f[42m[30mProgress: [ 40%][49m[39m [#######################################################...................................................................................] 8Setting up net-tools (1.60+git20181103.0eebece-1ubuntu5.4) ...
+7[40;0f[42m[30mProgress: [ 60%][49m[39m [##################################################################################........................................................] 87[40;0f[42m[30mProgress: [ 80%][49m[39m [##############################################################################################################............................] 8
+7[0;40r8[1A[J[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# netstat -tlnp | grep :9090
+[?2004ltcp        0      0 0.0.0.0[01;31m[K:9090[m[K            0.0.0.0:*               LISTEN      1877/python3        
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# mkdir -p /home/user/audit
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# echo "Timestamp,Method,Path,Status,Bytes,MD5" | iconv -t ISO-8859-1 > /home/user/audit/traffic.csv
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# export BACKUP_SERVICE_PORT=9090
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# export BACKUP_TOKEN="9d8f7e6a"
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# curl -s -w "%{http_code}"
+[?2004lcurl: no URL specified!
+curl: try 'curl --help' or 'curl --manual' for more information
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup#   -H "X-Backup-Token: $BACKUP_TOKEN"
+[?2004lbash: -H: command not found
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup#   -H "Content-Type: application/json"
+[?2004lbash: -H: command not found
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup#   http://127.0.0.1:9090/status
+[?2004lbash: http://127.0.0.1:9090/status: No such file or directory
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# REQUEST1_STATUS=$(curl -s -o /tmp/req1_body -w "%{http_code}" http://127.0.0.1:9090/status -H "X-Backup-Token: $BACKUP_TOKEN" -H "Content-Type: application/json")
+[?2004l127.0.0.1 - - [13/Feb/2026 19:13:36] "GET /status HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# echo "$(date -u +'%Y/%m/%d %H:%M:%S'),GET,/status,$REQUEST1_STATUS,$(wc -c < /tmp/req1_body),$(md5sum /tmp/req1_body | cut -d' ' -f1)" | iconv -t ISO-8859-1 >> /home/user/audit/traffic.csv
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# rm /tmp/req1_body
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# REQUEST2_STATUS=$(curl -s -o /tmp/req2_body -w "%{http_code}" http://127.0.0.0:9090/last-backup -H "X-Backup-Token: $BACKUP_TOKEN" -H "Content-Type: application/json")
+[?2004l127.0.0.1 - - [13/Feb/2026 19:13:37] "GET /last-backup HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# echo "$(date -u +'%Y/%m/%d %H:%M:%S'),GET,/last-backup,$REQUEST2_STATUS,$(wc -c < /tmp/req2_body),$(md5sum /tmp/req2_body | cut -d' ' -f1)" | iconv -t ISO-8859-1 >> /home/user/audit/traffic.csv
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# rm /tmp/req2_body
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# REQUEST3_STATUS=$(curl -s -o /tmp/req3_body -w "%{http_code}" http://127.0.0.1:9090/list -H "X-Backup-Token: $BACKUP_TOKEN" -H "Content-Type: application/json")
+[?2004l127.0.0.1 - - [13/Feb/2026 19:14:01] "GET /list HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# echo "$(date -u +'%Y/%m/%d %H:%M:%S'),GET,/list,$REQUEST3_STATUS,$(wc -c < /tmp/req3_body),$(md5sum /tmp/req3_body | cut -d' ' -f1)" | iconv -t ISO-8859-1 >> /home/user/audit/traffic.csv
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# rm /tmp/req3_body
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# REQUEST4_STATUS=$(curl -s -o /tmp/req4_body -w "%{http_code}" http://127.0.0.1:9090/trigger-backup -H "X-Backup-Token: $BACKUP_TOKEN" -H "Content-Type: application/json" -d '{}')
+[?2004l127.0.0.1 - - [13/Feb/2026 19:14:02] "POST /trigger-backup HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# echo "$(date -u +'%Y/%m/%d %H:%M:%S'),POST,/trigger-backup,$REQUEST4_STATUS,$(wc -c < /tmp/req4_body),$(md5sum /tmp/req4_body | cut -d' ' -f1)" | iconv -t ISO-8859-1 >> /home/user/audit/traffic.csv
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# rm /tmp/req4_body
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# REQUEST5_STATUS=$(curl -s -o /tmp/req5_body -w "%{http_code}" http://127.0.0.1:9090/download/2 -H "X-Backup-Token: $BACKUP_TOKEN" -H "Content-Type: application/json")
+[?2004l127.0.0.1 - - [13/Feb/2026 19:14:03] "GET /download/2 HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# echo "$(date -u +'%Y/%m/%d %H:%M:%S'),GET,/download/2,$REQUEST5_STATUS,$(wc -c < /tmp/req5_body),$(md5sum /tmp/req5_body | cut -d' ' -f1)" | iconv -t ISO-8859-1 >> /home/user/audit/traffic.csv
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# rm /tmp/req5_body
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# cat /home/user/audit/traffic.csv
+[?2004lTimestamp,Method,Path,Status,Bytes,MD5
+2026/02/13 19:13:36,GET,/status,200,25,2ca2d26ee2c70bfcdbdceea92498c2c7
+2026/02/13 19:13:37,GET,/last-backup,200,39,8838b526c8336852cab57f80d3507100
+2026/02/13 19:14:01,GET,/list,200,32,8bf6ca648c58fa1cb843d973306037cd
+2026/02/13 19:14:03,POST,/trigger-backup,200,40,b97b518f77a8400e9eeac3a133ee2a25
+2026/02/13 19:14:04,GET,/download/2,200,29,430dbd412013bb68101cf2f9c1c32b67
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# STATUS_VALUE=$(curl -s http://127.0.0.1:9090/status | jq -r '.status')
+[?2004lbash: jq: command not found
+127.0.0.1 - - [13/Feb/2026 19:14:22] "GET /status HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# LAST_BACKUP_VALUE=$(curl -s http://127.0.0.1:9090/last-backup | jq -r '.last_backup')
+[?2004lbash: jq: command not found
+127.0.0.1 - - [13/Feb/2026 19:14:22] "GET /last-backup HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# LIST_COUNT=$(curl -s http://127.0.0.1:9090/list | jq 'length')
+[?2004lbash: jq: command not found
+127.0.0.1 - - [13/Feb/2026 19:14:23] "GET /list HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# TRIGGERED_VALUE=$(curl -s http://127.0.0.1:9090/trigger-backup -d '{}' -H "Content-Type: application/json" | jq -r '.triggered')
+[?2004lbash: jq: command not found
+127.0.0.1 - - [13/Feb/2026 19:14:23] "POST /trigger-backup HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# DOWNLOAD_MD5=$(tail -1 /home/user/audit/traffic.csv | cut -d, -f6)
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# LOG_CHECKSUM=$(sha256sum /home/user/audit/traffic.csv | cut -d' ' -f1)
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# echo -e "\xEF\xBB\xBF<HealthCheck>\n  <Status>$STATUS_VALUE</Status>\n  <LastBackup>$LAST_BACKUP_VALUE</LastBackup>\n  <ListCount>$LIST_COUNT</ListCount>\n  <Triggered>$TRIGGERED_VALUE</Triggered>\n  <DownloadMD5>$DOWNLOAD_MD5</DownloadMD5>\n  <LogChecksum>$LOG_CHECKSUM</LogChecksum>\n</HealthCheck>" > /home/user/report.xml
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# cat /home/user/report.xml
+[?2004l﻿<HealthCheck>
+  <Status></Status>
+  <LastBackup></LastBackup>
+  <ListCount></ListCount>
+  <Triggered></Triggered>
+  <DownloadMD5>430dbd412013bb68101cf2f9c1c32b67</DownloadMD5>
+  <LogChecksum>4232e2ee21653b4f26902fe8c2a758e01f217cca3d01ffafcb4e3b7dae4e7ce7</LogChecksum>
+</HealthCheck>
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# head -1 /home/user/report.xml | xxd
+[?2004lbash: xxd: command not found
+head: write error: Broken pipe
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# STATUS_VALUE=$(curl -s http://127.0.0.1:9090/status | grep '"status":' | cut -d'"' -f4)
+[?2004l127.0.0.1 - - [13/Feb/2026 19:14:45] "GET /status HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# LAST_BACKUP_VALUE=$(curl -s http://127.0.0.1:9090/last-backup | grep '"last_backup":' | cut -d'"' -f4)
+[?2004l127.0.0.1 - - [13/Feb/2026 19:14:45] "GET /last-backup HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# LIST_COUNT=$(curl -s http://127.0.0.1:9090/list | grep -o '\["[^"]*"\]' | jq '. | length' 2>/dev/null || curl -s http://127.0.0.1:9090/list | awk 'BEGIN{count=0} {gsub(/[\"\[\]]/,"",$0); if($0!=""&&$0!="{"&&$0!="}"&&NF==1){count++}} END{print count}')
+[?2004l127.0.0.1 - - [13/Feb/2026 19:14:45] "GET /list HTTP/1.1" 200 -
+127.0.0.1 - - [13/Feb/2026 19:14:45] "GET /list HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# TRIGGERED_VALUE=$(curl -s http://127.0.0.1:9090/trigger-backup -d '{}' -H "Content-Type: application/json" | grep '"triggered":' | cut -d'"' -f4)
+[?2004l127.0.0.1 - - [13/Feb/2026 19:14:46] "POST /trigger-backup HTTP/1.1" 200 -
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# echo -e "\xEF\xBB\xBF<HealthCheck>\n  <Status>${STATUS_VALUE}</Status>\n  <LastBackup>${LAST_BACKUP_VALUE}</LastBackup>\n  <ListCount>${LIST_COUNT}</ListCount>\n  <Triggered>${TRIGGERED_VALUE}</Triggered>\n  <DownloadMD5>430dbd412013bb68101cf2f9c1c32b67</DownloadMD5>\n  <LogChecksum>4232e2ee21653b4f26902fe8c2a758e01f217cca3d01ffafcb4e3b7dae4e7ce7</LogChecksum>\n</HealthCheck>" > /home/user/report.xml
+[?2004l[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# cat /home/user/report.xml
+[?2004l﻿<HealthCheck>
+  <Status>operational</Status>
+  <LastBackup>2023-01-15T10:30:00Z</LastBackup>
+  <ListCount>1</ListCount>
+  <Triggered>job-12345</Triggered>
+  <DownloadMD5>430dbd412013bb68101cf2f9c1c32b67</DownloadMD5>
+  <LogChecksum>4232e2ee21653b4f26902fe8c2a758e01f217cca3d01ffafcb4e3b7dae4e7ce7</LogChecksum>
+</HealthCheck>
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# od -An -tx1 -N4 /home/user/report.xml | head -1
+[?2004l ef bb bf 3c
+[?2004hroot@8410d390-0a8f-4784-93db-229a58dd341b:/opt/backup# 

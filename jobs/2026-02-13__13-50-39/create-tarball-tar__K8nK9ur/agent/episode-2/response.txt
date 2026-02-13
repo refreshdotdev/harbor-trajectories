@@ -1,0 +1,15 @@
+{
+  "analysis": "The backup destination directory '/home/user/secure_backups' and log directory '/home/user/audit' have been successfully created. The backup destination is currently empty. The next step is to generate the archive name using the current date and then create the backup script that will handle filtering, normalization, rotation, checksum generation, and logging.",
+  "plan": "I will generate the current date in the format YYYYMMDD and then write a backup script that accomplishes all the required tasks. The script will create a tar.gz archive from '/home/user/data', excluding .tmp files and broken symlinks. It will set proper ownership and permissions on the archive members, handle rotation if needed, generate a SHA-256 checksum file, and log the operation with the required header format.",
+  "commands": [
+    {
+      "keystrokes": "cat > /tmp/backup_script.sh << 'EOF'\n#!/bin/bash\n\n# Configuration & Setup\nBACKUP_DEST=\"${BACKUP_DEST:-/home/user/archives}\"\nLOG_FILE=\"${LOG_FILE:-/home/user/backup_logs/backup.log}\"\n\n# Create directories if they don't exist\nmkdir -p \"${BACKUP_DEST}\" $(dirname \"${LOG_FILE}\")\n\n# Generate current date and archive name\nCURRENT_DATE=$(date +%Y%m%d)\nARCHIVE_NAME=\"daily_${CURRENT_DATE}.tar.gz\"\nARCHIVE_FULL_PATH=\"${BACKUP_DEST}/${ARCHIVE_NAME}\"\nCHECKSUM_FILE=\"${BACKUP_DEST}/daily_${CURRENT_DATE}.sha256\"\n\n# Handle rotation\nif [ -f \"${ARCHIVE_FULL_PATH}\" ]; then\n    mv \"${ARCHIVE_FULL_PATH}\" \"${ARCHIVE_FULL_PATH}.bak-$(date +%s)\" 2>/dev/null || true\nfi\nif [ -f \"${CHECKSUM_FILE}\" ]; then\n    mv \"${CHECKSUM_FILE}\" \"${CHECKSUM_FILE}.bak-$(date +%s)\" 2>/dev/null || true\nfi\n\n# Archive Creation with Filtering & Normalization\n# Exclude .tmp files and broken symlinks; set ownership to root:root and remove others' permissions\ntar --exclude='*.tmp' \\\n    --exclude='*/*/*.tmp' \\\n    --exclude='broken-symlinks' \\\n    --owner=0 --group=0 --mode='g+rwx,o-rwx' \\\n    -czf \"${ARCHIVE_FULL_PATH}\" -C /home/user/data . 2>/dev/null\n\n# Checksum Generation\nsha256sum \"${ARCHIVE_FULL_PATH}\" > \"${CHECKSUM_FILE}\"\nsed -i 's|${ARCHIVE_FULL_PATH}|SHA256 ('${ARCHIVE_NAME}') =|' \"${CHECKSUM_FILE}\"\n\n# Logging with Header\nLOG_HEADER=\"TIMESTAMP | ARCHIVE | STATUS\"\nif [ ! -f \"${LOG_FILE}\" ]; then\n    echo \"${LOG_HEADER}\" > \"${LOG_FILE}\"\nfi\nHW_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')\necho \"${HW_TIMESTAMP} - ${ARCHIVE_NAME} - OK\" >> \"${LOG_FILE}\"\n\necho \"Backup completed successfully. Archive: ${ARCHIVE_NAME}\"\nEOF\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "chmod +x /tmp/backup_script.sh\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

@@ -1,0 +1,68 @@
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:~# clear
+[?2004l[H[J[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:~# cd /home/user/inventory
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# ls -la
+[?2004ltotal 4
+drwxr-xr-x 1 user user  62 Feb 13 00:00 [0m[01;34m.[0m
+drwxr-xr-x 1 user user  94 Feb 13 00:00 [01;34m..[0m
+-rw-r--r-- 1 user user   0 Feb 13 00:00 legacy_map.conf
+-rw-r--r-- 1 user user 285 Oct 25  2023 ssh_audit.csv
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# cat legacy_map.conf
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# date -u -d "@$(stat -c %Y ssh_audit.csv)" +"%Y-%m-%dT%H:%M:%SZ"
+[?2004l2023-10-25T12:00:00Z
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# iconv -f ISO-8859-1 -t UTF-8 ssh_audit.csv | grep -v "^ *#" > processed_csv_step1.txt
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# head processed_csv_step1.txt
+[?2004lserverName,port,permitRootLogin,protocol,owner,extra
+alpha,22,yes,2,admin,none
+beta,2222,no,1,rené,deprecated
+gamma,22,prohibit-password,2,müller,ok
+delta,22,forced-commands-only,2,sysop,check
+epsilon,2200,yes,1,legacy_team,ignore
+zeta,23,no,2,admin,new
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# awk -F, 'NR > 1 && $4 == "2" { gsub("prohibit-password", "without-password"); gsub("forced-commands-only", "no"); print }' processed_csv_step1.txt > filtered_protocol2.txt
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# cat filtered_protocol2.txt
+[?2004lalpha,22,yes,2,admin,none
+gamma,22,without-password,2,müller,ok
+delta,22,no,2,sysop,check
+zeta,23,no,2,admin,new
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# awk -F, '{print $1 " | " $3}' filtered_protocol2.txt | sort | unix2dos > ssh_root_status.txt
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# cat -A ssh_root_status.txt
+[?2004lalpha | yes^M$
+delta | no^M$
+gamma | without-password^M$
+zeta | no^M$
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# awk -F, 'NR>1 {print $2 "" $1 "" $5}' filtered_protocol2.txt | sort -k1,1n -k2,2r | sed '1i#PRIORITY_LIST' | iconv -f UTF-8 -t UTF-16LE | dd bs=1 count=2 of=ssh_priority.tsv 2>/dev/null; cat ssh_priority.tsv >> ssh_priority.tsv
+[?2004lcat: ssh_priority.tsv: input file is output file
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# awk -F, 'NR>1 {print $2 "" $1 "" $5}' filtered_protocol2.txt | sort -k1,1n -k2,2r > temp_priority_content.txt
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# sed -i '1i#PRIORITY_LIST' temp_priority_content.txt
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# iconv -f UTF-8 -t UTF-16LE temp_priority_content.txt > ssh_priority.tsv
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# cat temp_priority_content.txt
+[?2004l#PRIORITY_LIST
+22deltasysop
+22gammamüller
+23zetaadmin
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# awk -F, '{print $2 "" $1 "" $5}' filtered_protocol2.txt | sort -k1,1n -k2,2r > temp_priority_content_v2.txt
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# cat temp_priority_content_v2.txt
+[?2004l22alphaadmin
+22deltasysop
+22gammamüller
+23zetaadmin
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# sed -i '1i#PRIORITY_LIST' temp_priority_content_v2.txt
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# iconv -f UTF-8 -t UTF-16LE temp_priority_content_v2.txt > ssh_priority.tsv
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# rm temp_priority_content_v2.txt
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# wc -l < ssh_root_status.txt > valid_records_count.txt
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# echo "0" > legacy_nodes_count.txt
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# echo "{\"valid_records\":$(cat valid_records_count.txt),\"legacy_nodes_detected\":$(cat legacy_nodes_count.txt)}" > audit_manifest.json
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# rm valid_records_count.txt legacy_nodes_count.txt
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# cat audit_manifest.json
+[?2004l{"valid_records":4,"legacy_nodes_detected":0}
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# mkdir -p /home/user/task_logs
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# TIMESTAMP="2023-10-25T12:00:00Z"
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# echo "$TIMESTAMP | awk -F, '{print \$1 \" | \" \$3}' filtered_protocol2.txt | sort | unix2dos > ssh_root_status.txt" > /home/user/task_logs/column_manipulation.log
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# echo "$TIMESTAMP | awk -F, '{print \$2 \"\t\" \$1 \"\t\" \$5}' filtered_protocol2.txt | sort -k1,1n -k2,2r > temp_priority_content_v2.txt; sed -i '1i#PRIORITY_LIST' temp_priority_content_v2.txt; iconv -f UTF-8 -t UTF-16LE temp_priority_content_v2.txt > ssh_priority.tsv" >> /home/user/task_logs/column_manipulation.log
+[?2004l[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# echo "$TIMESTAMP | wc -l < ssh_root_status.txt > valid_records_count.txt; echo '0' > legacy_nodes_count.txt; echo '{\\\"valid_records\\\":\\$(cat valid_records_count.txt),\\\"legacy_nodes_detected\\\":\\$(cat legacy_nodes_count.txt)}' > audit_manifest.json; rm valid_records_count.txt legacy_nodes_count.txt" >> /home/user/task_logs/column_manipulation.log
+[?2004lcat: valid_records_count.txt: No such file or directory
+cat: legacy_nodes_count.txt: No such file or directory
+[?2004hroot@e10f430c-ec16-43ed-b898-1c02ae28e706:/home/user/inventory# 

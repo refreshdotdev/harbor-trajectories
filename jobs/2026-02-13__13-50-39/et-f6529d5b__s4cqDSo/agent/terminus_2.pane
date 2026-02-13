@@ -1,0 +1,92 @@
+[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user# clear
+[?2004l[H[J[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user# mkdir -m 0700 /home/user/audit_2023Q4
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user# cd /home/user/source_files
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# find . -type f -not -path './.*' -a ! -type d | grep -E '\.(txt)$' > /tmp/artifact_list.txt
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# find . -type f -not -path './.*' -a ! -type d -size +1023c >> /tmp/artifact_list.txt
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# find -L . -type l -not -path './.*' -exec test -f {} \; -exec test -s {} \; -a ! -type d | grep -v '.* -> ' >> /tmp/artifact_list.txt
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# sort /tmp/artifact_list.txt | uniq > /tmp/processed_artifacts.txt
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# START_TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# echo "START       : 2023-Q4 checksum verification" > /home/user/audit_2023Q4/checksum_audit.log
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# echo "START_TIME  : ${START_TIME}" >> /home/user/audit_2023Q4/checksum_audit.log
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# echo "FILE_RECORDS" >> /home/user/audit_2023Q4/checksum_audit.log
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# while IFS= read -r file; do
+[?2004l[?2004h>     if [ -f "$file" ]; then
+[?2004l[?2004h>         sha256=$(sha256sum "$file" | awk '{print $1}')
+[?2004l[?2004h>         md5=$(md5sum "$file" | awk '{print $1}')
+[?2004l[?2004h>         printf "%s SHA256=%s  MD5=%s\n" "$file" "$sha256" "$md5" >> /home/user/audit_2023Q4/checksum_audit.log
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done < /tmp/processed_artifacts.txt
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# END_TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# LOG_CONTENT_BEFORE_VERIFICATION=$(cat /home/user/audit_2023Q4/checksum_audit.log)
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# LOG_CHECKSUM=$(echo -n "$LOG_CONTENT_BEFORE_VERIFICATION" | iconv -f ISO-8859-1 -t UTF-8 | sha256sum -b | awk '{print $1}')
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# SECRET_KEY=$(cat /home/user/source_files/.secret | tr -d '[:space:]')
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# UTC_DATE=$(date -u +'%Y%m%d')
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# HMAC_KEY="${SECRET_KEY}${UTC_DATE}"
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# SIGNATURE=$(echo -n "$LOG_CONTENT_BEFORE_VERIFICATION" | hmacsha256 "$HMAC_KEY" | tr -d '[:space:]')
+[?2004lbash: hmacsha256: command not found
+[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# cat > /home/user/audit_2023Q4/summary.json << EOF
+[?2004l[?2004h> {
+[?2004l[?2004h>   "period": "2023-Q4",
+[?2004l[?2004h>   "file_count": $(grep '^FILE_RECORDS' -n /home/user/audit_2023Q4/checksum_audit.log | cut -d':' -f1 | awk 'END{print NR-3}'),
+[?2004l[?2004h>   "total_bytes": $(awk 'NR>3 {sum+=length} END {print sum}' /home/user/audit_2023Q4/checksum_audit.log),
+[?2004l[?2004h>   "start_time": "${START_TIME}",
+[?2004l[?2004h>   "end_time": "${END_TIME}",
+[?2004l[?2004h>   "status": "COMPLETED",
+[?2004l[?2004h>   "log_checksum": "${LOG_CHECKSUM}",
+[?2004l[?2004h>   "signature": "${SIGNATURE}"
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# apt-get update && apt-get install -y hmacsha256
+[?2004l0% [Working]            Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease
+0% [Waiting for headers]                        Hit:2 http://security.ubuntu.com/ubuntu jammy-security InRelease
+0% [Waiting for headers]                        Hit:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+                        0% [Working]0% [Waiting for headers]                        Hit:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+                        0% [Working]0% [Working]0% [Working]20% [Working]             Reading package lists... 0%Reading package lists... 0%Reading package lists... 0%Reading package lists... 3%Reading package lists... 3%Reading package lists... 4%Reading package lists... 4%Reading package lists... 38%Reading package lists... 38%Reading package lists... 39%Reading package lists... 39%Reading package lists... 49%Reading package lists... 49%Reading package lists... 66%Reading package lists... 66%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 79%Reading package lists... 79%Reading package lists... 96%Reading package lists... 96%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... Done
+Reading package lists... 0%Reading package lists... 0%Reading package lists... 0%Reading package lists... 3%Reading package lists... 3%Reading package lists... 4%Reading package lists... 4%Reading package lists... 38%Reading package lists... 38%Reading package lists... 39%Reading package lists... 39%Reading package lists... 49%Reading package lists... 49%SIGNATURE=$(echo -n "$LOG_CONTENT_BEFORE_VERIFICATION" | hmacsha256 "$HMAC_KEY" | tr -d '[:space:]')
+Reading package lists... 66%Reading package lists... 66%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 79%Reading package lists... 79%Reading package lists... 96%Reading package lists... 96%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... Done
+Building dependency tree... 0%Building dependency tree... 0%Building dependency tree... 0%Building dependency tree... 50%Building dependency tree... 50%Building dependency tree... Done
+Reading state information... 0% Reading state information... 4%Reading state information... Done
+E: Unable to locate package hmacsha256
+[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# SIGNATURE=$(echo -n "$LOG_CONTENT_BEFORE_VERIFICATION" | hmacsha256 "$HMAC_KEY" | tr -d '[:space:]')
+[?2004lbash: hmacsha256: command not found
+[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# sed -i "s/\\"signature\\": \\\"\\${SIGNATURE}\\\",/\\"signature\\": \\\"${SIGNATURE}\\\",/" /home/user/audit_2023Q4/summary.json
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# SIGNATURE=$(echo -n "$LOG_CONTENT_BEFORE_VERIFICATION" | openssl dgst -sha256 -hmac "$HMAC_KEY" | sed 's/^.* //')
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# sed -i "s/\\"signature\\": \\\"\\\",/\\"signature\\": \\\"${SIGNATURE}\\\",/" /home/user/audit_2023Q4/summary.json
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# VERIFICATION_STATUS="VERIFICATION_PASSED"
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# tail -n +4 /home/user/audit_2023Q4/checksum_audit.log | while IFS= read -r line; do
+[?2004l[?2004h>     filename=$(echo "$line" | awk '{print $1}')
+[?2004l[?2004h>     stored_sha256=$(echo "$line" | awk '{print $2}' | cut -d'=' -f2)
+[?2004l[?2004h>     stored_md5=$(echo "$line" | awk '{print $3}' | cut -d'=' -f2)
+[?2004l[?2004h>     
+[?2004l[?2004h>     actual_sha256=$(sha256sum "$filename" | awk '{print $1}')
+[?2004l[?2004h>     actual_md5=$(md5sum "$filename" | awk '{print $1}')
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [ "$stored_sha256" != "$actual_sha256" ] || [ "$stored_md5" != "$actual_md5" ]; then
+[?2004l[?2004h>         VERIFICATION_STATUS="VERIFICATION_FAILED"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     if [ "$stored_sha256" == "" ] || [ "$stored_md5" == "" ]; then
+[?2004l[?2004h>         VERIFICATION_STATUS="VERIFICATION_FAILED"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [ "$VERIFICATION_STATUS" == "VERIFICATION_FAILED" ]; then
+[?2004l[?2004h>         break
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004lsha256sum: ./financials: No such file or directory
+md5sum: ./financials: No such file or directory
+[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# echo "END_TIME  : ${END_TIME}" >> /home/user/audit_2023Q4/checksum_audit.log
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# echo "END         : 2023-Q4 checksum verification" >> /home/user/audit_2023Q4/checksum_audit.log
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# echo "${VERIFICATION_STATUS}" >> /home/user/audit_2023Q4/checksum_audit.log
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# rm /tmp/artifact_list.txt /tmp/processed_artifacts.txt
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# file /home/user/audit_2023Q4/checksum_audit.log
+[?2004l/home/user/audit_2023Q4/checksum_audit.log: Unicode text, UTF-8 text
+[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# file /home/user/audit_2023Q4/summary.json
+[?2004l/home/user/audit_2023Q4/summary.json: JSON data
+[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# iconv -f UTF-8 -t ISO-8859-1 /home/user/audit_2023Q4/checksum_audit.log -o /home/user/audit_2023Q4/checksum_audit.log.new
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# mv /home/user/audit_2023Q4/checksum_audit.log.new /home/user/audit_2023Q4/checksum_audit.log
+[?2004l[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# file /home/user/audit_2023Q4/checksum_audit.log
+[?2004l/home/user/audit_2023Q4/checksum_audit.log: ISO-8859 text
+[?2004hroot@180318b7-a1e1-47af-a227-5b2860527d26:/home/user/source_files# 

@@ -1,0 +1,61 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user# cat > update_api_config.py << 'EOF'
+> import json
+>
+> # Read ticket data
+> with open('tickets/CR-1104-placeholder.json', 'r') as f:
+>     ticket = json.load(f)
+>
+> api_config = ticket['api_gateway']
+> new_port = api_config['server_port']
+> new_origins = api_config['cors_allowed_origins']
+>
+> # Read YAML file
+> lines = []
+> server_port_updated = False
+> origins_updated = False
+>
+> with open('configs/api-gateway.yaml', 'r') as f:
+>     lines = f.readlines()
+>
+> # Update server port
+> for i in range(len(lines)):
+>     if lines[i].startswith('  port: '):
+>         lines[i] = f'  port: {new_port}\n'
+>         server_port_updated = True
+>         break
+>
+> # Update CORS origins
+> origins_line = -1
+> for i in range(len(lines)):
+>     if 'allowed_origins:' in lines[i]:
+>         origins_line = i
+>         break
+>
+> if origins_line != -1:
+>     # Replace the line with new origins list
+>     origins_str = '[\'' + '\', \''.join(new_origins) + '\']'
+>     lines[origins_line] = f'    allowed_origins: {origins_str}\n'
+>     origins_updated = True
+>
+> # Write updated config
+> with open('configs/api-gateway.yaml', 'w') as f:
+>     f.writelines(lines)
+>
+> print("API Gateway configuration updated successfully")
+> EOF
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user# python3 update_api_config.py
+API Gateway configuration updated successfully
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user# cat configs/api-gateway.yaml
+server:
+  port: 8080
+
+security:
+  cors:
+    allowed_origins: ['https://app.example.com', 'https://admin.example.com']
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user#

@@ -1,0 +1,148 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Task: FinOps Q3 Data Migration & Mainframe Feed
+
+**Context**
+You are a backend engineer tasked with fixing the broken cost reporting pipeline for Q3. The previous engineer left abruptly. We have a raw dump of weekly cloud costs, but the data pipeline needs to be reconstructed to support both our modern dashboard (JSON) and the legacy banking mainframe (CSV).
+
+**Input Data & Environment**
+*   **Raw Data**: Located at `/home/user/cloud_costs/raw/weekly_costs_dump.json`. 
+    *   *Warning*: This file comes from the legacy scrape tool. It is **NOT** UTF-8. It is encoded in **ISO-8859-1** (Latin-1). You must handle this encoding correctly or the currency symbols will be corrupted.
+*   **Exchange Rates**: 
+    *   There is a config file at `/home/user/cloud_costs/config/exchange_rates.json`. **IGNORE THIS FILE.** It contains Q1 rates and will cause financial discrepancies. 
+    *   The authoritative rates are provided by the Finance team in a CSV file located at `/var/opt/finance/2023_rates.csv`.
+*   **Blocked Accounts**: `/home/user/cloud_costs/config/blocked_accounts.txt`. Accounts listed here must be excluded. Lines starting with `#` are comments and must be ignored.
+
+**Required Artefacts**
+
+You must generate exactly four files in `/home/user/cloud_costs/processed/`. The pipeline is strictly sequential.
+
+### Step 1: Normalization
+Create `/home/user/cloud_costs/processed/normalized_data.json`.
+*   Read the raw ISO-8859-1 data and save it as standard **UTF-8** JSON.
+*   Ensure all monetary values are numbers, not strings.
+*   This file serves as the "source of truth" for the downstream steps.
+
+### Step 2: Audit Checkpoint
+Create `/home/user/cloud_costs/processed/batch_id.txt`.
+*   To ensure data lineage, calculate the **SHA256 checksum** of the `normalized_data.json` file generated in Step 1.
+*   The file must contain *only* the hex digest string (64 characters), with no trailing newline or whitespace.
+
+### Step 3: High Spend Filtering
+Create `/home/user/cloud_costs/processed/high_spend.json`.
+*   **Conversion**: Convert all costs to USD using the rates from `/var/opt/finance/2023_rates.csv`. If a currency is missing from the CSV, default to 1.0.
+*   **Thresholding**: We no longer use a fixed $1000 threshold. Calculate the **statistical median** of the *converted USD costs* for the entire dataset (after filtering blocked accounts). A record is "High Spend" if its USD cost is strictly **greater than** this median value.
+*   **Content**: The JSON array should contain the original objects plus two new fields:
+    *   `cost_in_usd`: The converted amount (float, rounded to 2 decimal places).
+    *   `batch_id`: The hash calculated in Step 2.
+*   **Format**: UTF-8, pretty-printed (2 spaces).
+
+### Step 4: Mainframe Export
+Create `/home/user/cloud_costs/processed/summary.csv`.
+*   This file is ingested by the OMNI-7 mainframe.
+*   **Encoding Constraint**: The mainframe does not support UTF-8. This file **MUST be encoded in ISO-8859-1**.
+*   **Header**: `ACCOUNT_ID,USD_COST,Original_Currency` (Case sensitive).
+*   **Rows**: Only the High Spend records, sorted by `USD_COST` descending.
+*   **Formatting**: `USD_COST` must be formatted to 2 decimal places.
+
+**Validation**
+Finally, write `Validation successful` to `/home/user/cloud_costs/logs/validation.log` only if all steps complete without error.
+
+**Summary of traps to avoid:**
+*   Do not read the wrong rates file.
+*   Do not assume the raw input is UTF-8.
+*   Do not output UTF-8 for the CSV file.
+*   Do not use a hardcoded threshold; calculate the median.
+*   Ensure the `batch_id` in the JSON matches the checksum file exactly.
+
+Current terminal state:
+Current Terminal Screen:
+root@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,60 @@
+```json
+{
+  "analysis": "The script has executed up to the point of generating the initial `summary.json`. The `hmac_sha256` command was not found, so the `LOG_SIG` variable was not set. The `checksum_audit.log` has been populated with file records, the end time header, and a placeholder `VERIFICATION_PENDING` status. The next steps are to install `hmac_sha256` (if possible), re-calculate the log checksum (as the log content might have changed slightly or `LOG_CONTENT_BEFORE_END_TIME` is stale), re-calculate the HMAC signature, update `summary.json` with the correct signature, and then perform the final integrity verification of `checksum_audit.log`.",
+  "plan": "1. Check if `hmac_sha256` can be installed or if an alternative like `openssl dgst -sha256 -hmac` can be used. If not, the signature might need to be empty or an error noted. For this solution, I'll assume `hmac_sha256` is not available and will proceed by setting `LOG_SIG` to a placeholder. 2. Re-read the current content of `checksum_audit.log` to get an accurate version for the checksum and HMAC. 3. Re-calculate `LOG_CHECKSUM` from this current content. 4. Calculate `LOG_SIG` using `openssl dgst -sha256 -hmac` if available, or set it to a placeholder value indicating the command was not found. 5. Update `summary.json` with the recalculated `LOG_CHECKSUM` and the determined `LOG_SIG`. 6. Perform the integrity verification: read `checksum_audit.log`, parse each file record, re-calculate SHA256 hashes for the actual files on disk, and compare them. 7. Update the final line in `checksum_audit.log` to `VERIFICATION_PASSED` or `VERIFICATION_FAILED`.",
+  "commands": [
+    {
+      "keystrokes": "which hmac_sha256 || which openssl\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "export LOG_CONTENT_BEFORE_END_TIME_FINAL=$(cat \"$CONFIG_FILE\" | head -n -1)\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "export LOG_CHECKSUM_FINAL=$(echo -n \"$LOG_CONTENT_BEFORE_END_TIME_FINAL\" | sha256sum -b | cut -d' ' -f1)\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "export LOG_SIG_FINAL=\"\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "if command -v openssl &> /dev/null; then\n  export LOG_SIG_FINAL=$(echo -n \"$LOG_CONTENT_BEFORE_END_TIME_FINAL\" | openssl dgst -sha256 -hmac \"${HMAC_KEY_FOR_JSON}\" | sed 's/^.* //')\nfi\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "export VERIFICATION_STATUS=\"VERIFICATION_FAILED\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "export ALL_HASHES_MATCH=true\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "export AUDIT_LOG_FILE_PATH=\"/home/user/audit_2023Q4/checksum_audit.log\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "# Read lines 3 to -2 from the log file (actual file records)\n# Line 1: START, Line 2: START_TIME, Line 3: FILE_RECORDS\n# Lines -2: END_TIME, -1: END (verification status is on new line after these in current state)\nawk -v total_lines=$(wc -l < \"$AUDIT_LOG_FILE_PATH\") 'NR>=3 && NR<=(total_lines-2) {print $0}' \"$AUDIT_LOG_FILE_PATH\" | while IFS= read -r record_line; do\n  filename=$(echo \"$record_line\" | awk '{print $1}')\n  sha256_on_disk=$(sha256sum \"${AUDIT_LOG_FILE_PATH%/*}/../source_files/${filename//\\047\\\\\\047/\\\\\\047}\" 2>/dev/null | cut -d' ' -f1)\n  if [ -z \"$sha256_on_disk\" ]; then\n    export ALL_HASHES_MATCH=false\n  elif [ \"$sha256_on_disk\" != \"${filename#*=}\" ]; then\n    export ALL_HASHES_MATCH=false\n  fi\ndone\n",
+      "duration": 2.0
+    },
+    {
+      "keystrokes": "if [ \"$ALL_HASHES_MATCH\" = true ]; then\n  export VERIFICATION_STATUS=\"VERIFICATION_PASSED\"\nelse\n  export VERIFICATION_STATUS=\"VERIFICATION_FAILED\"\nfi\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "sed -i '$ d' \"$CONFIG_FILE\" || sed -i '' '$ d' \"$CONFIG_FILE\"\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "echo \"${VERIFICATION_STATUS}\" >> \"$CONFIG_FILE\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat > /home/user/audit_2023Q4/summary.json << EOF_JSON\n{\n  \"period\": \"2023-Q4\",\n  \"file_count\": ${AUDIT_FILE_COUNT},\n  \"total_bytes\": ${TOTAL_BYTES},\n  \"start_time\": \"${AUDIT_START_TS}\",\n  \"end_time\": \"${AUDIT_END_TS}\",\n  \"status\": \"COMPLETED\",\n  \"log_checksum\": \"${LOG_CHECKSUM_FINAL}\",\n  \"signature\": \"${LOG_SIG_FINAL}\"\n}\nEOF_JSON\n",
+      "duration": 0.5
+    }
+  ]
+}
+```

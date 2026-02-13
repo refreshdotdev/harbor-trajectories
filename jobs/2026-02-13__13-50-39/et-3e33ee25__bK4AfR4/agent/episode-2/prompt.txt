@@ -1,0 +1,163 @@
+Current terminal state:
+New Terminal Output:
+
+root@76343478-bab0-4967-8cd8-dc349a5172f7:~# mkdir -p /home/user/reports
+root@76343478-bab0-4967-8cd8-dc349a5172f7:~# cat > /home/user/reports/run_security_scan.sh << 'EOF'
+H=$(date '+%s')
+DURATION=$((END_EPOCH - START_EPOCH))
+> #!/bin/bash
+>
+V> # Enterprise Security Baseline Automation (SOP-992) - Ticket SEC-4022
+> # Automate daily infrastructure snapshot report generation
+>
+> set -eo pipefail
+>
+> # Configuration
+> UID_LIMIT=1000
+> SCRIPT_DIR="/home/user/reports"
+> INPUT_DIR="/home/user/sample_data"
+> CONFIG_DIR="/home/user/config"
+> TMP_DIR="/tmp/$(basename "$0")-$$"
+>
+> debug() {
+>     echo "[DEBUG $(date '+%Y-%m-%d %H:%M:%S')] $*" >> "${SCRIPT_DIR}/scan_exec_time.log"
+> }
+>
+> # Cleanup temporary files on exit
+> cleanup() {
+>     rm -rf "${TMP_DIR}"
+> }
+>
+> # Register cleanup function
+> trap cleanup EXIT INT TERM
+>
+> # Create temporary working directory
+> mkdir -p "${TMP_DIR}"
+>
+> # 1. Capture start time (Unix epoch)
+> START_EPOCH=$(date '+%s')
+>
+> echo "Script started at: $(date)"  # Optional: for human-readable log
+>
+> # 2. Calculate input hash for integrity check
+> INPUT_HASH=$(cat "${INPUT_DIR}/mock_netstat.txt" "${INPUT_DIR}/mock_passwd" | md5sum - | cut -d' ' -f1)
+>
+> # 3. Process service_names.csv - strip BOM and create lookup database
+> echo "Processing service names..."
+> iconv -f UTF-8 -t UTF-8 "${INPUT_DIR}/service_names.csv" | sed '1s/^\xef\xbb\xbf//' > "${TMP_DIR}/service_names_clean.csv"
+>
+> # Create awk-friendly service name lookup database
+> awk -F, '{print $1 "\"" $2 "\""}' "${TMP_DIR}/service_names_clean.csv" > "${TMP_DIR}/service_names.db"
+>
+> echo "Service names processed successfully."
+>
+> # 4. Job 1: Network Exposure Analysis (parallel)
+> echo "Starting network exposure analysis..."
+>
+> # Define netstat processing function
+> process_netstat() {
+>     awk -v service_db="${TMP_DIR}/service_names.db" -v OFS=',' -F" " 'BEGIN {
+>         while (getline < service_db > 0) {
+>             split($0, parts, /\"\"/);
+>             service_map[parts[1]] = parts[2];
+>         }
+>     }
+>     $NF ~ /LISTEN|udp$/ {
+>         split($4, addr_port, ":");
+>         port = addr_port[length(addr_port)];
+>         proto_key = ($5 "/" $6);
+>         service_name = (proto_key in service_map) ? "," service_map[proto_key] : "";
+>
+>         # Scope classification
+>         if ($4 ~ /^0\.0\.0\.0/) {
+>             proto = "public-" $6;
+>         } else if ($4 ~ /^127\.0\.0\.1/) {
+>             proto = "local-" $6;
+>         } else {
+>             proto = $6;
+>         }
+>
+>         # Enrichment and output
+>         gsub(/[()]/, "", $0);  # Clean parentheses from original process name
+>         print port, proto, $NF "," $0 service_name;
+>     }' "${INPUT_DIR}/mock_netstat.txt" | sort -n > "${TMP_DIR}/open_ports.csv"
+> }
+>
+> # 5. Job 2: User Audit (parallel)
+> echo "Starting user audit..."
+>
+> # Define user audit function
+> process_users() {
+>     awk -v uid_limit=${UID_LIMIT} -v blacklist_file="${CONFIG_DIR}/user_blacklist.txt" -v OFS=',' 'BEGIN {
+>         while (getline < blacklist_file > 0) {
+>             blacklist[$0] = 1;
+>         }
+>     }
+>     $3 < uid_limit && $7 != "/bin/false" && !($1 in blacklist) {
+>         print $1;
+>     }' "${INPUT_DIR}/mock_passwd" | sort > "${TMP_DIR}/insecure_users.csv"
+> }
+>
+> # Launch both jobs in parallel
+> process_netstat &
+> PID_NETSTAT=$!
+> process_users &
+> PID_USERS=$!
+>
+> # Wait for both jobs to complete
+> echo "Waiting for background jobs to complete..."
+> wait ${PID_NETSTAT} ${PID_USERS}
+>
+> echo "Background jobs completed successfully."
+>
+> # 6. Generate Artifact A: Mainframe Report (infra_security_report.yml)
+> echo "Generating mainframe security report..."
+>
+> # Create YAML content with proper encoding
+> {
+>     echo "---"
+>     echo "meta:"
+>     echo "  input_hash: ${INPUT_HASH}"
+>     echo "insecure_users:"
+>     while IFS= read -r user; do
+>         echo "  - ${user}"
+>     done < "${TMP_DIR}/insecure_users.csv"
+>     echo "open_ports:"
+>     while IFS=, read -r port protocol process rest; do
+>         echo "  - port: ${port}"
+>         echo "    protocol: ${protocol}"
+>         echo "    process: ${process}"
+>     done < "${TMP_DIR}/open_ports.csv"
+> } | iconv -f UTF-8 -t ISO-8859-1 > "${SCRIPT_DIR}/infra_security_report.yml"
+>
+> echo "Mainframe security report generated successfully."
+>
+> # 7. Generate Artifact B: SIEM Log (scan_exec_time.log)
+> echo "Generating SIEM log..."
+>
+> # Calculate duration and create CSV with CRLF line endings
+> END_EPOCH=$(date '+%s')
+> DURATION=$((END_EPOCH - START_EPOCH))
+>
+> # Create CSV with CRLF line endings
+> {
+>     echo -n "start_epoch,end_epoch,duration\r"
+>     echo -n "${START_EPOCH},${END_EPOCH},${DURATION}\r"
+> } > "${SCRIPT_DIR}/scan_exec_time.log"
+>
+> echo "SIEM log generated successfully."
+>
+> # 8. Final status
+> END_EPOCH=$(date '+%s')
+> DURATION=$((END_EPOCH - START_EPOCH))
+> echo "Script execution completed in ${DURATION} seconds."
+> echo "Final artifacts generated at: $(date '+%Y-%m-%d %H:%M:%S')"
+>
+> # 9. Make script executable
+> chmod +x "${SCRIPT_DIR}/run_security_scan.sh"
+> EOFchmod +x /home/user/reports/run_security_scan.sh
+> ls -la /home/user/reports/
+>
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

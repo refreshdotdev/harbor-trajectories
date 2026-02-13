@@ -1,0 +1,155 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Database Backup Service Health Check
+
+You are taking over a shift for a reliability engineer who had to leave abruptly. Your task is to perform a manual health check of the internal backup microservice and generate a compliance report.
+
+## 1. Service Initialization
+
+The service script is located at `/opt/backup/service.py`. It is currently stopped.
+
+*   **Startup Constraints:** The service is known to be fragile. It will strictly refuse to start if it detects a "lock file" left over from a previous unclean shutdown in the `/tmp` directory. You must clear this debris before attempting to start it.
+*   **Network Configuration:** By default, the script listens on port 8080. However, due to a firewall rule on this host, you **must** configure it to listen on **port 9090**. The script does not accept command-line arguments for the port; you will need to inspect the script code to identify the correct environment variable to set.
+*   **Availability:** The service must be listening on `0.0.0.0` and remain running for the duration of your tests.
+
+## 2. Authentication
+
+The API requires an `X-Backup-Token` header for all requests.
+
+*   Your credentials are in `/etc/backup_service/prod.conf`.
+*   **Warning:** The configuration file is known to contain trailing or leading whitespace around the key values due to a copy-paste error in the deployment system. You must programmatically trim this whitespace to get the valid token, otherwise the API will reject your requests (403 Forbidden).
+
+## 3. Traffic Generation
+
+Perform exactly **five** HTTP requests using `curl` in this specific order:
+
+1.  `GET /status`
+2.  `GET /last-backup`
+3.  `GET /list`
+4.  `POST /trigger-backup` (send empty JSON body `{}`)
+5.  `GET /download/2`
+
+## 4. Compliance Logging (Strict Formatting)
+
+To satisfy the legacy auditing system, you must log every request to `/home/user/audit/traffic.csv`. 
+
+*   **Encoding:** The file **must** be encoded in **Latin-1 (ISO-8859-1)**. The standard UTF-8 encoding will cause the mainframe ingestion to fail.
+*   **Format:** The file must be a standard CSV with a header row.
+    `Timestamp,Method,Path,Status,Bytes,MD5`
+*   **Timestamp:** Must be in the format `YYYY/MM/DD HH:mm:ss` (note the forward slashes) in UTC.
+*   **MD5:** The hex MD5 checksum of the response body.
+
+## 5. Final XML Report
+
+Once the traffic generation is complete and the CSV log is finalized, generate an XML summary report at `/home/user/report.xml`.
+
+*   **BOM Requirement:** The file must start with a **UTF-8 Byte Order Mark (BOM)** (`\xEF\xBB\xBF`) so that it opens correctly in Windows-based tools.
+*   **Content:** The XML must strictly follow this structure, extracting values from the API responses and the log file itself:
+
+    ```xml
+    <HealthCheck>
+      <Status>[value of "status" field from /status]</Status>
+      <LastBackup>[value of "last_backup" field from /last-backup]</LastBackup>
+      <ListCount>[number of items in the /list array]</ListCount>
+      <Triggered>[value of "triggered" field from /trigger-backup]</Triggered>
+      <DownloadMD5>[MD5 of the /download/2 response body]</DownloadMD5>
+      <LogChecksum>[SHA256 checksum of the traffic.csv file]</LogChecksum>
+    </HealthCheck>
+    ```
+
+**Notes:**
+*   You do not need root privileges (the `/opt` and `/etc` files are readable, and you have write access to `/home/user`).
+*   Use standard GNU core utilities. Python 3 is installed and encouraged for handling the specific encoding and BOM requirements.
+*   Do not modify the source code of the service.
+
+Current terminal state:
+Current Terminal Screen:
+root@125245bc-f353-4410-88ca-4151cf1eac85:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

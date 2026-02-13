@@ -1,0 +1,78 @@
+[?2004hroot@d656fac5-41d4-4ed3-84b1-a1869c7d423a:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@d656fac5-41d4-4ed3-84b1-a1869c7d423a:~# clear
+[?2004l[H[J[?2004hroot@d656fac5-41d4-4ed3-84b1-a1869c7d423a:~# mkdir -p /home/user/diagnostics
+[?2004l[?2004hroot@d656fac5-41d4-4ed3-84b1-a1869c7d423a:~# cat > /home/user/diagnostics/targets.txt << 'EOF'
+[?2004l[?2004h> example.com
+[?2004l[?2004h> # This is a comment
+[?2004l[?2004h> 1.1.1.1
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@d656fac5-41d4-4ed3-84b1-a1869c7d423a:~# cat > /home/user/diagnostics/run_net_checks.sh << 'EOF'
+[?2004l[?2004h> #!/bin/sh
+[?2004l[?2004h> 
+[?2004l[?2004h> # Directory containing logs and configuration
+[?2004l[?2004h> test -d /home/user/diagnostics || { echo "Error: diagnostics directory missing" >&2; exit 1; }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration file containing target hosts
+[?2004l[?2004h> targets_file="/home/user/diagnostics/targets.txt"
+[?2004l[?2004h> test -f "$targets_file" || { echo "Error: targets.txt file not found" >&2; exit 1; }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Log file
+[?2004l[?2004h> log_file="/home/user/diagnostics/netcheck.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Rotate existing log if needed
+[?2004l[?2004h> if [ -f "$log_file" ]; then
+[?2004l[?2004h>     gzip -c "$log_file" > /home/user/diagnostics/netcheck.previous.log.gz
+[?2004l[?2004h>     rm -f "$log_file"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create new log with header
+[?2004l[?2004h> timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+[?2004l[?2004h> echo "# Netcheck Report" > "$log_file"
+[?2004l[?2004h> echo "Timestamp: $timestamp" >> "$log_file"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to run a single network check
+[?2004l[?2004h> run_check() {
+[?2004l[?2004h>     local host="$1"
+[?2004l[?2004h>     local command="$2"
+[?2004l[?2004h>     local cmd_to_run="$3"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Execute command, capture stdout and stderr combined
+[?2004l[?2004h>     output=$(eval "$cmd_to_run" 2>&1)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get exit code
+[?2004l[?2004h>     exit_code=$?
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Encode output and write to log atomically
+[?2004l[?2004h>     flock -x 200
+[?2004l[?2004h>     echo "===== START host=$host check=$command =====" >> "$log_file"
+[?2004l[?2004h>     echo "$output" | base64 >> "$log_file"
+[?2004l[?2004h>     echo "===== END host=$host check=$command status=$exit_code =====" >> "$log_file"
+[?2004l[?2004h>     flock -u 200
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read target hosts from file, skipping comments and empty lines
+[?2004l[?2004h> hosts=$(grep -v '^#' "$targets_file" | grep -v '^$')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Execute checks in parallel using background jobs
+[?2004l[?2004h> for host in $hosts; do
+[?2004l[?2004h>     # Ping check
+[?2004l[?2004h>     run_check "$host" "ping" "ping -n -c 1 $host" &
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Traceroute check  
+[?2004l[?2004h>     run_check "$host" "traceroute" "traceroute -n -m 5 $host" &
+[?2004l[?2004h>     
+[?2004l[?2004h>     # DNS check
+[?2004l[?2004h>     run_check "$host" "dig" "dig +short $host A" &
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Wait for all background jobs to complete
+[?2004l[?2004h> wait
+[?2004l[?2004h> 
+[?2004l[?2004h> # Calculate SHA-256 checksum of the final log
+[?2004l[?2004h> sha256sum "$log_file" | awk '{print $1}' > /home/user/diagnostics/netcheck.sha256
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Diagnostics completed successfully."
+[?2004l[?2004h> EOFchmod +x /home/user/diagnostics/run_net_checks.sh
+[?2004l[?2004h> 

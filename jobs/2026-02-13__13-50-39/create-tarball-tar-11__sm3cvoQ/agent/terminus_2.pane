@@ -1,0 +1,367 @@
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:~# clear
+[?2004l[H[J[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:~# cd /home/user
+[?2004l[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# pwd
+[?2004l/home/user
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# ls -la
+[?2004ltotal 0
+drwxr-xr-x 1 root root 48 Feb 13 00:04 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 26 Feb 13 00:04 [01;34m..[0m
+drwxr-xr-x 1 root root 10 Feb 13 00:04 [01;34mbackups[0m
+drwxr-xr-x 1 root root 36 Feb 13 00:04 [01;34mtickets[0m
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# ls -la tickets/issue_20230815/
+[?2004ltotal 16
+drwxr-xr-x 1 root root 99 Feb 13 00:04 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 36 Feb 13 00:04 [01;34m..[0m
+-rwxr-xr-x 1 root root 51 Feb 13 00:04 [01;32m.backupignore[0m
+lrwxrwxrwx 1 root root 25 Feb 13 00:04 [40;31;01mbroken_link.lnk[0m -> [40;31;01m/tmp/nonexistent_file_123[0m
+-rwxr-xr-x 1 root root 11 Feb 13 00:04 [01;32mconfig.bak[0m
+lrwxrwxrwx 1 root root 33 Feb 13 00:04 [01;36mloop_dir[0m -> [01;34m/home/user/tickets/issue_20230815[0m
+-rwxr-xr-x 1 root root 35 Feb 13 00:04 [01;32mnotes.txt[0m
+lrwxrwxrwx 1 root root 33 Feb 13 00:04 [01;36msystem_log.ref[0m -> [01;32m/var/log/external_storage/sys.log[0m
+-rwxr-xr-x 1 root root 21 Feb 13 00:04 [01;32mtrace.tmp[0m
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# cat tickets/issue_20230815/.backupignore
+[?2004l# Auto-generated ignore file
+*.tmp
+# Backups
+*.bak
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# cat > backups/backup_script.py << 'EOF'
+[?2004l    sys.exit(1)
+
+    # MD5 Hash
+    md5_hash = hashlib.md5()
+    with open(ARCHIVE_FILENAME, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            md5_hash.update(chunk)
+    manifest_data["md5_hash"] = md5_hash.hexdigest()
+
+    # SHA256 Hash
+    sha256_hash = hashlib.sha256()
+    with open(ARCHIVE_FILENAME, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(chunk)
+    manifest_data["sha256_hash"] = sha256_hash.hexdigest()
+
+    # Created At UTC
+    manifest_data["created_at_utc"] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    # Write Manifest
+    with open(MANIFEST_FILENAME, 'w') as f:
+        json.dump(manifest_data, f, indent=2)
+    print(f"Manifest created: {MANIFEST_FILENAME}")
+    
+except Exception as e:
+    print(f"ERROR: Failed to generate manifest: {e}")
+    sys.exit(1)
+
+# --- Generate Legacy Summary Report ---
+try:
+    # Line 1: Copyright string (ISO-8859-1 compatible)
+    line1 = "Legacy Backup Operation © 2023"
+    
+    # Line 2: Manifest SHA256 hash
+    # Re-read manifest to get its SHA256 hash for the summary
+    manifest_sha256 = hashlib.sha256()
+    with open(MANIFEST_FILENAME, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            manifest_sha256.update(chunk)
+    line2 = f"Manifest SHA256: {manifest_sha256.hexdigest()}"
+
+    # Write summary file with ISO-8859-1 encoding and CRLF line endings
+    with open(SUMMARY_FILENAME, 'wb') as f:
+        f.write(line1.encode('ISO-8859-1'))
+        f.write(b'\r\n')
+        f.write(line2.encode('ISO-8859-1'))
+        f.write(b'\r\n') # Add a final CRLF as per typical text file practice
+    print(f"Legacy summary created: {SUMMARY_FILENAME}")
+    print("Backup operation completed successfully.")
+    sys.exit(0)
+
+except Exception as e:
+    print(f"ERROR: Failed to generate legacy summary: {e}")
+    sys.exit(1)
+EOF
+[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os
+[?2004l[?2004h> import tarfile
+[?2004l[?2004h> import json
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import datetime
+[?2004l[?2004h> import subprocess
+[?2004l[?2004h> import sys
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Configuration ---
+[?2004l[?2004h> SOURCE_DIR = "/home/user/tickets/issue_20230815/"
+[?2004l[?2004h> BACKUP_DIR = "/home/user/backups/"
+[?2004l[?2004h> ARCHIVE_BASENAME = "support_issue_20230815_legacy.tar.gz"
+[?2004l[?2004h> ARCHIVE_FILENAME = os.path.join(BACKUP_DIR, ARCHIVE_BASENAME)
+[?2004l[?2004h> MANIFEST_FILENAME = "/home/user/backups/backup_manifest.json"
+[?2004l[?2004h> SUMMARY_FILENAME = "/home/user/backups/backup_summary.txt"
+[?2004l[?2004h> IGNORE_PATTERNS = ["*.tmp", "*.bak"] # Derived from .backupignore
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Helper function for tarfile filter to exclude specific patterns ---
+[?2004l[?2004h> def exclude_patterns(member):
+[?2004l[?2004h>     """Filter function for tarfile.add to exclude files matching IGNORE_PATTERNS."""
+[?2004l[?2004h>     for pattern in IGNORE_PATTERNS:
+[?2004l[?2004h>         if member.name.endswith(pattern):
+[?2004l[?2004h>             print(f"DEBUG: Excluding {member.name} due to pattern {pattern}")
+[?2004l[?2004h>             return None # Exclude this member
+[?2004l[?2004h>     return member # Include this member
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Backup the directory ---
+[?2004l[?2004h> print("Starting backup of {}...".format(SOURCE_DIR))
+[?2004l[?2004h> try:
+[?2004l[?2004h>     with tarfile.open(ARCHIVE_FILENAME, "w:gz") as tar:
+[?2004l[?2004h>         # Add files, dereferencing symlinks. Use filterfunc to apply exclusions.
+[?2004l[?2004h>         # This will also handle broken symlinks gracefully by typically excluding them
+[?2004l[?2004h>         # or adding their metadata without content, which is safer than crashing.
+[?2004l[?2004h>         tar.add(SOURCE_DIR, arcname=os.path.basename(SOURCE_DIR), 
+[?2004l[?2004h>                 recursive=True, follow_symlinks=True, filter=exclude_patterns)
+[?2004l[?2004h>     print(f"Archive created: {ARCHIVE_FILENAME}")
+[?2004l[?2004h> except Exception as e:
+[?2004l[?2004h>     print(f"ERROR: Failed to create archive: {e}")
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Generate Manifest ---
+[?2004l[?2004h> manifest_data = {}
+[?2004l[?2004h> try:
+[?2004l[?2004h>     # Archive Name
+[?2004l[?2004h>     manifest_data["archive_name"] = ARCHIVE_BASENAME
+[?2004l[?2004h> 
+[?2004l[?2004h>     # File Size
+[?2004l[?2004h>     if os.path.exists(ARCHIVE_FILENAME):
+[?2004l[?2004h>         manifest_data["file_size_bytes"] = os.path.getsize(ARCHIVE_FILENAME)
+[?2004l[?2004h>     else:
+[?2004l[?2004h>         print(f"ERROR: Archive file {ARCHIVE_FILENAME} not found after creation.")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h>     # MD5 Hash
+[?2004l[?2004h>     md5_hash = hashlib.md5()
+[?2004l[?2004h>     with open(ARCHIVE_FILENAME, 'rb') as f:
+[?2004l[?2004h>         for chunk in iter(lambda: f.read(4096), b""):
+[?2004l[?2004h>             md5_hash.update(chunk)
+[?2004l[?2004h>     manifest_data["md5_hash"] = md5_hash.hexdigest()
+[?2004l[?2004h> 
+[?2004l[?2004h>     # SHA256 Hash
+[?2004l[?2004h>     sha256_hash = hashlib.sha256()
+[?2004l[?2004h>     with open(ARCHIVE_FILENAME, 'rb') as f:
+[?2004l[?2004h>         for chunk in iter(lambda: f.read(4096), b""):
+[?2004l[?2004h>             sha256_hash.update(chunk)
+[?2004l[?2004h>     manifest_data["sha256_hash"] = sha256_hash.hexdigest()
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Created At UTC
+[?2004l[?2004h>     manifest_data["created_at_utc"] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Write Manifest
+[?2004l[?2004h>     with open(MANIFEST_FILENAME, 'w') as f:
+[?2004l[?2004h>         json.dump(manifest_data, f, indent=2)
+[?2004l[?2004h>     print(f"Manifest created: {MANIFEST_FILENAME}")
+[?2004l[?2004h>     
+[?2004l[?2004h> except Exception as e:
+[?2004l[?2004h>     print(f"ERROR: Failed to generate manifest: {e}")
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Generate Legacy Summary Report ---
+[?2004l[?2004h> try:
+[?2004l[?2004h>     # Line 1: Copyright string (ISO-8859-1 compatible)
+[?2004l[?2004h>     line1 = "Legacy Backup Operation © 2023"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Line 2: Manifest SHA256 hash
+[?2004l[?2004h>     # Re-read manifest to get its SHA256 hash for the summary
+[?2004l[?2004h>     manifest_sha256 = hashlib.sha256()
+[?2004l[?2004h>     with open(MANIFEST_FILENAME, 'rb') as f:
+[?2004l[?2004h>         for chunk in iter(lambda: f.read(4096), b""):
+[?2004l[?2004h>             manifest_sha256.update(chunk)
+[?2004l[?2004h>     line2 = f"Manifest SHA256: {manifest_sha256.hexdigest()}"
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Write summary file with ISO-8859-1 encoding and CRLF line endings
+[?2004l[?2004h>     with open(SUMMARY_FILENAME, 'wb') as f:
+[?2004l[?2004h>         f.write(line1.encode('ISO-8859-1'))
+[?2004l[?2004h>         f.write(b'\r\n')
+[?2004l[?2004h>         f.write(line2.encode('ISO-8859-1'))
+[?2004l[?2004h>         f.write(b'\r\n') # Add a final CRLF as per typical text file practice
+[?2004l[?2004h>     print(f"Legacy summary created: {SUMMARY_FILENAME}")
+[?2004l[?2004h>     print("Backup operation completed successfully.")
+[?2004l[?2004h>     sys.exit(0)
+[?2004l[?2004h> 
+[?2004l[?2004h> except Exception as e:
+[?2004l[?2004h>     print(f"ERROR: Failed to generate legacy summary: {e}")
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# chmod +x backups/backup_script.py
+[?2004l[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# python3 backups/backup_script.py
+[?2004lStarting backup of /home/user/tickets/issue_20230815/...
+ERROR: Failed to create archive: TarFile.add() got an unexpected keyword argument 'follow_symlinks'
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# echo "--- Operation Status Check ---"
+[?2004l--- Operation Status Check ---
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# ls -la backups/
+[?2004ltotal 8
+drwxr-xr-x 1 root root   74 Feb 13 18:56 [0m[01;34m.[0m
+drwxr-xr-x 1 root root   29 Feb 13 00:04 [01;34m..[0m
+-rwxr-xr-x 1 root root 3911 Feb 13 18:56 [01;32mbackup_script.py[0m
+-rw-r--r-- 1 root root   54 Feb 13 18:56 [01;31msupport_issue_20230815_legacy.tar.gz[0m
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# wc -l backups/*
+[?2004l 106 backups/backup_script.py
+   0 backups/support_issue_20230815_legacy.tar.gz
+ 106 total
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# cat > backups/backup_script_v2.py << 'EOF'
+[?2004l:
+        print(f"ERROR: Archive file {ARCHIVE_FILENAME} not found after creation.")
+        sys.exit(1)
+
+    md5_hash = hashlib.md5()
+    with open(ARCHIVE_FILENAME, 'rb') as f: md5_hash.update(f.read())
+    manifest_data["md5_hash"] = md5_hash.hexdigest()
+
+    sha256_hash = hashlib.sha256()
+    with open(ARCHIVE_FILENAME, 'rb') as f: sha256_hash.update(f.read())
+    manifest_data["sha256_hash"] = sha256_hash.hexdigest()
+
+    manifest_data["created_at_utc"] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    with open(MANIFEST_FILENAME, 'w') as f: json.dump(manifest_data, f, indent=2)
+    print(f"Manifest created: {MANIFEST_FILENAME}")
+except Exception as e:
+    print(f"ERROR: Failed to generate manifest: {e}")
+    sys.exit(1)
+
+# --- Generate Legacy Summary Report (same as before) ---
+try:
+    line1 = "Legacy Backup Operation © 2023"
+    # Hash the manifest file
+    manifest_sha256 = hashlib.sha256()
+    with open(MANIFEST_FILENAME, 'rb') as f: manifest_sha256.update(f.read())
+    line2 = f"Manifest SHA256: {manifest_sha256.hexdigest()[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os
+[?2004l[?2004h> import tarfile
+[?2004l[?2004h> import json
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import datetime
+[?2004l[?2004h> import subprocess
+[?2004l[?2004h> import sys
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Configuration ---
+[?2004l[?2004h> SOURCE_DIR = "/home/user/tickets/issue_20230815/"
+[?2004l[?2004h> BACKUP_DIR = "/home/user/backups/"
+[?2004l[?2004h> ARCHIVE_BASENAME = "support_issue_20230815_legacy.tar.gz"
+[?2004l[?2004h> ARCHIVE_FILENAME = os.path.join(BACKUP_DIR, ARCHIVE_BASENAME)
+[?2004l[?2004h> MANIFEST_FILENAME = "/home/user/backups/backup_manifest.json"
+[?2004l[?2004h> SUMMARY_FILENAME = "/home/user/backups/backup_summary.txt"
+[?2004l[?2004h> IGNORE_PATTERNS = ["*.tmp", "*.bak"] # Derived from .backupignore
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Helper function for tarfile filter to exclude specific patterns (for use if tar.add is used directly) ---
+[?2004l[?2004h> def exclude_patterns(member):
+[?2004l[?2004h>     """Filter function for tarfile.add to exclude files matching IGNORE_PATTERNS."""
+[?2004l[?2004h>     for pattern in IGNORE_PATTERNS:
+[?2004l[?2004h>         if member.name.endswith(pattern):
+[?2004l[?2004h>             print(f"DEBUG: Excluding {member.name} due to pattern {pattern}")
+[?2004l[?2004h>             return None # Exclude this member
+[?2004l[?2004h>     return member # Include this member
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Backup the directory using tar command-line utility for better control over symlinks ---
+[?2004l[?2004h> print("Starting backup of {}...".format(SOURCE_DIR))
+[?2004l[?2004h> try:
+[?2004l[?2004h>     # Use tar command for better symlink handling and exclude patterns
+[?2004l[?2004h>     # -h, --dereference: dereference symlinks, archive the files they point to
+[?2004l[?2004h>     # -X, --exclude-from FILE: read exclusion patterns from FILE
+[?2004l[?2004h>     # --exclude=pattern: exclude files matching pattern
+[?2004l[?2004h>     
+[?2004l[?2004h>     tar_command = ["tar", "-czvf", ARCHIVE_FILENAME, "."]
+[?2004l[?2004h>     # Run tar from within the source directory to ensure relative paths are correct
+[?2004l[?2004h>     # and to simplify the '--exclude' logic.
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create a temporary file for exclusions to pass to -X if more complex than a few patterns
+[?2004l[?2004h>     # For now, we'll use multiple --exclude options.
+[?2004l[?2004h>     # The patterns are relative to SOURCE_DIR, so when tar runs from that dir, they apply correctly.
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get basename of SOURCE_DIR for adding to archive
+[?2004l[?2004h>     arcname = os.path.basename(os.path.abspath(SOURCE_DIR))
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Build command to run in the context of SOURCE_DIR
+[?2004l[?2004h>     # -C SOURCE_DIR changes directory before running tar
+[?2004l[?2004h>     cmd = ["tar", "-czhvf", ARCHIVE_FILENAME, "-C", SOURCE_DIR, arcname]
+[?2004l[?2004h>     for pattern in IGNORE_PATTERNS:
+[?2004l[?2004h>         cmd.append("--exclude=**/{}".format(pattern)) # Use double globstar for subdirectories
+[?2004l[?2004h>     
+[?2004l[?2004h>     print(f"Executing command: {' '.join(cmd)}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     result = subprocess.run(cmd, capture_output=True, text=True)
+[?2004l[?2004h>     if result.returncode != 0:
+[?2004l[?2004h>         print(f"ERROR: tar command failed. Stderr: {result.stderr}")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     else:
+[?2004l[?2004h>         print(f"DEBUG: tar command stdout: {result.stdout}")
+[?2004l[?2004h>         print(f"Archive created: {ARCHIVE_FILENAME}")
+[?2004l[?2004h> 
+[?2004l[?2004h> except Exception as e:
+[?2004l[?2004h>     print(f"ERROR: Failed to create archive: {e}")
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Generate Manifest (same as before) ---
+[?2004l[?2004h> manifest_data = {}
+[?2004l[?2004h> try:
+[?2004l[?2004h>     manifest_data["archive_name"] = ARCHIVE_BASENAME
+[?2004l[?2004h>     if os.path.exists(ARCHIVE_FILENAME):
+[?2004l[?2004h>         manifest_data["file_size_bytes"] = os.path.getsize(ARCHIVE_FILENAME)
+[?2004l[?2004h>     else:
+[?2004l[?2004h>         print(f"ERROR: Archive file {ARCHIVE_FILENAME} not found after creation.")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h>     md5_hash = hashlib.md5()
+[?2004l[?2004h>     with open(ARCHIVE_FILENAME, 'rb') as f: md5_hash.update(f.read())
+[?2004l[?2004h>     manifest_data["md5_hash"] = md5_hash.hexdigest()
+[?2004l[?2004h> 
+[?2004l[?2004h>     sha256_hash = hashlib.sha256()
+[?2004l[?2004h>     with open(ARCHIVE_FILENAME, 'rb') as f: sha256_hash.update(f.read())
+[?2004l[?2004h>     manifest_data["sha256_hash"] = sha256_hash.hexdigest()
+[?2004l[?2004h> 
+[?2004l[?2004h>     manifest_data["created_at_utc"] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004h> 
+[?2004l[?2004h>     with open(MANIFEST_FILENAME, 'w') as f: json.dump(manifest_data, f, indent=2)
+[?2004l[?2004h>     print(f"Manifest created: {MANIFEST_FILENAME}")
+[?2004l[?2004h> except Exception as e:
+[?2004l[?2004h>     print(f"ERROR: Failed to generate manifest: {e}")
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Generate Legacy Summary Report (same as before) ---
+[?2004l[?2004h> try:
+[?2004l[?2004h>     line1 = "Legacy Backup Operation © 2023"
+[?2004l[?2004h>     # Hash the manifest file
+[?2004l[?2004h>     manifest_sha256 = hashlib.sha256()
+[?2004l[?2004h>     with open(MANIFEST_FILENAME, 'rb') as f: manifest_sha256.update(f.read())
+[?2004l[?2004h>     line2 = f"Manifest SHA256: {manifest_sha256.hexdigest()}"
+[?2004l[?2004h> 
+[?2004l[?2004h>     with open(SUMMARY_FILENAME, 'wb') as f:
+[?2004l[?2004h>         f.write(line1.encode('ISO-8859-1'))
+[?2004l[?2004h>         f.write(b'\r\n')
+[?2004l[?2004h>         f.write(line2.encode('ISO-8859-1'))
+[?2004l[?2004h>         f.write(b'\r\n')
+[?2004l[?2004h>     print(f"Legacy summary created: {SUMMARY_FILENAME}")
+[?2004l[?2004h>     print("Backup operation completed successfully.")
+[?2004l[?2004h>     sys.exit(0)
+[?2004l[?2004h> except Exception as e:
+[?2004l[?2004h>     print(f"ERROR: Failed to generate legacy summary: {e}")
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# chmod +x backups/backup_script_v2.py
+[?2004l[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# python3 backups/backup_script_v2.py
+[?2004lStarting backup of /home/user/tickets/issue_20230815/...
+Executing command: tar -czhvf /home/user/backups/support_issue_20230815_legacy.tar.gz -C /home/user/tickets/issue_20230815/ issue_20230815 --exclude=**/*.tmp --exclude=**/*.bak
+ERROR: tar command failed. Stderr: tar: issue_20230815: Cannot stat: No such file or directory
+tar: The following options were used after any non-optional arguments in archive create or update mode.  These options are positional and affect only arguments that follow them.  Please, rearrange them properly.
+tar: --exclude ‘**/*.tmp’ has no effect
+tar: --exclude ‘**/*.bak’ has no effect
+tar: Exiting with failure status due to previous errors
+
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# echo "--- Final Operation Status Check ---"
+[?2004l--- Final Operation Status Check ---
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# ls -la backups/
+[?2004ltotal 16
+drwxr-xr-x 1 root root  101 Feb 13 18:57 [0m[01;34m.[0m
+drwxr-xr-x 1 root root   29 Feb 13 00:04 [01;34m..[0m
+-rwxr-xr-x 1 root root 3911 Feb 13 18:56 [01;32mbackup_script.py[0m
+-rwxr-xr-x 1 root root 4507 Feb 13 18:57 [01;32mbackup_script_v2.py[0m
+-rw-r--r-- 1 root root   45 Feb 13 18:57 [01;31msupport_issue_20230815_legacy.tar.gz[0m
+[?2004hroot@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# 

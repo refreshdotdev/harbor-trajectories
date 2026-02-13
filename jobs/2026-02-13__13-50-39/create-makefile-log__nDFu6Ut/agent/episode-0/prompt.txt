@@ -1,0 +1,165 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are a network engineer who wants a repeatable way to test basic connectivity on any Linux host. 
+Create a tiny automation project that lives entirely inside `/home/user/netdiag`
+
+1.  **Directory layout that must exist at the end of the task**
+    ```
+    /home/user/netdiag/
+    ├── Makefile
+    └── logs/
+        └── loopback.log   (created by running the Makefile)
+        └── loopback.bak   (created only if rotation occurs)
+    ```
+
+2.  **Makefile functional requirements**
+
+    a.  **Environment Variable Configuration**
+        The target IP address MUST NOT be hardcoded. 
+        The Makefile must read the target IP from an environment variable named `TARGET_IP`.
+        *   If `TARGET_IP` is defined, use that value.
+        *   If `TARGET_IP` is NOT defined, default to `127.0.0.1`.
+
+    b.  **Log Rotation (Pre-flight)**
+        Before running any tests, the default goal must check the size of `/home/user/netdiag/logs/loopback.log` (if it exists).
+        *   If the file size is **greater than 500 bytes**, rename the existing file to `loopback.bak` (overwrite any existing .bak file), then start a fresh `loopback.log`.
+        *   If the file is smaller or doesn't exist, simply append to the existing `loopback.log`.
+
+    c.  **Default goal**
+        Typing “make” (with no target) MUST execute the rotation check, write a session header, then execute the ping test, then the traceroute test.
+
+    d.  **Individual targets**
+        i.   `ping` – performs a 3-packet ping to the target IP.
+             *   **Filtering**: The output MUST be filtered to ONLY show lines containing the substring "bytes from" (case-insensitive). Do not log the ping header or statistics footer.
+        ii.  `trace` – performs a maximum-3-hop traceroute to the target IP.
+
+    e.  **Logging rules**
+        *   Every target MUST append its output to `/home/user/netdiag/logs/loopback.log`.
+        *   **Session Header**: At the very start of the default `make` execution (after rotation but before ping), append a session line:
+            ```
+            >>> SESSION: YYYY-MM-DDTHH:MM:SSZ
+            ```
+            (Use UTC ISO 8601 format, e.g., `2024-03-15T10:00:00Z`).
+        *   Each command section MUST start with an exact header line followed by the command output and a delimiter line.
+            Required header / delimiter text:
+            ```
+            >>> PING START
+            >>> PING END
+            >>> TRACE START
+            >>> TRACE END
+            ```
+        *   The required order inside `loopback.log` for a full run is:
+            1.  `>>> SESSION: ...`
+            2.  `>>> PING START`
+            3.  (Filtered ping output)
+            4.  `>>> PING END`
+            5.  `>>> TRACE START`
+            6.  (Traceroute output)
+            7.  `>>> TRACE END`
+
+3.  **Verification / what the grader will check**
+    *   `/home/user/netdiag/Makefile` exists.
+    *   Running “make” respects `TARGET_IP`.
+    *   Rotation occurs correctly when the log file exceeds 500 bytes.
+    *   The ping output in the log does NOT contain the standard "PING 127.0.0.1..." header line, only the response lines.
+    *   The log file contains the session header with a valid timestamp.
+
+4.  **What you need to do**
+    *   Create the directory tree.
+    *   Author the Makefile that satisfies all rules above. (Assume `ping`, `traceroute`, `date`, `stat`, and `grep` are available.)
+    *   Run the Makefile once so that `loopback.log` is produced.
+
+5.  **IMPORTANT formatting reminder**
+    The grader is strict about the marker lines and the session header format (`YYYY-MM-DDTHH:MM:SSZ`). Ensure your `date` command produces exactly this string.
+
+Current terminal state:
+Current Terminal Screen:
+root@8da850db-b34f-440b-ba23-69fe8257344a:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

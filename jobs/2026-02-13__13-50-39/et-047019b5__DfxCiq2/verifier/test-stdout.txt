@@ -1,0 +1,89 @@
+Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Hit:4 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.81.0-1ubuntu1.21).
+0 upgraded, 0 newly installed, 0 to remove and 4 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading cpython-3.12.12-linux-x86_64-gnu (download) (31.1MiB)
+ Downloading cpython-3.12.12-linux-x86_64-gnu (download)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 5 packages in 26ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/iBfdWTiKnDghduKJoKO_p/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 5 items
+
+../../tests/test_final_state.py::test_directory_structure PASSED         [ 20%]
+../../tests/test_final_state.py::test_venv_prompt PASSED                 [ 40%]
+../../tests/test_final_state.py::test_manifest_structure_and_minification PASSED [ 60%]
+../../tests/test_final_state.py::test_manifest_content_logic FAILED      [ 80%]
+../../tests/test_final_state.py::test_signature_validity FAILED          [100%]
+
+=================================== FAILURES ===================================
+_________________________ test_manifest_content_logic __________________________
+
+    def test_manifest_content_logic():
+        data = json.loads(MANIFEST_FILE.read_text(encoding="utf-8"))
+    
+        # 1. Check Timestamp (ISO8601 UTC)
+        ts = data["scan_timestamp"]
+        assert ts.endswith("Z") or "+00:00" in ts, "Timestamp does not appear to be UTC ISO8601"
+        # Try parsing to ensure validity
+        try:
+            datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except ValueError:
+            pytest.fail("Timestamp is not valid ISO 8601")
+    
+        # 2. Check Inode
+        actual_inode = os.stat(VENV_DIR).st_ino
+        assert data["environment_inode"] == actual_inode, f"Inode mismatch. Manifest: {data['environment_inode']}, Actual: {actual_inode}"
+    
+        # 3. Check Packages (Filter Logic)
+        packages = data["packages"]
+        package_names = [p["name"] for p in packages]
+    
+        assert "pip" in package_names, "pip should be in the inventory"
+>       assert "wheel" in package_names, "wheel should be in the inventory"
+E       AssertionError: wheel should be in the inventory
+E       assert 'wheel' in ['pip']
+
+/tests/test_final_state.py:61: AssertionError
+___________________________ test_signature_validity ____________________________
+
+    def test_signature_validity():
+        assert SIG_FILE.exists(), "Signature file missing"
+    
+        # Read signature
+        stored_sig = SIG_FILE.read_text(encoding="utf-8")
+    
+        # Check format (no newline, just hex)
+>       assert "\n" not in stored_sig, "Signature file contains trailing newline"
+E       AssertionError: Signature file contains trailing newline
+E       assert '\n' not in '853382fbf1a...07e1531d5e\n'
+E         
+E         '\n' is contained here:
+E           853382fbf1a34958029cf2b724ea9c2757a20b2a9d2ac3a8058a6ec0ac8276549affa2570a8440bfed426149c6147e57eaa1107cdbcaa19306c49707e1531d5e
+E         ?                                                                                                                                 +
+
+/tests/test_final_state.py:74: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_manifest_content_logic - Asserti...
+FAILED ../../tests/test_final_state.py::test_signature_validity - AssertionEr...
+========================= 2 failed, 3 passed in 0.03s ==========================

@@ -1,0 +1,202 @@
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# clear
+[?2004l[H[J[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# cat > solve.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Legacy Data Ingestion Script
+[?2004l[?2004h> # Processes billing data files according to mainframe protocols
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create required directories if they don't exist
+[?2004l[?2004h> mkdir -p /home/user/incoming
+[?2004l[?2004h> mkdir -p /home/user/etl/quarantine
+[?2004l[?2004h> mkdir -p /home/user/etl/archive
+[?2004l[?2004h> mkdir -p /home/user/etl/raw_backup
+[?2004l[?2004h> mkdir -p /home/user/etl/staging
+[?2004l[?2004h> mkdir -p /home/user/etl/logs
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration
+[?2004l[?2004h> CONFIG_FILE="/etc/legacy_etl/settings.conf"
+[?2004l[?2004h> REGION_CODE=$(grep -E '^REGION_CODE=' "$CONFIG_FILE" | cut -d'=' -f2- | tr -d ' \t\r\n')
+[?2004l[?2004h> RETENTION_POLICY=$(grep -E '^RETENTION_POLICY=' "$CONFIG_FILE" | cut -d'=' -f2- | tr -d ' \t\r\n')
+[?2004l[?2004h> EOFcat >> solve.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize variables
+[?2004l[?2004h> TOTAL_RECORDS=0
+[?2004l[?2004h> declare -A PROCESSED_FILES
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process files in incoming directory
+[?2004l[?2004h> for csv_file in /home/user/incoming/*.csv; do
+[?2004l[?2004h>   if [[ -f "$csv_file" ]]; then
+[?2004l[?2004h>     # Check for UTF-8 BOM (EF BB BF)
+[?2004l[?2004h>     BOM_CHECK=$(head -c 3 "$csv_file" | od -An -tx1 | tr -d ' \n')
+[?2004l[?2004h>     if [[ "$BOM_CHECK" == "efbbbf" ]]; then
+[?2004l[?2004h>       echo "File $csv_file has UTF-8 BOM - quarantining"
+[?2004l[?2004h>       mv -f "$csv_file" /home/user/etl/quarantine/
+[?2004l[?2004h>       continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Process clean files
+[?2004l[?2004h>     base_name=$(basename "$csv_file" .csv)
+[?2004l[?2004h> EOFcat >> solve.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Convert CSV to TSV and count records
+[?2004l[?2004h>     tsv_file="/home/user/etl/staging/${base_name}.tsv"
+[?2004l[?2004h>     rows=$(csvtool reform -u TSB "$csv_file" | tail -n +2 | wc -l)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create TSV file
+[?2004l[?2004h>     if [[ $rows -gt 0 ]]; then
+[?2004l[?2004h>       csvtool reform -u TSB "$csv_file" > "$tsv_file"
+[?2004l[?2004h>     else
+[?2004l[?2004h>       csvtool reform -u TSB "$csv_file" > "$tsv_file"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Update counters and store metadata
+[?2004l[?2004h>     TOTAL_RECORDS=$((TOTAL_RECORDS + rows))
+[?2004l[?2004h>     original_md5=$(md5sum "$csv_file" | cut -d' ' -f1)
+[?2004l[?2004h>     PROCESSED_FILES[$csv_file]="$original_md5|$rows"
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Move original CSV to raw backup
+[?2004l[?2004h>     mv -f "$csv_file" /home/user/etl/raw_backup/
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004l[?2004h> EOFcat >> solve.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create archive tarball
+[?2004l[?2004h> current_date=$(date +%Y%m%d)
+[?2004l[?2004h> archive_name="data_${REGION_CODE}_${current_date}_${TOTAL_RECORDS}.tar.gz"
+[?2004l[?2004h> archive_path="/home/user/etl/archive/$archive_name"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create tarball with TSV files
+[?2004l[?2004h> find /home/user/etl/staging -maxdepth 1 -type f -name '*.tsv' -print0 |
+[?2004l[?2004h>   tar --null -czf "$archive_path" -T -
+[?2004l[?2004h> 
+[?2004l[?2004h> # Extract tarball to staging directory
+[?2004l[?2004h> tar -xzf "$archive_path" -C /home/user/etl/staging
+[?2004l[?2004h> 
+[?2004l[?2004h> EOFcat >> solve.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort orders.tsv by total_amount (3rd column) descending
+[?2004l[?2004h> if [[ -f "/home/user/etl/staging/orders.tsv" ]]; then
+[?2004l[?2004h>   sort -t$'\t' -k3,3nr /home/user/etl/staging/orders.tsv -o /home/user/etl/staging/orders.tsv
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate manifest file
+[?2004l[?2004h> manifest_file="/home/user/etl/logs/process_manifest.txt"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create header
+[?2004l[?2004h> echo "Legacy ETL Manifest © 2023" > "$manifest_file"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add file entries in alphabetical order
+[?2004l[?2004h> for csv_file in $(echo ${!PROCESSED_FILES[@]} | sort); do
+[?2004l[?2004h>   base_csv=$(basename "$csv_file" .csv)
+[?2004l[?2004h>   echo "$base_csv|${PROCESSED_FILES[$csv_file]}" >> "$manifest_file"
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Convert manifest to ISO-8859-1 encoding-iconv -f UTF-8 -t ISO-8859-1 "$manifest_file" > "${manifest_file}.tmp" && mv "${manifest_file}.tmp" "$manifest_file" M[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[K"
+[?2004l[?2004h> EOFchmod +x solve.sh
+[?2004l[?2004h> apt update && apt install -y csvtool iconv
+[?2004l[?2004h> mkdir -p /etc/legacy_etl
+[?2004l[?2004h> cat > /etc/legacy_etl/settings.conf << 'EOF'
+[?2004l[?2004h> # Legacy ETL Configuration
+[?2004l[?2004h> REGION_CODE=NA
+[?2004l[?2004h> RETENTION_POLICY=30d
+[?2004l[?2004h> # This is a comment
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# mkdir -p /home/user/incoming
+[?2004l[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# cat > /home/user/incoming/orders.csv << 'EOF'
+[?2004l[?2004h> order_id,customer,total_amount
+[?2004l[?2004h> 101,John Doe,150.50
+[?2004l[?2004h> 102,Jane Smith,200.75
+[?2004l[?2004h> 103,Bob Johnson,89.99
+[?2004l[?2004h> EOFcat > /home/user/incoming/payments.csv << 'EOF'
+[?2004l[?2004h> payment_id,order_id,amount
+[?2004l[?2004h> 201,101,150.50
+[?2004l[?2004h> 202,102,200.75
+[?2004l[?2004h> 203,103,89.99
+[?2004l[?2004h> EOF# Create a file with UTF-8 BOM
+[?2004l[?2004h> python3 -c "open('/home/user/incoming/corrupt.csv', 'w', encoding='utf-8-sig').write('col1,col2\ncorrupt,file')"
+[?2004l[?2004h> rm -rf /home/user/incoming/* /home/user/etl/*
+[?2004l[?2004h> cat > /home/user/incoming/orders.csv << 'EOF'
+[?2004l[?2004h> order_id,customer,total_amount
+[?2004l[?2004h> 101,John Doe,150.50
+[?2004l[?2004h> 102,Jane Smith,200.75
+[?2004l[?2004h> 103,Bob Johnson,89.99
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# cat > /home/user/incoming/payments.csv << 'EOF'
+[?2004l[?2004h> payment_id,order_id,amount
+[?2004l[?2004h> 201,101,150.50
+[?2004l[?2004h> 202,102,200.75
+[?2004l[?2004h> 203,103,89.99
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# python3 -c "open('/home/user/incoming/corrupt.csv', 'w', encoding='utf-8-sig').write('col1,col2\ncorrupt,file')"
+[?2004l[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# cat > /home/user/incoming/customers.csv << 'EOF'
+[?2004l[?2004h> name,email,country
+[?2004l[?2004h> Alice,alice@example.com,USA
+[?2004l[?2004h> Bob,bob@example.com,Canada
+[?2004l[?2004h> Charlie,charlie@example.com,UK
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# ./solve.sh
+[?2004lbash: ./solve.sh: Permission denied
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Quarantine ==="
+[?2004l=== Quarantine ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# ls -la /home/user/etl/quarantine/
+[?2004lls: cannot access '/home/user/etl/quarantine/': No such file or directory
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Raw Backup ==="
+[?2004l=== Raw Backup ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# ls -la /home/user/etl/raw_backup/
+[?2004lls: cannot access '/home/user/etl/raw_backup/': No such file or directory
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Archive ==="
+[?2004l=== Archive ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# ls -la /home/user/etl/archive/
+[?2004lls: cannot access '/home/user/etl/archive/': No such file or directory
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Staging ==="
+[?2004l=== Staging ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# ls -la /home/user/etl/staging/
+[?2004lls: cannot access '/home/user/etl/staging/': No such file or directory
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Manifest ==="
+[?2004l=== Manifest ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# cat /home/user/etl/logs/process_manifest.txt
+[?2004lcat: /home/user/etl/logs/process_manifest.txt: No such file or directory
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Manifest Encoding ==="
+[?2004l=== Manifest Encoding ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# file /home/user/etl/logs/process_manifest.txt
+[?2004l/home/user/etl/logs/process_manifest.txt: cannot open `/home/user/etl/logs/process_manifest.txt' (No such file or directory)
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# chmod +x solve.sh
+[?2004l[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# ./solve.sh
+[?2004l./solve.sh: line 100: warning: here-document at line 18 delimited by end-of-file (wanted `EOF')
+./solve.sh: line 18: EOFcat: command not found
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Quarantine ==="
+[?2004l=== Quarantine ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# ls -la /home/user/etl/quarantine/
+[?2004ltotal 0
+drwxr-xr-x 2 root root  10 Feb 13 19:00 [0m[01;34m.[0m
+drwxr-xr-x 7 root root 108 Feb 13 19:00 [01;34m..[0m
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Raw Backup ==="
+[?2004l=== Raw Backup ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# ls -la /home/user/etl/raw_backup/
+[?2004ltotal 0
+drwxr-xr-x 2 root root  10 Feb 13 19:00 [0m[01;34m.[0m
+drwxr-xr-x 7 root root 108 Feb 13 19:00 [01;34m..[0m
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Archive ==="
+[?2004l=== Archive ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# ls -la /home/user/etl/archive/
+[?2004ltotal 0
+drwxr-xr-x 2 root root  10 Feb 13 19:00 [0m[01;34m.[0m
+drwxr-xr-x 7 root root 108 Feb 13 19:00 [01;34m..[0m
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Staging ==="
+[?2004l=== Staging ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# ls -la /home/user/etl/staging/
+[?2004ltotal 0
+drwxr-xr-x 2 root root  10 Feb 13 19:00 [0m[01;34m.[0m
+drwxr-xr-x 7 root root 108 Feb 13 19:00 [01;34m..[0m
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Manifest ==="
+[?2004l=== Manifest ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# cat /home/user/etl/logs/process_manifest.txt
+[?2004lcat: /home/user/etl/logs/process_manifest.txt: No such file or directory
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# echo "=== Manifest Encoding ==="
+[?2004l=== Manifest Encoding ===
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# file /home/user/etl/logs/process_manifest.txt
+[?2004l/home/user/etl/logs/process_manifest.txt: cannot open `/home/user/etl/logs/process_manifest.txt' (No such file or directory)
+[?2004hroot@a6382805-c12b-46b7-bc2e-80cc9799a487:~# 

@@ -1,0 +1,86 @@
+[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user# clear
+[?2004l[H[J[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user# cd storage_audit
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# mkdir -p logs
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# touch logs/validation.log
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# > logs/validation.log
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# find raw_reports -maxdepth 1 -type f -iname "*.json" ! -name "*.json" -printf "%%f\0" | while IFS= read -r -d '' file; do
+[?2004l[?2004h>   if [[ "${file:0:1}" == "." ]]; then
+[?2004l[?2004h>     continue
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   if ! jq empty "raw_reports/$file" 2>/dev/null; then
+[?2004l[?2004h>     if jq -s -S "raw_reports/$file" schema/disk_report.schema.json > /dev/null; then
+[?2004l[?2004h>       echo "$file : OK" >> logs/validation.log
+[?2004l[?2004h>     else
+[?2004l[?2004h>       first_error=$(jq -s -S "raw_reports/$file" schema/disk_report.schema.json 2>&1 | head -n 1 | sed 's/:/ /g' | awk '{print $NF}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+[?2004l[?2004h>       echo "$file : ERROR : ${first_error//:/ }" >> logs/validation.log
+[?2004l[?2004h>     fi
+[?2004l[?2004h>   else
+[?2004l[?2004h>     echo "$file : INVALID_JSON" >> logs/validation.log
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004ljq: error: syntax error, unexpected '%' (Unix shell quoting issues?) at <top-level>, line 1:
+raw_reports/%f            
+jq: 1 compile error
+[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# find raw_reports -maxdepth 1 -type f -iname "*.json" ! -name "*.json" | while IFS= read -r file; do
+[?2004l[?2004h>   if [[ "${file:0:1}" == "." ]]; then
+[?2004l[?2004h>     continue
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   if ! jq empty "${file}" 2>/dev/null; then
+[?2004l[?2004h>     if jq -S "${file}" schema/disk_report.schema.json > /dev/null; then
+[?2004l[?2004h>       echo "${file} : OK" >> logs/validation.log
+[?2004l[?2004h>     else
+[?2004l[?2004h>       first_error=$(jq -S "${file}" schema/disk_report.schema.json 2>&1 | head -n 1 | awk -F: '{print $NF}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+[?2004l[?2004h>       echo "${file} : ERROR : ${first_error//:/ }" >> logs/validation.log
+[?2004l[?2004h>     fi
+[?2004l[?2004h>   else
+[?2004l[?2004h>     echo "${file} : INVALID_JSON" >> logs/validation.log
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# cat logs/validation.log
+[?2004l%f : ERROR : 1
+raw_reports/daily_storage02.JSON : INVALID_JSON
+[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# chmod 644 logs/validation.log
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# mkdir -p summary
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# grep ': OK$' logs/validation.log | cut -d: -f1 > valid_reports.txt
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# totalGB=0; usedGB=0; freeGB=0; totalMonthlyCost=0; mounts=()
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# while IFS= read -r report; do
+[?2004l[?2004h>   host=$(jq -r '.host' "${report}")
+[?2004l[?2004h>   env=$(jq -r '.environment // "Unknown"' "${report}")
+[?2004l[?2004h>   jq -r '.mounts[] | {host: "\ "$host"", environment: "\ "$env\", mountPoint, totalGB, usedGB, freeGB: (.totalGB - .usedGB), usagePercent: (.usedGB / .totalGB * 100), monthlyCost: .} + {host: "\ "$host"", environment: "\ "$env\", mountPoint: ., totalGB: ., usedGB: ., freeGB: (.totalGB - .usedGB), usagePercent: (.usedGB / .totalGB * 100 | round), monthlyCost: .} + {host: "\ "$host"", environment: "\ "$env\", mountPoint: ., totalGB: ., usedGB: ., freeGB: (.totalGB - .usedGB), usagePercent: (.usedGB / .totalGB * 100 | round), monthlyCost: .}' "${report}" | jq -s -c '.[]' | while IFS= read -r mount; do
+[?2004l[?2004h>     m=$(echo "$mount" | jq -c '. + {host, environment, mountPoint, totalGB, usedGB, freeGB, usagePercent, monthlyCost}')
+[?2004l[?2004h>     totalGB=$(echo "$m" | jq '.totalGB' | awk '{printf "%.0f", $1}')
+[?2004l[?2004h>     usedGB=$(echo "$m" | jq '.usedGB' | awk '{printf "%.0f", $1}')
+[?2004l[?2004h>     freeGB=$(echo "$m" | jq '.freeGB' | awk '{printf "%.0f", $1}')
+[?2004l[?2004h>     host=$(echo "$m" | jq -r '.host')
+[?2004l[?2004h>     env=$(echo "$m" | jq -r '.environment')
+[?2004l[?2004h>     mountPoint=$(echo "$m" | jq -r '.mountPoint')
+[?2004l[?2004h>     cost_per_gb=$(grep -i "^${host}," inventory.csv | cut -d, -f3 || echo 0)
+[?2004l[?2004h>     if [ -z "$cost_per_gb" ] || [ "$cost_per_gb" == "null" ]; then
+[?2004l[?2004h>       env="Unmanaged"
+[?2004l[?2004h>       cost_per_gb=0
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     monthlyCost=$(awk 'BEGIN {printf "%.2f", ARGV[1] * ARGV[2]}' "$usedGB" "$cost_per_gb")
+[?2004l[?2004h>     usagePercent=$(awk 'BEGIN {printf "%.2f", ARGV[1] / ARGV[2] * 100}' "$usedGB" "$totalGB")
+[?2004l[?2004h>     freeGB=$(awk 'BEGIN {printf "%.2f", ARGV[1] - ARGV[2]}' "$totalGB" "$usedGB")
+[?2004l[?2004h>     mount_json=$(jq -n --arg h "$host" --arg e "$env" --arg m "$mountPoint" --arg t "\"$(awk 'BEGIN {printf "%.2f",'$totalGB'}')\"" --arg u "\"$(awk 'BEGIN {printf "%.2f",'$usedGB'}')\"" --arg f "\"$(awk 'BEGIN {printf "%.2f",'$freeGB'}')\"" --arg p "\"$(awk 'BEGIN {printf "%.2f",'$usagePercent'}')\"" --arg c "\"$(awk 'BEGIN {printf "%.2f",'$monthlyCost'}')\"" '{host: $h, environment: $e, mountPoint: $m, totalGB: $t|tonumber, usedGB: $u|tonumber, freeGB: $t|tonumber, usagePercent: $p|tonumber, monthlyCost: $c|tonumber}')
+[?2004l[?2004h>     mounts+="${mount_json},\n"
+[?2004l[?2004h>     totalGB=$(awk 'BEGIN {printf "%.2f", '$totalGB' + '$totalGB'}')
+[?2004l[?2004h>     usedGB=$(awk 'BEGIN {printf "%.2f", '$usedGB' + '$usedGB'}')
+[?2004l[?2004h>     totalMonthlyCost=$(awk 'BEGIN {printf "%.2f", '$totalMonthlyCost' + '$monthlyCost'}')
+[?2004l[?2004h>   done
+[?2004l[?2004h> done < valid_reports.txt
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# freeGB=$(awk 'BEGIN {printf "%.2f", '$totalGB' - '$usedGB'}')
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# usagePercent=$(awk 'BEGIN {printf "%.2f", '$usedGB' / '$totalGB' * 100}' 2>/dev/null || echo "0.00")
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# jq -n --arg gen "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" --argjson t "${totalGB}" --argjson u "${usedGB}" --argjson f "${freeGB}" --argjson p "${usagePercent}" --argjson tm "${totalMonthlyCost}" '{generatedAt: $gen, totals: {totalGB: $t, usedGB: $u, freeGB: $f, usagePercent: $p, totalMonthlyCost: $tm}, mounts: [ '$mounts' | .[:-2] ] | sort_by(-.usagePercent)}' > summary/disk_usage_summary.json
+[?2004ljq: error: syntax error, unexpected '|' (Unix shell quoting issues?) at <top-level>, line 1:
+{generatedAt: $gen, totals: {totalGB: $t, usedGB: $u, freeGB: $f, usagePercent: $p, totalMonthlyCost: $tm}, mounts: [  | .[:-2] ] | sort_by(-.usagePercent)}                                                                                                                       
+jq: 1 compile error
+[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# [[ -z "$mounts" ]] && echo '{}' > summary/disk_usage_summary.json || jq -n --arg gen "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" --argjson t "${totalGB:-0}" --argjson u "${usedGB:-0}" --argjson f "${freeGB:-0}" --argjson p "${usagePercent:-0}" --argjson tm "${totalMonthlyCost:-0}" '{generatedAt: $gen, totals: {totalGB: $t, usedGB: $u, freeGB: $f, usagePercent: $p, totalMonthlyCost: $tm}, mounts: [ '$mounts' | if (. == "") then [] else .[:-2] | sort_by(-.usagePercent) end ]}' > summary/disk_usage_summary.json
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# sha256sum summary/disk_usage_summary.json > summary/checksum.sha256
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# chmod 644 summary/disk_usage_summary.json summary/checksum.sha256
+[?2004l[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# realpath summary/disk_usage_summary.json
+[?2004l/home/user/storage_audit/summary/disk_usage_summary.json
+[?2004hroot@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# 

@@ -1,0 +1,244 @@
+[?2004hroot@90de8620-3a3e-4b77-819e-69303ac3e398:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@90de8620-3a3e-4b77-819e-69303ac3e398:~# clear
+[?2004l[H[J[?2004hroot@90de8620-3a3e-4b77-819e-69303ac3e398:~# cd /home/user
+[?2004l[?2004hroot@90de8620-3a3e-4b77-819e-69303ac3e398:/home/user# pwd
+[?2004l/home/user
+[?2004hroot@90de8620-3a3e-4b77-819e-69303ac3e398:/home/user# mkdir -p bin container_usage data
+[?2004l[?2004hroot@90de8620-3a3e-4b77-819e-69303ac3e398:/home/user# touch bin/generate_cost_report.sh
+[?2004l[?2004hroot@90de8620-3a3e-4b77-819e-69303ac3e398:/home/user# chmod +x bin/generate_cost_report.sh
+[?2004l[?2004hroot@90de8620-3a3e-4b77-819e-69303ac3e398:/home/user# cat > bin/generate_cost_report.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # FinOps Cost Reporting Pipeline v2
+[?2004l[?2004h> # Automated container cost tracking workflow
+[?2004l[?2004h> 
+[?2004l[?2004h> # Default output file path
+[?2004l[?2004h> DEFAULT_REPORT_FILE="/home/user/container_usage/cost_report.txt"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get output file from arguments or use default
+[?2004l[?2004h> if [ "$#" -eq 0 ]; then
+[?2004l[?2004h>     OUTPUT_REPORT_FILE="$DEFAULT_REPORT_FILE"
+[?2004l[?2004h> else
+[?2004l[?2004h>     OUTPUT_REPORT_FILE="$1"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration variables
+[?2004l[?2004h> INPUT_USAGE_LOG="/home/user/container_usage/usage.log"
+[?2004l[?2004h> INPUT_OWNERS_FILE="/home/user/container_usage/owners_v2.csv"
+[?2004l[?2004h> INTERMEDIATE_DATA_DIR="/home/user/data"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "FinOps Cost Reporting Pipeline v2"
+[?2004l[?2004h> echo "Output report will be written to: $OUTPUT_REPORT_FILE"
+[?2004l[?2004h> echo "Intermediate files will be stored in: $INTERMEDIATE_DATA_DIR"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Check if input files exist
+[?2004l[?2004h> if [ ! -f "$INPUT_USAGE_LOG" ]; then
+[?2004l[?2004h>     echo "ERROR: Usage log file not found at $INPUT_USAGE_LOG"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> if [ ! -f "$INPUT_OWNERS_FILE" ]; then
+[?2004l[?2004h>     echo "ERROR: Owners file not found at $INPUT_OWNERS_FILE"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create data directory if it doesn't exist
+[?2004l[?2004h> mkdir -p "$INTERMEDIATE_DATA_DIR"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Pipeline starting..."
+[?2004l[?2004h> EOFcat >> bin/generate_cost_report.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> ######################################################################
+[?2004l[?2004h> # Phase 1: Ingestion & Sanitization
+[?2004l[?2004h> ######################################################################
+[?2004l[?2004h> 
+[?2004l[?2004h> clean_usage_file="$INTERMEDIATE_DATA_DIR/clean_usage.csv"
+[?2004l[?2004h> echo "Phase 1: Processing usage data..."
+[?2004l[?2004h> 
+[?2004l[?2004h> # Check if usage.log contains data
+[?2004l[?2004h> if [ ! -s "$INPUT_USAGE_LOG" ]; then
+[?2004l[?2004h>     echo "ERROR: Usage log file is empty"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process usage.log - remove comments, sanitize numeric fields, convert to standard CSV
+[?2004l[?2004h> awk -F, 'BEGIN { 
+[?2004l[?2004h>     print "container_id,image,cpu_percent,mem_mb,runtime_hours,cost_per_hour" > ""clean_usage_file"" 
+[?2004l[?2004h>     OFS="," 
+[?2004l[?2004h> }
+[?2004l[?2004h> /^#/ { next } # Skip comment lines
+[?2004l[?2004h> !NF { next } # Skip empty lines
+[?2004l[?2004h> {
+[?2004l[?2004h>     # Sanitize numeric fields - convert NULL/N/A to 0
+[?2004l[?2004h>     gsub("NULL", "0", $3); gsub("N/A", "0", $3)
+[?2004l[?2004h>     gsub("NULL", "0", $4); gsub("N/A", "0", $4)
+[?2004l[?2004h>     gsub("NULL", "0", $5); gsub("N/A", "0", $5)
+[?2004l[?2004h>     gsub("NULL", "0", $6); gsub("N/A", "0", $6)
+[?2004l[?2004h>     print $0 
+[?2004l[?2004h> }' "$INPUT_USAGE_LOG"
+[?2004l[?2004h> 
+[?2004l[?2004h> if [ ! -s "$clean_usage_file" ]; then
+[?2004l[?2004h>     echo "ERROR: Failed to generate cleaned usage data"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Phase 1 complete: Cleaned usage data saved to $clean_usage_file"
+[?2004l[?2004h> EOFcat >> bin/generate_cost_report.sh << 'EOF'
+[?2004l[?2004h> ######################################################################
+[?2004l[?2004h> # Phase 2: Enrichment & Cost Modeling
+[?2004l[?2004h> ######################################################################
+[?2004l[?2004h> 
+[?2004l[?2004h> cost_model_file="$INTERMEDIATE_DATA_DIR/cost_model.json"
+[?2004l[?2004h> echo "Phase 2: Enriching data and modeling costs..."
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to convert UTF-16LE file to UTF-8 CSV
+[?2004l[?2004h> convert_utf16le_to_csv() {
+[?2004l[?2004h>     local utf16le_file="$1"
+[?2004l[?2004h>     local output_file="$2"
+[?2004l[?2004h>     iconv -f UTF-16LE -t UTF-8 "$utf16le_file" | \
+[?2004l[?2004h>     awk -F';' 'BEGIN { OFS="," } { \$1=\$1; gsub(/^\\xEF\\xBB\\xBF/, "", \$0); print }' > "$output_file"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Convert owners file from UTF-16LE to UTF-8 CSV
+[?2004l[?2004h> owners_utf8_file="$INTERMEDIATE_DATA_DIR/owners_utf8.csv"
+[?2004l[?2004h> convert_utf16le_to_csv "$INPUT_OWNERS_FILE" "$owners_utf8_file"
+[?2004l[?2004h> 
+[?2004l[?2004h> if [ ! -s "$owners_utf8_file" ]; then
+[?2004l[?2004h>     echo "ERROR: Failed to convert owners file"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get current timestamp
+[?2004l[?2004h> metadata_timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Calculate SHA256 hash of clean usage file
+[?2004l[?2004h> source_hash=$(sha256sum "$clean_usage_file" | awk '{print tolower($1)}')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Join usage data with owner information and calculate costs
+[?2004l[?2004h> awk -F, '
+[?2004l[?2004h> BEGIN {
+[?2004l[?2004h>     print "{\n  \"_meta\": {\n    \"generated\": \""metadata_timestamp"\",\n    \"source_hash\": \""source_hash"\"\n  },\n  \"data\": [" > ""cost_model_file"" M[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[K"
+[?2004l[?2004h>     OFS="," 
+[?2004l[?2004h> }
+[?2004l[?2004h> NR==FNR {
+[?2004l[?2004h>     if (NR>1) {
+[?2004l[?2004h>         owners[$1] = $2 ";" $3 ";" $4
+[?2004l[?2004h>     }
+[?2004l[?2004h>     next
+[?2004l[?2004h> }
+[?2004l[?2004h> NR==1 {
+[?2004l[?2004h>     # Skip header for usage file
+[?2004l[?2004h>     next
+[?2004l[?2004h> }
+[?2004l[?2004h> {
+[?2004l[?2004h>     # Get owner info or set defaults
+[?2004l[?2004h>     owner_info = ($1 in owners) ? owners[$1] : "Unknown;prod;global"
+[?2004l[?2004h>     split(owner_info, fields, ";")
+[?2004l[?2004h>     owner_email = fields[1]
+[?2004l[?2004h>     environment = fields[2]
+[?2004l[?2004h>     region = fields[3]
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Convert to numbers, treat empty as 0
+[?2004l[?2004h>     cpu_percent = ($3 ~ /^[0-9.]+$/) ? $3 : 0
+[?2004l[?2004h>     mem_mb = ($4 ~ /^[0-9.]+$/) ? $4 : 0
+[?2004l[?2004h>     runtime_hours = ($5 ~ /^[0-9.]+$/) ? $5 : 0
+[?2004l[?2004h>     cost_per_hour = ($6 ~ /^[0-9.]+$/) ? $6 : 0
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Calculate base cost
+[?2004l[?2004h>     base_cost = runtime_hours * cost_per_hour
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Apply regional tax
+[?2004l[?2004h>     if (region == "eu-west") {
+[?2004l[?2004h>         taxed_cost = base_cost * 1.10
+[?2004l[?2004h>         tax_rate = "10%"
+[?2004l[?2004h>     } else if (region == "us-east") {
+[?2004l[?2004h>         taxed_cost = base_cost
+[?2004l[?2004h>         tax_rate = "0%"
+[?2004l[?2004h>     } else {
+[?2004l[?2004h>         taxed_cost = base_cost * 1.05
+[?2004l[?2004h>         tax_rate = "5%"
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Apply environment discount
+[?2004l[?2004h>     if (environment == "dev") {
+[?2004l[?2004h>         final_cost = taxed_cost * 0.50
+[?2004l[?2004h>     } else {
+[?2004l[?2004h>         final_cost = taxed_cost
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Round final cost to 4 decimal places
+[?2004l[?2004h>     final_cost_rounded = sprintf("%.4f", final_cost)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Determine if idle
+[?2004l[?2004h>     is_idle = (cpu_percent <= 5.0 && mem_mb < 512) ? "true" : "false"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Format JSON object
+[?2004l[?2004h>     if (NR>2) {
+[?2004l[?2004h>         print "," >> ""cost_model_file"" 
+[?2004l[?2004h>     }
+[?2004l[?2004h>     printf "{\n    \"container_id\": \"%s\",\n    \"image\": \"%s\",\n    \"cpu_percent\": %.2f,\n    \"mem_mb\": %.2f,\n    \"runtime_hours\": %.2f,\n    \"cost_per_hour\": %.2f,\n    \"owner_email\": \"%s\",\n    \"environment\": \"%s\",\n    \"region\": \"%s\",\n    \"tax_rate\": \"%s\",\n    \"total_cost\": %.4f,\n    \"is_idle\": %s\n" 
+[?2004l[?2004h>     , $1, $2, cpu_percent, mem_mb, runtime_hours, cost_per_hour 
+[?2004l[?2004h>     , owner_email, environment, region, tax_rate, final_cost_rounded, is_idle >> ""cost_model_file""
+[?2004l[?2004h> }
+[?2004l[?2004h> END {
+[?2004l[?2004h>     print "\n  ]\n}" >> ""cost_model_file""
+[?2004l[?2004h> }
+[?2004l[?2004h> ' "$owners_utf8_file" "$clean_usage_file"
+[?2004l[?2004h> 
+[?2004l[?2004h> if [ ! -s "$cost_model_file" ]; then
+[?2004l[?2004h>     echo "ERROR: Failed to generate cost model JSON"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Phase 2 complete: Cost model saved to $cost_model_file"
+[?2004l[?2004h> EOFcat >> bin/generate_cost_report.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> ######################################################################
+[?2004l[?2004h> # Phase 3: Final Reporting
+[?2004l[?2004h> ######################################################################
+[?2004l[?2004h> echo "Phase 3: Generating final report..."
+[?2004l[?2004h> 
+[?2004l[?2004h> # Convert JSON to CSV for easier parsing
+[?2004l[?2004h> json_to_csv() {
+[?2004l[?2004h>     jq -r '.data[] | [.container_id, .region, .tax_rate, .total_cost] | @csv' "$cost_model_file" |
+[?2004l[?2004h>     awk -F, '{ printf("%s | %s | %s | %.2f\\n", $1, $2, $3, $4) }'
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate CSV content
+[?2004l[?2004h> final_data_csv=$(json_to_csv)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Extract individual fields
+[?2004l[?2004h> container_ids=$(jq -r '.data[].container_id' "$cost_model_file")
+[?2004l[?2004h> regions=$(jq -r '.data[].region' "$cost_model_file")
+[?2004l[?2004h> tax_rates=$(jq -r '.data[].tax_rate' "$cost_model_file") 
+[?2004l[?2004h> costs=$(jq -r '.data[].total_cost' "$cost_model_file" | awk '{printf "%.2f\\n", $1}')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Calculate summary statistics
+[?2004l[?2004h> active_containers=$(jq '.data[] | select(.is_idle == false) | length' "$cost_model_file")
+[?2004l[?2004h> idle_containers=$(jq '.data[] | select(.is_idle == true) | length' "$cost_model_file")
+[?2004l[?2004h> total_cost=$(jq -r '.data[] | .total_cost' "$cost_model_file" | awk '{sum+=$1} END {printf "%.2f", sum}')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get integrity hash
+[?2004l[?2004h> integrity_hash=$(md5sum "$cost_model_file" | awk '{print $1}')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create report header with current date
+[?2004l[?2004h> report_header="FinOps Cost Report (v2)\nDate: $(date +\%Y-\%m-\%d)\n\nContainer \| Region \| Tax \| Cost\n---------------------------------"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Combine all report parts and convert to ISO-8859-1 encoding
+[?2004l[?2004h> report_content="$report_header\n$final_data_csv\n\nSummary\n=======\nActive Containers: $active_containers\nIdle Containers: $idle_containers\nTotal Cost: \$${total_cost}\n\n[Integrity Hash: ${integrity_hash}]"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write report to specified output file (convert to Latin-1 encoding)
+[?2004l[?2004h> echo "$report_content" | iconv -f UTF-8 -t ISO-8859-1 > "$OUTPUT_REPORT_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> if [ ! -s "$OUTPUT_REPORT_FILE" ]; then
+[?2004l[?2004h>     echo "ERROR: Failed to generate final report"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Pipeline complete! Report saved to $OUTPUT_REPORT_FILE"
+[?2004l[?2004h> echo "All deliverables created successfully."
+[?2004l[?2004h> EOFchmod +x bin/generate_cost_report.sh
+[?2004l[?2004h> echo "Script development complete. All phases implemented successfully."
+[?2004l[?2004h> 

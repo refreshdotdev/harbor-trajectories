@@ -1,0 +1,49 @@
+New Terminal Output:
+
+root@a0eea0e5-02a2-44b8-82aa-a589fdbe2c7a:/home/user# cat >> solve.sh << 'EOF'
+>
+> # Initialize variables
+> total_records=0
+> processed_files=()
+> declare -A file_hashes
+>
+> # Function to check for UTF-8 BOM
+> check_bom() {
+>     local file="\$1"
+>     # Check if file starts with EF BB BF (UTF-8 BOM)
+>     if [ "\$(head -c 3 "\$file" | od -tx1 | tr -d ' \n' | cut -c4-18)" = "efbbbf" ]; then
+>         return 0  # File has BOM (corrupt)
+>     else
+>         return 1  # File is clean
+>     fi
+> }
+>
+> # Process incoming files
+> echo "Processing files in $INCOMING_DIR..."
+> for csvfile in "$INCOMING_DIR"/*.csv; do
+>     [ -e "\$csvfile" ] || continue  # Skip if no CSV files found
+>     filename="\$(basename -- "\$csvfile")"
+>     echo "Processing \$filename..."
+>
+>     if check_bom "\$csvfile"; then
+>         echo "Corrupt BOM found in \$filename - moving to quarantine"
+>         mv "\$csvfile" "$QUARANTINE_DIR/"
+>     else
+>         echo "\$filename is clean - processing..."
+>         processed_files+=("\$filename")
+>
+>         # Calculate MD5 hash
+>         file_hashes["\$filename"]="\$(md5sum "\$csvfile" | awk '{print \$1}')"
+>
+>         # Count data rows (excluding header)
+>         row_count="\$(tail -n +2 "\$csvfile" | wc -l)"
+>         total_records="\$((total_records + row_count))"
+>         echo "\$filename has \$row_count data rows"
+>
+>         # Move to raw backup
+>         mv "\$csvfile" "$RAW_BACKUP_DIR/"
+>     fi
+> done
+>
+> echo "File processing complete. Total records: \$total_records"
+> EOF

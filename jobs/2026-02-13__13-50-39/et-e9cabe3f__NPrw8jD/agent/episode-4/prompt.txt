@@ -1,0 +1,68 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# cat > process_config.py << 'EOF'
+> import json
+> import re
+> import os
+>
+> # Read and sanitize configuration
+> with open('configs/config_1771009849.json', 'r') as f:
+>     config = json.load(f)
+>
+> # Remove non-printable characters from all string values
+> def sanitize_string(s):
+>     return re.sub(r'[\x00-\x1f\x7f-\x9f]', '', s)
+>
+> # Process configuration
+> config['trusted_ip'] = sanitize_string(config['trusted_ip'])
+> config['allow_ports'] = [sanitize_string(p) for p in config['allow_ports']]
+> config['block_ports'] = [sanitize_string(p) for p in config['block_ports']]
+>
+> # Expand port ranges into individual ports
+> def expand_ports(ports):
+>     expanded = []
+>     for port_range in ports:
+>         if '-' in port_range:
+>             start, end = map(int, port_range.split('-'))
+>             expanded.extend(str(p) for p in range(start, end + 1))
+>         else:
+>             expanded.append(port_range)
+>     return expanded
+>
+> expanded_allow = expand_ports(config['allow_ports'])
+> extended_block = expand_ports(config['block_ports'])
+>
+> # Create normalized rule objects
+> rules = []
+> for port in expanded_allow:
+>     rules.append({
+>         'type': 'allow',
+>         'port': port,
+>         'ip': config['trusted_ip'],
+>         'protocol': 'tcp'
+>     })
+>
+> for port in extended_block:
+>     rules.append({
+>         'type': 'block',
+>         'port': port,
+>         'ip': 'any',
+>         'protocol': 'tcp'
+>     })
+>
+> # Save intermediate JSON
+> with open('intermediate.json', 'w') as f:
+>     json.dump(rules, f, indent=2)
+>
+> # Verify creation
+> print(f"Created intermediate.json with {len(rules)} rules")
+> EOF
+root@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# python3 process_config.py
+Created intermediate.json with 10 rules
+root@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# ls -la intermediate.json
+-rw-r--r-- 1 root root 962 Feb 13 19:11 intermediate.json
+root@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall#

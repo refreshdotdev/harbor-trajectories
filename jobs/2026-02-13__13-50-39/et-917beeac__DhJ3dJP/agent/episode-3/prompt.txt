@@ -1,0 +1,53 @@
+New Terminal Output:
+
+root@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user/incoming# cd /home/user
+root@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > solve.sh << 'EOF'
+> #!/bin/bash
+>
+> # Read configuration
+> CONFIG_FILE="/etc/legacy_etl/settings.conf"
+> REGION_CODE=$(grep -E '^REGION_CODE=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+> RETENTION_POLICY=$(grep -E '^RETENTION_POLICY=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+>
+> # Directory paths
+> INCOMING_DIR="/home/user/incoming"
+> QUARANTINE_DIR="/home/user/etl/quarantine"
+> ARCHIVE_DIR="/home/user/etl/archive"
+> RAW_BACKUP_DIR="/home/user/etl/raw_backup"
+> STAGING_DIR="/home/user/etl/staging"
+> LOG_DIR="/home/user/etl/logs"
+>
+> # Initialize counters
+> TOTAL_RECORDS=0
+> VALID_FILES=()
+> ARCHIVE_NAME=""
+>
+> # Function to check for BOM
+> check_bom() {
+>     local file="$1"
+>     # BOM bytes: EF BB BF
+>     if [ "$(head -c 3 "$file" | od -An -tx1 | tr -d ' ')" = "EFBBBF" ]; then
+>         return 0  # Corrupt (BOM detected)
+>     else
+>         return 1  # Clean
+>     fi
+> }
+>
+> # Function to convert CSV to TSV
+> convert_csv_to_tsv() {
+>     local csv_file="$1"
+>     local tsv_file="$2"
+>     sed 's/,/\t/g' "$csv_file" > "$tsv_file"
+> }
+>
+> # Function to get MD5 hash
+> get_md5() {
+>     local file="$1"
+>     md5sum "$file" | awk '{print $1}'
+> }
+>
+> # Function to count data rows (excluding header)
+> echo "Configuration loaded successfully. REGION_CODE: $REGION_CODE"
+> EOF
+root@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# chmod +x solve.sh
+root@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user#

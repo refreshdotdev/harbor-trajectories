@@ -1,0 +1,31 @@
+[?2004hroot@3ef8aac7-5f08-40aa-b125-147e5d0a9051:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004lasciinema needs an ASCII or UTF-8 character encoding to run. Check the output of `locale` command.
+[?2004hroot@3ef8aac7-5f08-40aa-b125-147e5d0a9051:~# clear
+[?2004l[H[J[?2004hroot@3ef8aac7-5f08-40aa-b125-147e5d0a9051:~# export AUDIT_LOCATION="/home/user/audit"
+[?2004l[?2004hroot@3ef8aac7-5f08-40aa-b125-147e5d0a9051:~# mkdir -p "$AUDIT_LOCATION"
+[?2004l[?2004hroot@3ef8aac7-5f08-40aa-b125-147e5d0a9051:~# ls "$AUDIT_LOCATION/benchmark_audit.log" 2>/dev/null && mv "$AUDIT_LOCATION/benchmark_audit.log" "$AUDIT_LOCATION/beenchmark_audit.log.old" || true
+[?2004l[?2004hroot@3ef8aac7-5f08-40aa-b125-147e5d0a9051:~# datum=$(date -u +"%Y-%m-%dT%H:%M:%SZ") && val=$(nproc) && echo "$datum|CPU_CORES|$val|count|nproc" >> "$AUDIT_LOCATIION/benchmark_audit.log" 2>/dev/null
+[?2004l[?2004hroot@3ef8aac7-5f08-40aa-b125-147e5d0a9051:~# datum=$(date -u +"%Y-%m-%dT%H:%M:%SZ") && val=$(grep MemTotal /proc/meminfo | awk '{print int($2)}') && echo "$datumm|MEM_TOTAL_MIB|$val|MiB|grep MemTotal /proc/meminfo | awk '{print int($2)}'" >> "$AUDIT_LOCATION/benchmark_audit.log" 2>/dev/null
+[?2004l[?2004hroot@3ef8aac7-5f08-40aa-b125-147e5d0a9051:~# temp_file="$AUDIT_LOCATION/disk_bench.tmp" && dd if=/dev/zero of="$temp_file" bs=1M count=100 conv=fdatasync 2>&1 |  tail -n 1 | awk '{print $8}' | sed 's/\..*//' | xargs -I {} echo "{}"
+[?2004l0
+[?2004hroot@3ef8aac7-5f08-40aa-b125-147e5d0a9051:~# datum=$(date -u +"%Y-%m-%dT%H:%M:%SZ") && val=$(dd if=/dev/zero of="$AUDIT_LOCATION/disk_bench.tmp" bs=1M count=100  conv=fdatasync 2>&1 | tail -n 1 | awk '{print $8}' | sed 's/\..*//') && echo "$datum|DISK_WRITE_MIBPS|$val|MiB/s|dd if=/dev/zero of=\"$AUDIT_LOCATION/disk_benchh.tmp\" bs=1M count=100 conv=fdatasync" >> "$AUDIT_LOCATION/benchmark_audit.log" 2>/dev/null && rm "$AUDIT_LOCATION/disk_bench.tmp"
+[?2004l[?2004hroot@3ef8aac7-5f08-40aa-b125-147e5d0a9051:~# output=$(ping -c 5 8.8.8.8 2>&1 | grep "time=") && echo "$output" |
+[?2004l[?2004h> awk -F" " '{print $7}' | sed 's/time=//' | sed 's/ms//' | tr '\n' ' '
+[?2004lawk -F" " '{print $7}' | sed 's/time=//' | sed 's/ms//' | tr '\n' ' '
+output=$(ping -c 5 8.8.8.8 2>&1 | grep "time=") && echo "$output" | awk -F" " '{print $7}' | sed 's/time=//' | sed 's/ms//' | tr '\n' ' '
+datum=$(date -u +"%Y-%m-%dT%H:%M:%SZ") && output=$(ping -c 5 8.8.8.8 2>&1 | grep "time=") && avg=$(echo "$output" | awk -F" " '{print $7}' | sed 's/time=//' | sed 's/ms//' | awk '{sum+=$1} END {print sum/NR}') && echo "$datum|NET_LATENCY_MS|$avg|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log" 2>/dev/null
+output=$(ping -c 5 8.8.8.8 2>&1 | grep "time=") && min=$(echo "$output" | awk -F" " '{print $7}' | sed 's/time=//' | sed 's/ms//' | awk 'NR==1{min=$1; max=$1; next} {if ($1<min) min=$1; if ($1>max) max=$1} END {print min}') && max=$(echo "$output" | awk -F" " '{print $7}' | sed 's/time=//' | sed 's/ms//' | awk 'NR==1{min=$1; max=$1; next} {if ($1<min) min=$1; if ($1>max) max=$1} END {print max}') && jitter=$(echo "$min $max" | awk '{print $2 - $1}') && datum=$(date -u +"%Y-%m-%dT%H:%M:%SZ") && echo "$datum|NET_JITTER_MS|$jitter|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log" 2>/dev/null
+log_content=$(cat "$AUDIT_LOCATION/benchmark_audit.log") && first_line=$(echo "$log_content" | head -n 1) && last_line=$(echo "$log_content" | tail -n 1) && first_ts=$(echo "$first_line" | cut -d"|" -f1) && last_ts=$(echo "$last_line" | cut -d"|" -f1) && duration=$(date -u -d "$last_ts" +%s -d "$first_ts" +%s | bc) && cat > "$AUDIT_LOCATION/benchmark_summary.json" << EOF
+{
+  "cpu_core_count": $(echo "$first_line" | cut -d"|" -f3),
+  "total_memory_bytes": $(echo "$first_line" | cut -d"|" -f3 | awk '{print $1 * 1048576}'),
+  "disk_write_mib_per_sec": $(echo "$log_content" | grep DISK_WRITE | cut -d"|" -f3),
+  "network_latency_ms": $(echo "$log_content" | grep NET_LATENCY | cut -d"|" -f3),
+  "network_jitter_ms": $(echo "$log_content" | grep NET_JITTER | cut -d"|" -f3),
+  "benchmark_duration_seconds": $(echo "$duration" | awk '{printf "%.3f", $1}'),
+  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+}
+EOF
+cat "$AUDIT_LOCATION/benchmark_audit.log"
+0.510 0.530 0.554 0.532 0.558 [?2004hroot@3ef8aac7-5f08-40aa-b125-147e5d0a9051:~# awk -F" " '{print $7}' | sed 's/time=//' | sed 's/ms//' | tr '\n' ' '
+[?2004l

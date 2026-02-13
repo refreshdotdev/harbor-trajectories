@@ -1,0 +1,186 @@
+[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004lasciinema needs an ASCII or UTF-8 character encoding to run. Check the output of `locale` command.
+[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# clear
+[?2004l[H[J[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# export AUDIT_LOCATION="/home/user/audit"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mkdir -p "$AUDIT_LOCATION" && chmod 700 "$AUDIT_LOCATION"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# if [ -f "$AUDIT_LOCATION/benchmark_audit.log" ]; then mv "$AUDIT_LOCATION/benchmark_audit.log" "$AUDIT_LOCATION/bencchmark_audit.log.old"; fi
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp1=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# cpu_cores=$(nproc)
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp1|CPU_CORES|$cpu_cores|count|nproc" >> "$AUDIT_LOCATION/benchmark_audit.log"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp2=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mem_kib=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mem_mib=$(echo "scale=2; $mem_kib / 1024" | bc | awk '{printf "%d", $1}')
+[?2004lbash: bc: command not found
+[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp2|MEM_TOTAL_MIB|$mem_mib|MiB|grep MemTotal /proc/meminfo | awk '{print $2}'" >> "$AUDIT_LOCATION/bennchmark_audit.log"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp3=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# dd if=/dev/zero of="$AUDIT_LOCATION/disktest.tmp" bs=1M count=100 2>&1 | grep -oP '[0-9]+.[0-9]+ MB/s' | awk '{printt $1}' | sed 's/MB/MiB/' > "$AUDIT_LOCATION/disk_speed.tmp"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# sleep 1
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# disk_speed_mibs=$(cat "$AUDIT_LOCATION/disk_speed.tmp")
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# rm "$AUDIT_LOCATION/disk_speed.tmp"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp3|DISK_WRITE_MIBPS|$disk_speed_mibs|MiB/s|dd if=/dev/zero of=\"$AUDIT_LOCATION/disktest.tmp\" bs=1M  count=100 2>&1 | grep -oP '[0-9]+.[0-9]+ MB/s' | awk '{print $1}' | sed 's/MB/MiB/'" >> "$AUDIT_LOCATION/benchmark_audit.log"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# rm "$AUDIT_LOCATION/disktest.tmp"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# ping_output=$(ping -c 5 8.8.8.8 2>&1 | grep -E 'time=[0-9]+ ms' | awk -F'time=' '{print $2}' | awk '{print $1}' | trr '\n' ' ')
+[?2004llatencies=($(cat "$AUDIT_LOCATION/ping_times.tmp"))
+rm "$AUDIT_LOCATION/ping_times.tmp"
+min_lat=${latencies[0]}
+max_lat=${latencies[0]}
+for lat in "${latencies[@]}"; do
+  if (( $(echo "$lat < $min_lat" | bc -l) )); then
+    min_lat=$lat
+  fi
+  if (( $(echo "$lat > $max_lat" | bc -l) )); then
+    max_lat=$lat
+  fi
+done
+sorted=($(for l in "${latencies[@]}"; do echo $l; done | sort -n))
+median_lat=${sorted[2]}
+jitter=$(echo "$max_lat - $min_lat" | bc -l)
+timestamp4=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+echo "$timestamp4|NET_LATENCY_MS|$median_lat|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+timestamp5=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+echo "$timestamp5|NET_JITTER_MS|$jitter|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+log_start_ts=$(head -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+log_end_ts=$(tail -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+duration_sec=$(date -u -d "$log_end_ts" +%s.%3f -d "$log_start_ts" +%s.%3f)
+jq -n ".cpu_core_count=$cpu_cores | .total_memory_bytes=$mem_kib | .disk_write_mib_per_sec=$disk_speed_mibs | .network_latency_ms=$median_lat | .network_jitter_ms=$jitter | .benchmark_duration_seconds=$duration_sec | .timestamp=(now | todate)" > "$AUDIT_LOCATION/benchmark_summary.json"
+cat "$AUDIT_LOCATION/benchmark_audit.log"
+[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# ping_output_clean=$(echo "$ping_output" | sed 's/ /\n/g')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$ping_output_clean" > "$AUDIT_LOCATION/ping_times.tmp"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# latencies=($(cat "$AUDIT_LOCATION/ping_times.tmp"))
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# rm "$AUDIT_LOCATION/ping_times.tmp"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# min_lat=${latencies[0]}
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# max_lat=${latencies[0]}
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# for lat in "${latencies[@]}"; do
+[?2004l[?2004h>   if (( $(echo "$lat < $min_lat" | bc -l) )); then
+[?2004l[?2004h>     min_lat=$lat
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   if (( $(echo "$lat > $max_lat" | bc -l) )); then
+[?2004l[?2004h>     max_lat=$lat
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# sorted=($(for l in "${latencies[@]}"; do echo $l; done | sort -n))
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# median_lat=${sorted[2]}
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# jitter=$(echo "$max_lat - $min_lat" | bc -l)
+[?2004lbash: bc: command not found
+[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp4=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp4|NET_LATENCY_MS|$median_lat|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp5=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp5|NET_JITTER_MS|$jitter|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# log_start_ts=$(head -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# log_end_ts=$(tail -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# duration_sec=$(date -u -d "$log_end_ts" +%s.%3f -d "$log_start_ts" +%s.%3f)
+[?2004ldate: extra operand '+%s.%3f'
+Try 'date --help' for more information.
+[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# jq -n ".cpu_core_count=$cpu_cores | .total_memory_bytes=$mem_kib | .disk_write_mib_per_sec=$disk_speed_mibs | .netwoork_latency_ms=$median_lat | .network_jitter_ms=$jitter | .benchmark_duration_seconds=$duration_sec | .timestamp=(now | todate)" > "$AUDIT_LOCATION/benchmark_summmary.json"
+[?2004lbash: jq: command not found
+[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# cat "$AUDIT_LOCATION/benchmark_audit.log"
+[?2004l2026-02-13T19:01:48Z|CPU_CORES|64|count|nproc
+2026-02-13T19:01:49Z|MEM_TOTAL_MIB||MiB|grep MemTotal /proc/meminfo | awk '{print }'
+2026-02-13T19:01:49Z|DISK_WRITE_MIBPS||MiB/s|dd if=/dev/zero of="/home/user/audit/disktest.tmp" bs=1M count=100 2>&1 | grep -oP '[0-9]+.[0-9]+ MB/s' | awk '{print }' | sed 's/MB/MiB/'
+2026-02-13T19:01:58Z|NET_LATENCY_MS||ms|ping -c 5 8.8.8.8
+2026-02-13T19:01:58Z|NET_JITTER_MS||ms|ping -c 5 8.8.8.8
+[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# export AUDIT_LOCATION="/home/user/audit"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mkdir -p "$AUDIT_LOCATION" && chmod 700 "$AUDIT_LOCATION"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# if [ -f "$AUDIT_LOCATION/benchmark_audit.log" ]; then mv "$AUDIT_LOCATION/benchmark_audit.log" "$AUDIT_LOCATION/bencchmark_audit.log.old"; fi
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp1=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# cpu_cores=$(nproc)
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp1|CPU_CORES|$cpu_cores|count|nproc" >> "$AUDIT_LOCATION/benchmark_audit.log"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp2=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mem_kib=$(grep -E '^MemTotal:' /proc/meminfo | awk '{print $2}')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mem_mib=$(echo "$mem_kib" | awk '{printf "%d", $1/1024}')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp2|MEM_TOTAL_MIB|$mem_mib|MiB|grep MemTotal /proc/meminfo | awk '{print $2}'" >> "$AUDIT_LOCATION/bennchmark_audit.log"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp3=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# dd if=/dev/zero of="$AUDIT_LOCATION/disktest.tmp" bs=1M count=100 oflag=dsync 2>&1 | grep -oP '[0-9]+.[0-9]+ MB/s' || awk '{print $1}' | sed 's/MB/MiB/' > "$AUDIT_LOCATION/disk_speed.tmp"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# sleep 3
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# disk_speed_mibs=$(cat "$AUDIT_LOCATION/disk_speed.tmp" | awk '{printf "%.1f", $1}')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# rm "$AUDIT_LOCATION/disk_speed.tmp"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp3|DISK_WRITE_MIBPS|$disk_speed_mibs|MiB/s|dd if=/dev/zero of=\"$AUDIT_LOCATION/disktest.tmp\" bs=1M  count=100 oflag=dsync 2>&1 | grep -oP '[0-9]+.[0-9]+ MB/s' | awk '{print $1}' | sed 's/MB/MiB/'" >> "$AUDIT_LOCATION/benchmark_audit.log"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# rm "$AUDIT_LOCATION/disktest.tmp"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# ping_output=$(ping -c 5 8.8.8.8 2>&1 | grep -E 'time=[0-9]+ ms' | awk -F'time=' '{print $2}' | awk '{print $1}' | trr '
+[?2004l[?2004h> ' ' ')
+[?2004llatencies=($(cat "$AUDIT_LOCATION/ping_times.tmp"))
+rm "$AUDIT_LOCATION/ping_times.tmp"
+min_lat=${latencies[0]:-0}
+max_lat=${latencies[0]:-0}
+count_lat=0
+for lat in "${latencies[@]}"; do
+  if [[ -n "$lat" ]]; then
+    count_lat=$((count_lat+1))
+    if (( $(echo "$lat < $min_lat" | awk '{print ($1 < $2) ? "1" : "0"}') )); then
+      min_lat=$lat
+    fi
+    if (( $(echo "$lat > $max_lat" | awk '{print ($1 > $2) ? "1" : "0"}') )); then
+      max_lat=$lat
+    fi
+  fi
+done
+if [ $count_lat -eq 0 ]; then
+  median_lat=0
+  jitter=0
+else
+  sorted=($(for l in "${latencies[@]}"; do echo "$l"; done | sort -n))
+  median_lat=${sorted[$((count_lat/2))]:-0}
+  jitter=$(awk -v min="$min_lat" -v max="$max_lat" 'BEGIN {printf "%.1f", max - min}')
+fi
+timestamp4=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+echo "$timestamp4|NET_LATENCY_MS|$median_lat|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+timestamp5=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+echo "$timestamp5|NET_JITTER_MS|$jitter|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+log_start_ts=$(head -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+log_end_ts=$(tail -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+start_sec=$(date -u -d "$log_start_ts" +%s)
+end_sec=$(date -u -d "$log_end_ts" +%s)
+duration_sec=$(awk -v start="$start_sec" -v end="$end_sec" 'BEGIN {printf "%.3f", end - start}')
+awk -v cores="$cpu_cores" -v mem="$mem_kib" -v disk="$disk_speed_mibs" -v lat="$median_lat" -v jit="$jitter" -v dur="$duration_sec" -v ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" 'BEGIN {printf "{\"cpu_core_count\":%d,\"total_memory_bytes\":%d,\"disk_write_mib_per_sec\":%.1f,\"network_latency_ms\":%.1f,\"network_jitter_ms\":%.1f,\"benchmark_duration_seconds\":%.3f,\"timestamp\":\"%s\"}\n", cores, mem, disk, lat, jit, dur, ts}' > "$AUDIT_LOCATION/benchmark_summary.json"
+cat "$AUDIT_LOCATION/benchmark_audit.log"
+ls -la "$AUDIT_LOCATION"
+[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# ping_output_clean=$(echo "$ping_output" | sed 's/ /\n/g')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$ping_output_clean" > "$AUDIT_LOCATION/ping_times.tmp"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# latencies=($(cat "$AUDIT_LOCATION/ping_times.tmp"))
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# rm "$AUDIT_LOCATION/ping_times.tmp"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# min_lat=${latencies[0]:-0}
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# max_lat=${latencies[0]:-0}
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# count_lat=0
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# for lat in "${latencies[@]}"; do
+[?2004l[?2004h>   if [[ -n "$lat" ]]; then
+[?2004l[?2004h>     count_lat=$((count_lat+1))
+[?2004l[?2004h>     if (( $(echo "$lat < $min_lat" | awk '{print ($1 < $2) ? "1" : "0"}') )); then
+[?2004l[?2004h>       min_lat=$lat
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     if (( $(echo "$lat > $max_lat" | awk '{print ($1 > $2) ? "1" : "0"}') )); then
+[?2004l[?2004h>       max_lat=$lat
+[?2004l[?2004h>     fi
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# if [ $count_lat -eq 0 ]; then
+[?2004l[?2004h>   median_lat=0
+[?2004l[?2004h>   jitter=0
+[?2004l[?2004h> else
+[?2004l[?2004h>   sorted=($(for l in "${latencies[@]}"; do echo "$l"; done | sort -n))
+[?2004l[?2004h>   median_lat=${sorted[$((count_lat/2))]:-0}
+[?2004l[?2004h>   jitter=$(awk -v min="$min_lat" -v max="$max_lat" 'BEGIN {printf "%.1f", max - min}')
+[?2004l[?2004h> fi
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp4=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp4|NET_LATENCY_MS|$median_lat|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp5=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp5|NET_JITTER_MS|$jitter|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# log_start_ts=$(head -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# log_end_ts=$(tail -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# start_sec=$(date -u -d "$log_start_ts" +%s)
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# end_sec=$(date -u -d "$log_end_ts" +%s)
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# duration_sec=$(awk -v start="$start_sec" -v end="$end_sec" 'BEGIN {printf "%.3f", end - start}')
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# awk -v cores="$cpu_cores" -v mem="$mem_kib" -v disk="$disk_speed_mibs" -v lat="$median_lat" -v jit="$jitter" -v dur=="$duration_sec" -v ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" 'BEGIN {printf "{\"cpu_core_count\":%d,\"total_memory_bytes\":%d,\"disk_write_mib_per_sec\":%.1f,\"netwwork_latency_ms\":%.1f,\"network_jitter_ms\":%.1f,\"benchmark_duration_seconds\":%.3f,\"timestamp\":\"%s\"}\n", cores, mem, disk, lat, jit, dur, ts}' > "$AUDIT_LLOCATION/benchmark_summary.json"
+[?2004l[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# cat "$AUDIT_LOCATION/benchmark_audit.log"
+[?2004l2026-02-13T19:03:23Z|CPU_CORES|64|count|nproc
+2026-02-13T19:03:23Z|MEM_TOTAL_MIB|773337|MiB|grep MemTotal /proc/meminfo | awk '{print }'
+2026-02-13T19:03:23Z|DISK_WRITE_MIBPS||MiB/s|dd if=/dev/zero of="/home/user/audit/disktest.tmp" bs=1M count=100 oflag=dsync 2>&1 | grep -oP '[0-9]+.[0-9]+ MB/s' | awk '{print }' | sed 's/MB/MiB/'
+2026-02-13T19:03:32Z|NET_LATENCY_MS|0|ms|ping -c 5 8.8.8.8
+2026-02-13T19:03:32Z|NET_JITTER_MS|0|ms|ping -c 5 8.8.8.8
+[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# ls -la "$AUDIT_LOCATION"
+[?2004ltotal 12
+drwx------ 2 root root 110 Feb 13 19:03 [0m[01;34m.[0m
+drwxrwxrwx 1 root root  27 Feb 13 19:01 [34;42m..[0m
+-rw-r--r-- 1 root root 450 Feb 13 19:03 benchmark_audit.log
+-rw-r--r-- 1 root root 430 Feb 13 19:01 benchmark_audit.log.old
+-rw-r--r-- 1 root root 201 Feb 13 19:03 benchmark_summary.json
+[?2004hroot@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# 

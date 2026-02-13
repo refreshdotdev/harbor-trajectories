@@ -1,0 +1,17 @@
+```json
+{
+  "analysis": "The line '# URGENT SECURITY PATCH' has been successfully prepended to the top of `ssh.cfg` exactly as required. The file modification timestamp will be updated automatically. Next, I need to update the `tracked_files` record for `ssh.cfg` with the new file hash, magic bytes, and size, and then log a 'MODIFY' event using this new timestamp.",
+  "plan": "I will create a script to update the `tracked_files` entry for `ssh.cfg` and insert a 'MODIFY' event into `audit_events` using the current modification timestamp of the modified file. I'll calculate the new SHA-256 hash, new magic bytes, and new size, then execute the SQL update and insert commands, appending them to the SQL history log.",
+  "commands": [
+    {
+      "keystrokes": "cat > update_sshcfg.sh << 'EOF'\n#!/bin/bash\n\nDB=\"db/audit.db\"\nSQL_LOG=\"logs/sql_history.log\"\nFILE_PATH=\"configs/ssh.cfg\"\n\nrel_path=\"$(basename \"$FILE_PATH\")\"\n\n# Calculate new SHA-256 hash\nnew_file_hash=\"$(sha256sum \"$FILE_PATH\" | cut -d' ' -f1)\"\n\n# Get new first 4 bytes as lowercase hex\nnew_magic_hex=\"$(od -An -tx1 -j0 -N4 \"$FILE_PATH\" | tr -d ' \\n' | awk '{print tolower($0)}')\"\n\n# Get new file size in bytes\nnew_size_bytes=\"$(stat -c%s \"$FILE_PATH\")\"\n\n# Get new modification timestamp (ISO-8601 format)\nnew_mtime_utc=\"$(date -u -d \"$(stat -c%y \"$FILE_PATH\" | cut -d'.' -f1)\" +'%Y-%m-%dT%H:%M:%SZ')\"\n\n# Get the file_id for ssh.cfg\nfile_id=\"$(sqlite3 \"$DB\" \"SELECT id FROM tracked_files WHERE rel_path = '$rel_path';\" | grep -v id)\"\n\n# Update tracked_files record\nsqlite3 \"$DB\" \"UPDATE tracked_files SET file_hash='$new_file_hash', magic_hex='$new_magic_hex', size_bytes=$new_size_bytes WHERE id=$file_id;\" >> \"$SQL_LOG\" 2>&1\n\n# Insert MODIFY event\nsqlite3 \"$DB\" \"INSERT INTO audit_events (file_id, event_type, event_ts) VALUES($file_id, 'MODIFY', '$new_mtime_utc');\" >> \"$SQL_LOG\" 2>&1\n\necho \"-- ssh.cfg updated and event logged\" >> \"$SQL_LOG\"\nEOF\n\nchmod +x update_sshcfg.sh\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "chmod +x update_sshcfg.sh\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}
+```

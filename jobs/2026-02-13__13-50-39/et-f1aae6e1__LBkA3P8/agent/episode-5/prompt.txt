@@ -1,0 +1,116 @@
+New Terminal Output:
+
+root@507f6325-094c-4ea2-b3cc-5a54998de138:/home/user/cloud_costs# cat > process_data.py << 'EOF'
+('$', '').strip()
+        cost = float(cost_str)
+        original_currency = item['CURRENCY']
+        rate = exchange_rates.get(original_currency, default_rate)
+        usd_cost = round(cost * rate, 2)
+
+        if usd_cost > median_cost:
+            new_item = item.copy()
+            new_item['cost_in_usd'] = usd_cost
+            new_item['batch_id'] = batch_id
+            high_spend_data.append(new_item)
+    except (KeyError, ValueError):
+        continue
+
+# Save high spend data
+with open('processed/high_spend.json', 'w') as f:
+    json.dump(high_spend_data, f, indent=2)
+
+print(f"Generated high_spend.json with {len(high_spend_data)} records")
+EOF
+> import json
+> import sys
+> import csv
+> import statistics
+>
+> # Load blocked accounts
+> blocked_accounts = set()
+> try:
+>     with open('config/blocked_accounts.txt', 'r') as f:
+>         for line in f:
+>             line = line.strip()
+>             if line and not line.startswith('#'):
+>                 blocked_accounts.add(line)
+> except FileNotFoundError:
+>     print("Warning: blocked_accounts.txt not found")
+>
+> # Load exchange rates
+> exchange_rates = {}
+> default_rate = 1.0
+> try:
+>     with open('/var/opt/finance/2023_rates.csv', 'r') as f:
+>         reader = csv.DictReader(f)
+>         for row in reader:
+>             exchange_rates[row['CURRENCY']] = float(row['RATE'])
+> except FileNotFoundError:
+>     print("Warning: 2023_rates.csv not found, using default rate")
+>
+> # Load normalized data
+> with open('processed/normalized_data.json', 'r') as f:
+>     data = json.load(f)
+>
+> # Convert costs to numbers and filter blocked accounts
+> processed_data = []
+> usd_costs = []
+>
+> for item in data:
+>     account_id = item.get('ACCOUNT_ID')
+>     if account_id in blocked_accounts:
+>         continue
+>
+>     try:
+>         # Extract numeric cost and currency symbol
+>         cost_str = item['COST'].replace('£', '').replace('$', '').strip()
+>         original_currency = item['CURRENCY']
+>         cost = float(cost_str)
+>
+>         # Get exchange rate, default to 1.0 if missing
+>         rate = exchange_rates.get(original_currency, default_rate)
+>         usd_cost = round(cost * rate, 2)
+>
+>         processed_data.append(item)
+>         usd_costs.append(usd_cost)
+>
+>     except (KeyError, ValueError) as e:
+>         print(f"Error processing record: {item}, error: {e}")
+>
+> # Calculate median if we have data
+> if usd_costs:
+>     median_cost = statistics.median(usd_costs)
+> else:
+>     median_cost = 0.0
+>
+> # Generate high spend JSON
+> high_spend_data = []
+> with open('processed/batch_id.txt', 'r') as f:
+>     batch_id = f.read().strip()
+>
+> for item in processed_data:
+>     account_id = item.get('ACCOUNT_ID')
+>     try:
+>         cost_str = item['COST'].replace('£', '').replace('$', '').strip()
+>         cost = float(cost_str)
+>         original_currency = item['CURRENCY']
+>         rate = exchange_rates.get(original_currency, default_rate)
+>         usd_cost = round(cost * rate, 2)
+>
+>         if usd_cost > median_cost:
+>             new_item = item.copy()
+>             new_item['cost_in_usd'] = usd_cost
+>             new_item['batch_id'] = batch_id
+>             high_spend_data.append(new_item)
+>     except (KeyError, ValueError):
+>         continue
+>
+> # Save high spend data
+> with open('processed/high_spend.json', 'w') as f:
+>     json.dump(high_spend_data, f, indent=2)
+>
+> print(f"Generated high_spend.json with {len(high_spend_data)} records")
+> EOF
+root@507f6325-094c-4ea2-b3cc-5a54998de138:/home/user/cloud_costs# python3 process_data.py
+Generated high_spend.json with 1 records
+root@507f6325-094c-4ea2-b3cc-5a54998de138:/home/user/cloud_costs#

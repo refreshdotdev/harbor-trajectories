@@ -1,0 +1,129 @@
+[?2004hroot@08abde25-ca30-4139-af47-b7fddba316c1:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@08abde25-ca30-4139-af47-b7fddba316c1:~# clear
+[?2004l[H[J[?2004hroot@08abde25-ca30-4139-af47-b7fddba316c1:~# mkdir -p /home/user/configs /home/user/backups /home/user/backup_logs
+[?2004l[?2004hroot@08abde25-ca30-4139-af47-b7fddba316c1:~# echo "v1.2-2023" > /home/user/backup_id
+[?2004l[?2004hroot@08abde25-ca30-4139-af47-b7fddba316c1:~# cat > /root/backup_configs.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Exit on error, treat unset variables as errors, and fail on pipeline errors
+[?2004l[?2004h> set -euo pipefail
+[?2004l[?2004h> 
+[?2004l[?2004h> BACKUP_ID_FILE="/home/user/backup_id"
+[?2004l[?2004h> BACKUP_ID=$(tr -d '\n' < "$BACKUP_ID_FILE")
+[?2004l[?2004h> BACKUP_ID=${BACKUP_ID// /}
+[?2004l[?2004h> 
+[?2004l[?2004h> CONFIGS_DIR="/home/user/configs"
+[?2004l[?2004h> BACKUPS_DIR="/home/user/backups"
+[?2004l[?2004h> LOG_DIR="/home/user/backup_logs"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Ensure directories exist
+[?2004l[?2004h> mkdir -p "$BACKUPS_DIR"
+[?2004l[?2004h> mkdir -p "$LOG_DIR"
+[?2004l[?2004h> 
+[?2004l[?2004h> LOG_FILE="$LOG_DIR/backup_${BACKUP_ID}.log"
+[?2004l[?2004h> TEMP_LOG_FILE="$LOG_FILE.tmp"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Header for the log file
+[?2004l[?2004h> echo "REL_PATH|ARCHIVE_NAME|SHA256|SIZE" > "$TEMP_LOG_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Array to store PIDs of background jobs for individual file processing
+[?2004l[?2004h> JOBS_PIDS=()
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to process a single file
+[?2004l[?2004h> process_file() {
+[?2004l[?2004h>   local filepath="$1"
+[?2004l[?2004h>   local file_basename="$2"
+[?2004l[?2004h>   local file_ext="$3"
+[?2004l[?2004h>   local rel_path="$4"
+[?2004l[?2004h> 
+[?2004l[?2004h>   local filename_no_ext="${file_basename%.*}"
+[?2004l[?2004h>   local archive_ext=""
+[?2004l[?2004h>   local compression_flag=""
+[?2004l[?2004h> 
+[?2004l[?2004h>   if [[ "${file_ext}" == ".conf" ]]; then
+[?2004l[?2004h>     archive_ext=".tar.gz"
+[?2004l[?2004h>     compression_flag="z"
+[?2004l[?2004h>   elif [[ "${file_ext}" == ".yml" ]]; then
+[?2004l[?2004h>     archive_ext=".tar.bz2"
+[?2004l[?2004h>     compression_flag="j"
+[?2004l[?2004h>   else
+[?2004l[?2004h>     echo "Warning: Unknown extension ${file_ext} for file ${filepath}, skipping." >&2
+[?2004l[?2004h>     return 1
+[?2004l[?2004h>   fi
+[?2004l[?2004h> 
+[?2004l[?2004h>   local archive_name="${filename_no_ext}_${BACKUP_ID}${archive_ext}"
+[?2004l[?2004h>   local archive_path="${BACKUPS_DIR}/${archive_name}"
+[?2004l[?2004h> 
+[?2004l[?2004h>   # Calculate SHA256 checksum and file size
+[?2004l[?2004h>   local sha256_hash
+[?2004l[?2004h>   local file_size
+[?2004l[?2004h>   if ! sha256_hash=$(sha256sum "$filepath" | awk '{print $1}') || [ -z "$sha256_hash" ]; then
+[?2004l[?2004h>     echo "Warning: Failed to get SHA256 for ${filepath}, skipping." >&2
+[?2004l[?2004h>     return 1
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   if ! file_size=$(stat -c%s "$filepath" 2>/dev/null); then
+[?2004l[?2004h>     echo "Warning: Failed to get size for ${filepath}, skipping." >&2
+[?2004l[?2004h>     file_size="?"
+[?2004l[?2004h>   fi
+[?2004l[?2004h> 
+[?2004l[?2004h>   # Create archive
+[?2004l[?2004h>   if tar --create --file="$archive_path" $compression_flag --directory="$(dirname "$filepath")" "$(basename "$filepath")" 2>/dev/null; then
+[?2004l[?2004h>     # Append to log file
+[?2004l[?2004h>     echo "${rel_path}|${archive_name}|${sha256_hash}|${file_size}" >> "$TEMP_LOG_FILE"
+[?2004l[?2004h>   else
+[?2004l[?2004h>     echo "Warning: Failed to create archive ${archive_path} for file ${filepath}." >&2
+[?2004l[?2004h>     return 1
+[?2004l[?2004h>   fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Find and process files
+[?2004l[?2004h> find "$CONFIGS_DIR" -type f \( -name "*.conf" -or -name "*.yml" \) -size -512c \! -name "test.conf" -print0 | while IFS= read -r -d '' filepath; do
+[?2004l[?2004h>   # Skip if file does not exist or is zero size (though find criteria should prevent most of this)
+[?2004l[?2004h>   if [ ! -f "$filepath" ] || [ ! -s "$filepath" ]; then
+[?2004l[?2004h>     continue
+[?2004l[?2004h>   fi
+[?2004l[?2004h> 
+[?2004l[?2004h>   # Extract basename and extension
+[?2004l[?2004h>   file_basename="$(basename -- "$filepath")"
+[?2004l[?2004h>   file_ext=".${filepath##*.}"
+[?2004l[?2004h>   # Ensure extension is lower case for consistency
+[?2004l[?2004h>   file_ext="${file_ext,,}"
+[?2004l[?2004h> 
+[?2004l[?2004h>   # Get relative path
+[?2004l[?2004h>   rel_path="${filepath#${CONFIGS_DIR}/}"
+[?2004l[?2004h>   if [ "$rel_path" = "$filepath" ]; then
+[?2004l[?2004h>     # File is directly in CONFIGS_DIR
+[?2004l[?2004h>     rel_path="$(basename -- "$filepath")"
+[?2004l[?2004h>   fi
+[?2004l[?2004h> 
+[?2004l[?2004h>   # Call process_file in background
+[?2004l[?2004h>   process_file "$filepath" "$file_basename" "$file_ext" "$rel_path" &
+[?2004l[?2004h>   JOBS_PIDS+=("$!")
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Wait for all background jobs to complete
+[?2004l[?2004h> for pid in "${JOBS_PIDS[@]}"; do
+[?2004l[?2004h>   wait "$pid" || echo "Warning: Background job PID ${pid} exited with a non-zero status." >&2
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create full archive of configs directory
+[?2004l[?2004h> FULL_ARCHIVE_NAME="configs_full_${BACKUP_ID}.tar.xz"
+[?2004l[?2004h> FULL_ARCHIVE_PATH="${BACKUPS_DIR}/${FULL_ARCHIVE_NAME}"
+[?2004l[?2004h> if tar --create --file="$FULL_ARCHIVE_PATH" -J --directory="$(dirname "$CONFIGS_DIR")" "$(basename "$CONFIGS_DIR")" 2>/dev/null; then
+[?2004l[?2004h>   echo "Full archive created: ${FULL_ARCHIVE_PATH}"
+[?2004l[?2004h> else
+[?2004l[?2004h>   echo "Warning: Failed to create full archive ${FULL_ARCHIVE_PATH}." >&2
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort log file by SHA256 column (column 3) and remove temporary file
+[?2004l[?2004h> sort -t'|' -k3,3 "$TEMP_LOG_FILE" > "$LOG_FILE"
+[?2004l[?2004h> rm "$TEMP_LOG_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Backup process completed. Log file: ${LOG_FILE}"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@08abde25-ca30-4139-af47-b7fddba316c1:~# chmod +x /root/backup_configs.sh
+[?2004l[?2004hroot@08abde25-ca30-4139-af47-b7fddba316c1:~# echo "Environment setup and backup script created. The script is located at /root/backup_configs.sh. The backup ID is 'v1.2-2023'. To test the script, you would need to populate the /home/user/configs directory with sample .conf and .yml files."
+[?2004lEnvironment setup and backup script created. The script is located at /root/backup_configs.sh. The backup ID is 'v1.2-2023'. To test the script, you would need to populate the /home/user/configs directory with sample .conf and .yml files.
+[?2004hroot@08abde25-ca30-4139-af47-b7fddba316c1:~# 

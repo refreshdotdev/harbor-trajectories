@@ -1,0 +1,117 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+> EOFcat >> bin/generate_cost_report.sh << 'EOF'
+> ######################################################################
+> # Phase 2: Enrichment & Cost Modeling
+> ######################################################################
+>
+> cost_model_file="$INTERMEDIATE_DATA_DIR/cost_model.json"
+> echo "Phase 2: Enriching data and modeling costs..."
+>
+> # Function to convert UTF-16LE file to UTF-8 CSV
+> convert_utf16le_to_csv() {
+>     local utf16le_file="$1"
+>     local output_file="$2"
+>     iconv -f UTF-16LE -t UTF-8 "$utf16le_file" | \
+>     awk -F';' 'BEGIN { OFS="," } { \$1=\$1; gsub(/^\\xEF\\xBB\\xBF/, "", \$0); print }' > "$output_file"
+> }
+>
+> # Convert owners file from UTF-16LE to UTF-8 CSV
+> owners_utf8_file="$INTERMEDIATE_DATA_DIR/owners_utf8.csv"
+> convert_utf16le_to_csv "$INPUT_OWNERS_FILE" "$owners_utf8_file"
+>
+> if [ ! -s "$owners_utf8_file" ]; then
+>     echo "ERROR: Failed to convert owners file"
+>     exit 1
+> fi
+>
+> # Get current timestamp
+> metadata_timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+>
+> # Calculate SHA256 hash of clean usage file
+> source_hash=$(sha256sum "$clean_usage_file" | awk '{print tolower($1)}')
+>
+> # Join usage data with owner information and calculate costs
+> awk -F, '
+> BEGIN {
+>     print "{\n  \"_meta\": {\n    \"generated\": \""metadata_timestamp"\",\n    \"source_hash\": \""source_hash"\"\n  },\n  \"data\": [" > ""cost_model_file""
+>     OFS=","
+> }
+> NR==FNR {
+>     if (NR>1) {
+>         owners[$1] = $2 ";" $3 ";" $4
+>     }
+>     next
+> }
+> NR==1 {
+>     # Skip header for usage file
+>     next
+> }
+> {
+>     # Get owner info or set defaults
+>     owner_info = ($1 in owners) ? owners[$1] : "Unknown;prod;global"
+>     split(owner_info, fields, ";")
+>     owner_email = fields[1]
+>     environment = fields[2]
+>     region = fields[3]
+>
+>     # Convert to numbers, treat empty as 0
+>     cpu_percent = ($3 ~ /^[0-9.]+$/) ? $3 : 0
+>     mem_mb = ($4 ~ /^[0-9.]+$/) ? $4 : 0
+>     runtime_hours = ($5 ~ /^[0-9.]+$/) ? $5 : 0
+>     cost_per_hour = ($6 ~ /^[0-9.]+$/) ? $6 : 0
+>
+>     # Calculate base cost
+>     base_cost = runtime_hours * cost_per_hour
+>
+>     # Apply regional tax
+>     if (region == "eu-west") {
+>         taxed_cost = base_cost * 1.10
+>         tax_rate = "10%"
+>     } else if (region == "us-east") {
+>         taxed_cost = base_cost
+>         tax_rate = "0%"
+>     } else {
+>         taxed_cost = base_cost * 1.05
+>         tax_rate = "5%"
+>     }
+>
+>     # Apply environment discount
+>     if (environment == "dev") {
+>         final_cost = taxed_cost * 0.50
+>     } else {
+>         final_cost = taxed_cost
+>     }
+>
+>     # Round final cost to 4 decimal places
+>     final_cost_rounded = sprintf("%.4f", final_cost)
+>
+>     # Determine if idle
+>     is_idle = (cpu_percent <= 5.0 && mem_mb < 512) ? "true" : "false"
+>
+>     # Format JSON object
+>     if (NR>2) {
+>         print "," >> ""cost_model_file""
+>     }
+>     printf "{\n    \"container_id\": \"%s\",\n    \"image\": \"%s\",\n    \"cpu_percent\": %.2f,\n    \"mem_mb\": %.2f,\n    \"runtime_hours\": %.2f,\n    \"c
+ost_per_hour\": %.2f,\n    \"owner_email\": \"%s\",\n    \"environment\": \"%s\",\n    \"region\": \"%s\",\n    \"tax_rate\": \"%s\",\n    \"total_cost\": %.4f,
+\n    \"is_idle\": %s\n"
+>     , $1, $2, cpu_percent, mem_mb, runtime_hours, cost_per_hour
+>     , owner_email, environment, region, tax_rate, final_cost_rounded, is_idle >> ""cost_model_file""
+> }
+> END {
+>     print "\n  ]\n}" >> ""cost_model_file""
+> }
+> ' "$owners_utf8_file" "$clean_usage_file"
+>
+> if [ ! -s "$cost_model_file" ]; then
+>     echo "ERROR: Failed to generate cost model JSON"
+>     exit 1
+> fi
+>
+> echo "Phase 2 complete: Cost model saved to $cost_model_file"
+> EOF

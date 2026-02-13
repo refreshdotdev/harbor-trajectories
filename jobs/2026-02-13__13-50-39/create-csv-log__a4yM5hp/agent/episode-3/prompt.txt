@@ -1,0 +1,152 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+- Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@b0567c87-de1e-47ba-bcd9-4add759f43c7:/home/user/experiments# cat > aggregate_results.py << 'EOF'
+> #!/usr/bin/env python3
+> import os
+> import re
+> import csv
+> import json
+> import glob
+> import sys
+> import hashlib
+> import datetime
+> from typing import List, Dict, Tuple, Optional
+>
+> class ExperimentAggregator:
+>     def __init__(self, config_path: str):
+>         self.exclude_regex = ""
+>         self.precision = 2
+>         self.valid_runs = []
+>         self.min_objectives = []
+>         self.latest_mtime = 0.0
+>
+>         # Read and parse configuration
+>         if os.path.exists(config_path):
+>             with open(config_path, 'r') as f:
+>                 for line in f:
+>                     line = line.strip()
+>                     if line and not line.startswith('#'):
+>                         key, value = line.split('=', 1)
+>                         key = key.strip().lower()
+>                         value = value.strip()
+>                         if key == 'exclude_regex':
+>                             self.exclude_regex = value
+>                         elif key == 'precision':
+>                             try:
+>                                 self.precision = int(value)
+>                             except ValueError:
+>                                 pass  # Default to 2 if invalid
+>         else:
+>             print(f"Warning: Config file {config_path} not found.")
+>
+>         self.exclude_pattern = re.compile(self.exclude_regex)
+>
+>     def should_exclude_dir(self, dir_name: str) -> bool:
+>         return bool(self.exclude_pattern.search(dir_name))
+>
+>     def parse_log_file(self, log_path: str) -> Optional[float]:
+>         min_objective = None
+>         encoding = 'utf-8'
+>
+>         # Try UTF-8 first
+>         try:
+>             with open(log_path, 'r', encoding=encoding) as f:
+>                 reader = csv.DictReader(f)
+>                 for row in reader:
+>                     try:
+>                         obj_val = float(row.get('objective', ''))
+>                         # Check for NaN, Inf, -Inf
+>                         if not row.get('objective') or obj_val in [float('nan'), float('inf'), float('-inf')]:
+>                             return None  # Unstable run
+>                         if min_objective is None or obj_val < min_objective:
+>                             min_objective = obj_val
+>                     except (ValueError, TypeError):
+>                         continue
+>         except UnicodeDecodeError:
+>             # Fallback to ISO-8859-1 (Latin-1)
+>             encoding = 'iso-8859-1'
+>             try:
+>                 with open(log_path, 'r', encoding=encoding) as f:
+>                     reader = csv.DictReader(f)
+>                     for row in reader:
+>                         try:
+>                             obj_val = float(row.get('objective', ''))
+>                             if not row.get('objective') or obj_val in [float('nan'), float('inf'), float('-inf')]:
+>                                 return None
+>                             if min_objective is None or obj_val < min_objective:
+>                                 min_objective = obj_val
+>                         except (ValueError, TypeError):
+>                             continue
+>             except Exception as e:
+>                 print(f"Error reading {log_path} as {encoding}: {e}")
+>                 return None
+>         return min_objective
+>
+>     def process_directory(self, root_dir: str):
+>         for dirpath, dirnames, filenames in os.walk(root_dir):
+>             # Exclude directories matching the regex pattern
+>             dirnames[:] = [d for d in dirnames if not self.should_exclude_dir(d)]
+>
+>             for filename in filenames:
+>                 if filename == 'solver_run.log':
+>                     log_path = os.path.join(dirpath, filename)
+>                     try:
+>                         # Get file modification time
+>                         mtime = os.path.getmtime(log_path)
+>                         if mtime > self.latest_mtime:
+>                             self.latest_mtime = mtime
+>
+>                         # Process log file
+>                         min_obj = self.parse_log_file(log_path)
+>                         if min_obj is not None:
+>                             self.min_objectives.append(min_obj)
+>                             self.valid_runs.append(log_path)
+>                     except Exception as e:
+>                         print(f"Error processing {log_path}: {e}")
+>
+>     def generate_summary(self, output_dir: str):
+>         if not self.min_objectives:
+>             print("No valid runs found.")
+>             return
+>
+>         avg_min = sum(self.min_objectives) / len(self.min_objectives)
+>         rounded_avg = round(avg_min, self.precision)
+>
+>         # Convert latest_mtime to ISO format
+>         try:
+>             latest_activity = datetime.datetime.fromtimestamp(self.latest_mtime).isoformat()
+>         except Exception:
+>             latest_activity = "1970-01-01T00:00:00"
+>
+>         summary_data = {
+>             "valid_runs": len(self.min_objectives),
+>             "average_min_objective": rounded_avg,
+>             "latest_activity": latest_activity
+>         }
+>
+>         # Write summary.json in ASCII
+>         with open(os.path.join(output_dir, 'summary.json'), 'w', encoding='ascii') as f:
+>             json.dump(summary_data, f, ensure_ascii=True)
+>
+>         # Generate manifest
+>         with open(os.path.join(output_dir, 'summary.json'), 'rb') as f:
+>             md5 = hashlib.md5(f.read()).hexdigest()
+>         manifest_str = f"summary.json:{md5}"
+>
+>         with open(os.path.join(output_dir, 'manifest.txt'), 'w') as f:
+>             f.write(manifest_str)
+>             # Ensure no trailing newline
+>             f.seek(0, os.SEEK_END)
+>             f.truncate()
+>
+> if __name__ == '__main__':
+>     aggregator = ExperimentAggregator('experiment_config.txt')
+>     aggregator.process_directory('.')  # Current directory
+>     aggregator.generate_summary('.')   # Output files in current directory
+> EOFpython3 aggregate_results.py
+>

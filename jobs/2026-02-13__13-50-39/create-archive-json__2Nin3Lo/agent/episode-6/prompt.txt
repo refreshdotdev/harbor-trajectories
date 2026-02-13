@@ -1,0 +1,232 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@4c3e0f60-19ab-4fc9-abf2-cb2cad73f30f:~# rm /home/user/experiments/manage_experiments.py
+root@4c3e0f60-19ab-4fc9-abf2-cb2cad73f30f:~# cat > /home/user/experiments/manage_experiments.py << 'EOF'
+> #!/usr/bin/env python3
+> import os
+> import re
+> import json
+> import hashlib
+> import shutil
+> import sys
+> import csv
+> import io
+> import locale
+> from pathlib import Path
+>
+> # --- Configuration ---
+> EXPERIMENTS_ROOT = Path('/home/user/experiments')
+> CKPT_ARCHIVE_DIR = EXPERIMENTS_ROOT / 'ckpt_archive'
+> INVENTORY_CSV_PATH = EXPERIMENTS_ROOT / 'artifact_inventory.csv'
+> LOG_FILE_PATH = EXPERIMENTS_ROOT / 'cleanup.log'
+>
+> # --- Global Counters & Data ---
+> valid_ckpts_moved = 0
+> all_loss_values = [] # For global average loss
+>
+> # --- Helper Functions ---
+>
+> def get_sha256(file_path):
+>     """Calculate SHA256 hash of a file."""
+>     sha256 = hashlib.sha256()
+>     try:
+>         with open(file_path, 'rb') as f:
+>             while True:
+>                 data = f.read(65536) # Read in 64k chunks
+>                 if not data:
+>                     break
+>                 sha256.update(data)
+>         return sha256.hexdigest()
+>     except FileNotFoundError:
+>         return 'ERROR_HASH_FILE_NOT_FOUND'
+>     except Exception as e:
+>         return f'ERROR_HASH_{type(e).__name__}'
+>
+> def get_file_size_bytes(file_path):
+>     try:
+>         return os.path.getsize(file_path)
+>     except FileNotFoundError:
+>         return -1 # Indicate error
+>     except Exception as e:
+>         return f'ERROR_SIZE_{type(e).__name__}'
+>
+> # --- Main Processing Logic ---
+> def process_experiments():
+>     global valid_ckpts_moved, all_loss_values
+>
+>     if not EXPERIMENTS_ROOT.exists():
+>         print("Error: Experiments root directory does not exist.")
+>         sys.exit(1)
+>     if not CKPT_ARCHIVE_DIR.exists():
+>         CKPT_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+>         print(f"Created archive directory: {CKPT_ARCHIVE_DIR}")
+>
+>     all_files_for_inventory = []
+>
+>     # 1. Checkpoint Archival and Global Average Loss Calculation
+>     run_dirs = sorted([d for d in EXPERIMENTS_ROOT.iterdir() if d.is_dir() and re.match(r'^run_\\d{4}-\\d{2}-\\d{2}$', d.name)])
+>
+>     print(f"Processing {len(run_dirs)} run directories...")
+>
+>     for run_dir in run_dirs:
+>         print(f"  Processing {run_dir}")
+>         metrics_json_path = run_dir / 'metrics.json'
+>         ckpt_files = list(run_dir.glob('*.ckpt'))
+>
+>         # Read metrics.json for this run directory (for global average loss)
+>         loss_value_for_run = None
+>         try:
+>             with open(metrics_json_path, 'r', encoding='utf-8-sig') as f:
+>                 content = f.read()
+>             decoded_content = None
+>             try:
+>                 decoded_content = json.loads(content)
+>             except json.JSONDecodeError as e1:
+>                 # Try Latin-1 as a fallback if UTF-8-SIG (which handles UTF-8 and BOM) fails
+>                 print(f"    Warning: Could not parse {metrics_json_path} with utf-8-sig ({e1}). Trying latin-1.")
+>                 try:
+>                     with open(metrics_json_path, 'r', encoding='latin-1') as f_latin:
+>                         content_latin = f_latin.read()
+>                     decoded_content = json.loads(content_latin)
+>                 except Exception as e2:
+>                     print(f"    Error parsing {metrics_json_path} with latin-1: {e2}")
+>                     decoded_content = None
+>
+>             if decoded_content and 'loss' in decoded_content and isinstance(decoded_content['loss'], (int, float)):
+>                 loss_value_for_run = float(decoded_content['loss'])
+>                 all_loss_values.append(loss_value_for_run)
+>                 print(f"    Found loss: {loss_value_for_run} in {metrics_json_path.name}")
+>             else:
+>                 print(f"    No valid 'loss' float in {metrics_json_path.name} or file missing/unreadable")
+>         except FileNotFoundError:
+>             print(f"    {metrics_json_path.name} not found in {run_dir.name}")
+>         except Exception as e:
+>             print(f"    Error reading/parsing {metrics_json_path.name}: {e}")
+>
+>         for ckpt_file in ckpt_files:
+>             file_size = ckpt_file.stat().st_size
+>             if file_size > 1024: # Valid checkpoint (size > 1KB)
+>                 loss_prefix = loss_value_for_run if loss_value_for_run is not None else 'unknown'
+>                 new_filename = f"loss_{{:.4f}}__{{}}".format(loss_prefix, ckpt_file.name)
+>                 if loss_prefix == 'unknown':
+>                     new_filename = f"loss_unknown__{ckpt_file.name}"
+>
+>                 new_ckpt_path = CKPT_ARCHIVE_DIR / new_filename
+>                 counter = 1
+>                 while new_ckpt_path.exists():
+>                     base_name = new_filename
+>                     if counter > 1 and new_filename.endswith(f"_copy{counter-1}"):
+>                          # Avoid appending copyN to a name that might already have it from a prior collision
+>                         # This logic is tricky; for now, just append _copyN to the original target name
+>                         pass # Use the simpler logic below
+>                     new_filename = f"{base_name}_copy{counter}"
+>                     new_ckpt_path = CKPT_ARCHIVE_DIR / new_filename
+>                     counter += 1
+>
+>                 try:
+>                     shutil.move(str(ckpt_file), str(new_ckpt_path))
+>                     valid_ckpts_moved += 1
+>                     print(f"    Moved {ckpt_file.name} to {new_ckpt_path.name}")
+>                 except Exception as e:
+>                     print(f"    Error moving {ckpt_file.name} to {new_ckpt_path.name}: {e}")
+>             else:
+>                 print(f"    Skipping small/truncated .ckpt file: {ckpt_file.name} (size: {file_size} bytes)")
+>
+>     # 2. Generate Artifact Inventory File
+>     print("\nGenerating artifact inventory...")
+>     for root, dirs, files in os.walk(EXPERIMENTS_ROOT):
+>         for file in files:
+>             file_path = Path(root) / file
+>             if file_path == INVENTORY_CSV_PATH or file_path == LOG_FILE_PATH:
+>                 continue
+>             relative_path = file_path.relative_to(EXPERIMENTS_ROOT)
+>             item_size = get_file_size_bytes(file_path)
+>             item_sha256 = get_sha256(file_path)
+>
+>             all_files_for_inventory.append({
+>                 'filepath': str(relative_path),
+>                 'size_bytes': item_size,
+>                 'sha256': item_sha256
+>             })
+>
+>     all_files_for_inventory.sort(key=lambda x: x['filepath'].lower())
+>     print(f"  Collected {len(all_files_for_inventory)} files for inventory.")
+>
+>     try:
+>         with open(INVENTORY_CSV_PATH, 'w', encoding='utf-16-le', newline='\r\n') as csvfile:
+>             writer = csv.writer(csvfile, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+>             writer.writerow(['filepath', 'size_bytes', 'sha256'])
+>             for item in all_files_for_inventory:
+>                 writer.writerow([item['filepath'], str(item['size_bytes']), item['sha256']])
+>         print(f"  Inventory written to {INVENTORY_CSV_PATH}")
+>     except Exception as e:
+>         print(f"  Error writing inventory CSV: {e}")
+>
+>     # 3. Summary Log with Integrity Check
+>     print("\nGenerating summary log...")
+>     global_avg_loss = 0.0
+>     if all_loss_values:
+>         global_avg_loss = sum(all_loss_values) / len(all_loss_values)
+>
+>     inventory_md5 = "ERROR_MD5_UNKNOWN"
+>     try:
+>         md5_hash = hashlib.md5()
+>         with open(INVENTORY_CSV_PATH, 'rb') as f:
+>             for byte_block in iter(lambda: f.read(4096), b""):
+>                 md5_hash.update(byte_block)
+>         inventory_md5 = md5_hash.hexdigest()
+>     except FileNotFoundError:
+>         print(f"  Warning: {INVENTORY_CSV_PATH} not found for MD5 calculation.")
+>     except Exception as e:
+>         print(f"  Error calculating MD5 for inventory: {e}")
+>
+>     log_content = f"VALID_CKPTS_MOVED: {valid_ckpts_moved}\nGLOBAL_AVG_LOSS: {global_avg_loss:.4f}\nINVENTORY_MD5: {inventory_md5}"
+>
+>     try:
+>         with open(LOG_FILE_PATH, 'w') as f:
+>             f.write(log_content)
+>         os.chmod(LOG_FILE_PATH, 0o400)
+>         print(f"  Summary log written to {LOG_FILE_PATH}")
+>         print(f"  Log content:\n{log_content}")
+>     except Exception as e:
+>         print(f"  Error writing summary log: {e}")
+>
+>     print("\nTask complete. Check /home/user/experiments/ for results.")
+>
+> if __name__ == '__main__':
+>     process_experiments()
+> EOF
+root@4c3e0f60-19ab-4fc9-abf2-cb2cad73f30f:~# chmod +x /home/user/experiments/manage_experiments.py
+root@4c3e0f60-19ab-4fc9-abf2-cb2cad73f30f:~# python3 /home/user/experiments/manage_experiments.py
+Processing 0 run directories...
+
+Generating artifact inventory...
+  Collected 12 files for inventory.
+  Inventory written to /home/user/experiments/artifact_inventory.csv
+
+Generating summary log...
+  Summary log written to /home/user/experiments/cleanup.log
+  Log content:
+VALID_CKPTS_MOVED: 0
+GLOBAL_AVG_LOSS: 0.0000
+INVENTORY_MD5: 2a58a6b527a0b14187584ea53272b723
+
+Task complete. Check /home/user/experiments/ for results.
+root@4c3e0f60-19ab-4fc9-abf2-cb2cad73f30f:~# ls -la /home/user/experiments/
+total 16
+drwxrwxrwx 1 user user  124 Feb 13 19:14 .
+drwxr-xr-x 1 user user   33 Feb 12 20:42 ..
+-rw-r--r-- 1 root root 2402 Feb 13 19:14 artifact_inventory.csv
+drwxr-xr-x 2 root root   10 Feb 13 19:12 ckpt_archive
+-r-------- 1 root root   92 Feb 13 19:14 cleanup.log
+-rwxr-xr-x 1 root root 8117 Feb 13 19:14 manage_experiments.py
+drwxrwxrwx 1 user user   72 Feb 12 20:42 run_2023-08-01
+drwxrwxrwx 1 user user   44 Feb 12 20:42 run_2023-08-02
+drwxrwxrwx 1 user user   44 Feb 12 20:42 run_2023-08-03
+drwxrwxrwx 1 user user   56 Feb 12 20:42 run_2023-08-04
+drwxrwxrwx 1 user user   56 Feb 12 20:42 run_2023-08-05
+root@4c3e0f60-19ab-4fc9-abf2-cb2cad73f30f:~#

@@ -1,0 +1,401 @@
+[?2004hroot@f312d888-9b84-42f1-8fed-f1a46401093d:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@f312d888-9b84-42f1-8fed-f1a46401093d:~# clear
+[?2004l[H[J[?2004hroot@f312d888-9b84-42f1-8fed-f1a46401093d:~# cd /home/user/api_test
+[?2004l[?2004hroot@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test# ls -la
+[?2004ltotal 4
+drwxr-xr-x 1 root root 77 Feb 13 00:03 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 30 Feb 13 00:03 [01;34m..[0m
+drwxr-xr-x 1 root root 10 Feb 13 00:03 [01;34mprocessed[0m
+drwxr-xr-x 1 root root 97 Feb 13 00:03 [01;34mresponses[0m
+-rwxr-xr-x 1 root root 49 Feb 13 00:03 [01;32msettings.yaml[0m
+[?2004hroot@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test# ls -la responses/
+[?2004ltotal 4
+drwxr-xr-x 1 root root 97 Feb 13 00:03 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 77 Feb 13 00:03 [01;34m..[0m
+-rwxr-xr-x 1 root root  0 Feb 13 00:03 [01;32mrun_a.json[0m
+-rwxr-xr-x 1 root root  0 Feb 13 00:03 [01;32mrun_b.json[0m
+-rwxr-xr-x 1 root root  0 Feb 13 00:03 [01;32mrun_d.json[0m
+-rwxr-xr-x 1 root root 12 Feb 13 00:03 [01;32mrun_e.bak[0m
+[?2004hroot@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test# ls -la processed/
+[?2004ltotal 0
+drwxr-xr-x 1 root root 10 Feb 13 00:03 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 77 Feb 13 00:03 [01;34m..[0m
+[?2004hroot@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test# cat /opt/solver/settings.yaml
+[?2004lvariable_threshold: 0.001
+tie_breaker: latest
+[?2004hroot@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test# cat > process_solver_data.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> """
+[?2004l[?2004h> Optimization Audit & Consolidation Task Solver
+[?2004l[?2004h> Author: Hermes AI
+[?2004l[?2004h> Task: Processes solver output files, generates an audit manifest, and a final report.
+[?2004l[?2004h> """
+[?2004l[?2004h> import os
+[?2004l[?2004h> import json
+[?2004l[?2004h> import csv
+[?2004l[?2004h> import argparse
+[?2004l[?2004h> import re
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import datetime
+[?2004l[?2004h> from pathlib import Path
+[?2004l[?2004h> import sys
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Configuration ---
+[?2004l[?2004h> RESPONSES_DIR = Path("responses")
+[?2004l[?2004h> PROCESSED_DIR = Path("processed")
+[?2004l[?2004h> MANIFEST_FILE = PROCESSED_DIR / "manifest.csv"
+[?2004l[?2004h> REPORT_FILE = Path("optimization_report.log")
+[?2004l[?2004h> SETTINGS_FILE = Path("settings.yaml") # Assuming local copy for ease, or use /opt
+[?2004l[?2004h> # For this script, let's assume we need to access the actual system-wide one
+[?2004l[?2004h> # The problem states /opt/solver/settings.yaml. We'll use that.
+[?2004l[?2004h> SYSTEM_SETTINGS_FILE = Path("/opt/solver/settings.yaml")
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Helper Functions ---
+[?2004l[?2004h> 
+[?2004l[?2004h> def load_settings(settings_file_path: Path) -> dict:
+[?2004l[?2004h>     """Load YAML settings. For simplicity, assuming flat key-value YAML like 'key: value'."""
+[?2004l[?2004h>     settings = {}
+[?2004l[?2004h>     if settings_file_path.exists():
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(settings_file_path, 'r', encoding='utf-8') as f:
+[?2004l[?2004h>                 for line in f:
+[?2004l[?2004h>                     line = line.strip()
+[?2004l[?2004h>                     if line and ':' in line:
+[?2004l[?2004h>                         key, value = line.split(':', 1)
+[?2004l[?2004h>                         key = key.strip()
+[?2004l[?2004h>                         value = value.strip()
+[?2004l[?2004h>                         # Try to convert value to int/float if possible
+[?2004l[?2004h>                         try:
+[?2004l[?2004h>                             value = int(value)
+[?2004l[?2004h>                         except ValueError:
+[?2004l[?2004h>                             try:
+[?2004l[?2004h>                                 value = float(value)
+[?2004l[?2004h>                             except ValueError:
+[?2004l[?2004h>                                 pass # Keep as string
+[?2004l[?2004h>                         settings[key] = value
+[?2004l[?2004h>         except Exception as e:
+[?2004l[?2004h>             print(f"Warning: Could not fully load settings from {settings_file_path}: {e}")
+[?2004l[?2004h>             # Fallback to an empty settings dict or partial settings
+[?2004l[?2004h>     return settings
+[?2004l[?2004h> 
+[?2004l[?2004h> def strip_comments_iso8859_1(content: bytes, chunk_size: int = 1024) -> str:
+[?2004l[?2004h>     """Strip C-style // comments from ISO-8859-1 encoded byte string."""
+[?2004l[?2004h>     # Read byte by byte or line by line to handle comments
+[?2004l[?2004h>     # For simplicity, we'll decode to string first (assuming no undecodable bytes for now)
+[?2004l[?2004h>     # If file is large, this might need to be stream-based.
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         decoded_content = content.decode('iso-8859-1')
+[?2004l[?2004h>     except UnicodeDecodeError as e:
+[?2004l[?2004h>         print(f"Error decoding ISO-8859-1 content: {e}")
+[?2004l[?2004h>         return ""
+[?2004l[?2004h>     
+[?2004l[?2004h>     lines = []
+[?2004l[?2004h>     for line in decoded_content.splitlines():
+[?2004l[?2004h>         # Remove C-style // comments
+[?2004l[?2004h>         comment_pos = line.find('//')
+[?2004l[?2004h>         if comment_pos != -1:
+[?2004l[?2004h>             line = line[:comment_pos].strip()
+[?2004l[?2004h>         if line: # Add non-empty lines
+[?2004l[?2004h>             lines.append(line)
+[?2004l[?2004h>     return '\n'.join(lines)
+[?2004l[?2004h> 
+[?2004l[?2004h> def parse_json_content(content_bytes: bytes, encoding: str = 'utf-8') -> dict:
+[?2004l[?2004h>     """Parse JSON content from bytes, handling specified encoding."""
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         content_str = content_bytes.decode(encoding)
+[?2004l[?2004h>         data = json.loads(content_str)
+[?2004l[?2004h>         return data
+[?2004l[?2004h>     except json.JSONDecodeError as e:
+[?2004l[?2004h>         print(f"Error parsing JSON (encoding: {encoding}): {e}")
+[?2004l[?2004h>         return {}
+[?2004l[?2004h>     except UnicodeDecodeError as e:
+[?2004l[?2004h>         print(f"Error decoding content with {encoding}: {e}")
+[?2004l[?2004h>         return {}
+[?2004l[?2004h> 
+[?2004l[?2004h> def is_optimal_run(data: dict, status_field_key: str = 'status') -> bool:
+[?2004l[?2004h>     """Check if a run is optimal."""
+[?2004l[?2004h>     if not data:
+[?2004l[?2004h>         return False
+[?2004l[?2004h>     status = data.get(status_field_key, '').lower()
+[?2004l[?2004h>     return status == 'optimal'
+[?2004l[?2004h> 
+[?2004lt[?2004h> def get_key_fields(data: dict, id_key: str = 'id', objective_key: str = 'objective_value', timestamp_key: str = 'timestamp') -> tuple:
+[?2004l[?2004h>     """Get key fields from parsed data."""
+[?2004l[?2004h>     run_id = data.get(id_key)
+[?2004l[?2004h>     objective_value = data.get(objective_key)
+[?2004l[?2004h>     timestamp = data.get(timestamp_key)
+[?2004l[?2004h>     return run_id, objective_value, timestamp
+[?2004l[?2004h> 
+[?2004l[?2004h> def generate_manifest(valid_runs: list, manifest_file_path: Path):
+[?2004l[?2004h>     """Generate the audit manifest CSV."""
+[?2004l[?2004h>     if not valid_runs:
+[?2004l[?2004h>         print("No valid optimal runs found to generate manifest.")
+[?2004l[?2004h>         return False
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sort by timestamp descending
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         valid_runs.sort(key=lambda x: x['timestamp'], reverse=True)
+[?2004l[?2004h>     except TypeError as e:
+[?2004l[?2004h>         print(f"Error sorting runs by timestamp: {e}")
+[?2004l[?2004h>         # Fallback: sort by ID or skip sorting if type error persists
+[?2004l[?2004h>         valid_runs.sort(key=lambda x: str(x.get('timestamp', '')), reverse=True)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Columns: id,objective,timestamp (no header)
+[?2004l[?2004h>     # CRLF line endings
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(manifest_file_path, 'wb') as f: # Open in binary mode for CRLF
+[?2004l[?2004h>             for run in valid_runs:
+[?2004l[?2004h>                 row = f"{run['id']},{run['objective_value']},{run['timestamp']}\r\n".encode('utf-8')
+[?2004l[?2004h>                 f.write(row)
+[?2004l[?2004h>         print(f"Manifest generated at {manifest_file_path}")
+[?2004l[?2004h>         return True
+[?2004l[?2004h>     except IOError as e:
+[?2004l[?2004h>         print(f"Error writing manifest file {manifest_file_path}: {e}")
+[?2004l[?2004h>         return False
+[?2004l[?2004h> 
+[?2004l[?2004h> def select_winner(valid_runs: list, settings: dict) -> dict:
+[?2004l[?2004h>     """Select the best run based on criteria."""
+[?2004l[?2004h>     if not valid_runs:
+[?2004l[?2004h>         print("No valid runs to select a winner from.")
+[?2004l[?2004h>         return None
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Primary Criteria: Lowest objective_value
+[?2004l[?2004h>     # Secondary Criteria: Tie-breaker from settings (latest/earliest timestamp)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sort by objective_value (ascending), then by timestamp (depending on tie_breaker)
+[?2004l[?2004h>     # Python's sort is stable, so we sort by secondary key first, then primary key.
+[?2004l[?2004h>     # For tie-breaker on timestamp:
+[?2004l[?2004h>     # 'latest' -> sort by timestamp descending
+[?2004l[?2004h>     # 'earliest' -> sort by timestamp ascending
+[?2004l[?2004h>     
+[?2004l[?2004h>     tie_breaker = settings.get('tie_breaker', 'latest')
+[?2004l[?2004h>     
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         valid_runs.sort(key=lambda x: x['timestamp'], reverse=(tie_breaker == 'latest'))
+[?2004l[?2004h>         valid_runs.sort(key=lambda x: x['objective_value'])
+[?2004l[?2004h>         winner = valid_runs[0]
+[?2004l[?2004h>         print(f"Winner selected: ID {winner['id']}, Objective: {winner['objective_value']}, Timestamp: {winner['timestamp']}")
+[?2004l[?2004h>         return winner
+[?2004l[?2004h>     except (KeyError, TypeError) as e:
+[?2004l[?2004h>         print(f"Error during winner selection: {e}")
+[?2004l[?2004h>         # Fallback to first run if sorting fails
+[?2004l[?2004h>         return valid_runs[0] if valid_runs else None
+[?2004l[?2004h> 
+[?2004l[?2004h> def calculate_manifest_sha256(manifest_file_path: Path) -> str:
+[?2004l[?2004h>     """Calculate SHA256 hash of the manifest file's binary content."""
+[?2004l[?2004h>     if not manifest_file_path.exists():
+[?2004l[?2004h>         print(f"Manifest file {manifest_file_path} not found for hashing.")
+[?2004l[?2004h>         return ""
+[?2004l[?2004h>     hash_sha256 = hashlib.sha256()
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(manifest_file_path, 'rb') as f:
+[?2004l[?2004h>             for chunk in iter(lambda: f.read(4096), b""):
+[?2004l[?2004h>                 hash_sha256.update(chunk)
+[?2004l[?2004h>         return hash_sha256.hexdigest()
+[?2004l[?2004h>     except IOError as e:
+[?2004l[?2004h>         print(f"Error reading manifest file for hashing: {e}")
+[?2004l[?2004h>         return ""
+[?2004l[?2004h> 
+[?2004l[?2004h> def find_winner_line_in_manifest(winner_id: str, manifest_file_path: Path) -> int:
+[?2004l[?2004h>     """Find the 1-based line number of the winner in the manifest."""
+[?2004l[?2004h>     if not manifest_file_path.exists():
+[?2004l[?2004h>         print(f"Manifest file {manifest_file_path} not found for line search.")
+[?2004l[?2004h>         return 0
+[?2004l[?2004h>     
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(manifest_file_path, 'r', encoding='utf-8', newline='\r') as f:
+[?2004l[?2004h>             for i, line in enumerate(f, start=1):
+[?2004l[?2004h>                 # Each line is 'id,objective,timestamp\r\n'
+[?2004l[?2004h>                 # Strip CRLF before splitting
+[?2004l[?2004h>                 line_content = line.rstrip('\r\n') 
+[?2004l[?2004h>                 if not line_content:
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 parts = line_content.split(',')
+[?2004l[?2004h>                 if len(parts) >= 1 and parts[0] == winner_id:
+[?2004l[?2004h>                     return i
+[?2004l[?2004h>         return 0 # Winner ID not found
+[?2004l[?2004h>     except IOError as e:
+[?2004l[?2004h>         print(f"Error reading manifest file for line search: {e}")
+[?2004l[?2004h>         return 0
+[?2004l[?2004h> 
+[?2004l[?2004h> def format_variables(x_array: list, variable_threshold: float) -> str:
+[?2004l[?2004h>     """Format x array based on threshold and value."""
+[?2004l[?2004h>     if not x_array:
+[?2004l[?2004h>         return ""
+[?2004l[?2004h>     
+[?2004l[?2004h>     formatted_vars = []
+[?2004l[?2004h>     for x_val in x_array:
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             x_val_float = float(x_val)
+[?2004l[?2004h>             if abs(x_val_float) > variable_threshold:
+[?2004l[?2004h>                 if abs(x_val_float) < 0.01:
+[?2004l[?2004h>                     # Format in scientific notation with 2 decimal places
+[?2004l[?2004h>                     formatted_vars.append(f"{x_val_float:.2e}")
+[?2004l[?2004h>                 else:
+[?2004l[?2004h>                     # Format as fixed-point with 2 decimal places
+[?2004l[?2004h>                     formatted_vars.append(f"{x_val_float:.2f}")
+[?2004l[?2004h>         except (ValueError, TypeError):
+[?2004l[?2004h>             # Skip if not a valid number or formatting fails
+[?2004l[?2004h>             pass 
+[?2004l[?2004h>             # Consider logging an error or warning here in a real system
+[?2004l[?2004h>     return ','.join(formatted_vars)
+[?2004l[?2004h> 
+[?2004lm[?2004h> def generate_report(
+[?2004l[?2004h>     audit_date: str, 
+[?2004l[?2004h>     winner_id: str, 
+[?2004l[?2004h>     manifest_sha256: str, 
+[?2004l[?2004h>     manifest_line: int, 
+[?2004l[?2004h>     variables_str: str, 
+[?2004l[?2004h>     report_file_path: Path
+[?2004l[?2004h> ):
+[?2004l[?2004h>     """Generate the final optimization report."""
+[?2004l[?2004h>     report_content = f"AUDIT_DATE: {audit_date}\nWINNER_ID: {winner_id}\nMANIFEST_SHA256: {manifest_sha256}\nMANIFEST_LINE: {manifest_line}\nVARIABLES: {variables_str}"
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(report_file_path, 'w', encoding='utf-8') as f:
+[?2004l[?2004h>             f.write(report_content)
+[?2004l[?2004h>         print(f"Report generated at {report_file_path}")
+[?2004l[?2004h>         return True
+[?2004l[?2004h>     except IOError as e:
+[?2004l[?2004h>         print(f"Error writing report file {report_file_path}: {e}")
+[?2004l[?2004h>         return False
+[?2004l[?2004h> 
+[?2004l[?2004h> def main():
+[?2004l[?2004h>     print("Starting Optimization Audit & Consolidation Task...")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 0. Load System Settings
+[?2004l[?2004h>     print("Loading system settings...")
+[?2004l[?2004h>     settings = load_settings(SYSTEM_SETTINGS_FILE)
+[?2004l[?2004h>     variable_threshold = settings.get('variable_threshold', 0.001) # Default if not in YAML
+[?2004l[?2004h>     tie_breaker = settings.get('tie_breaker', 'latest') # Default if not in YAML
+[?2004l[?2004h>     print(f"Loaded settings: variable_threshold={variable_threshold}, tie_breaker='{tie_breaker}'")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Ensure processed directory exists
+[?2004l[?2004h>     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Stage 1: Ingestion & Normalization
+[?2004l[?2004h>     print("Stage 1: Ingestion & Normalization...")
+[?2004l[?2004h>     valid_optimal_runs = []
+[?2004l[?2004h>     
+[?2004l[?2004h>     if not RESPONSES_DIR.exists():
+[?2004l[?2004h>         print(f"Error: Responses directory {RESPONSES_DIR} not found.")
+[?2004l[?2004h>         # Potentially create it or exit
+[?2004l[?2004h>         # For now, we'll proceed, it will just be empty.
+[?2004l[?2004h>     
+[?2004l[?2004h>     for item_path in RESPONSES_DIR.iterdir():
+[?2004l[?2004h>         if item_path.is_file() and (item_path.suffix == '.json' or item_path.suffix == '.log'):
+[?2004l[?2004h>             print(f"Processing file: {item_path.name}")
+[?2004l[?2004h>             try:
+[?2004l[?2004h>                 with open(item_path, 'rb') as f:
+[?2004l[?2004h>                     content_bytes = f.read()
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 data = {}
+[?2004l[?2004h>                 is_valid_json = False
+[?2004l[?2004h>                 if item_path.suffix == '.json':
+[?2004l[?2004h>                     # Modern Solver Outputs (UTF-8)
+[?2004l[?2004h>                     data = parse_json_content(content_bytes, encoding='utf-8')
+[?2004l[?2004h>                     is_valid_json = bool(data)
+[?2004l[?2004h>                 elif item_path.suffix == '.log':
+[?2004l[?2004h>                     # Legacy Solver Outputs (ISO-8859-1, strip comments)
+[?2004l[?2004h>                     try:
+[?2004l[?2004h>                         # Strip comments first
+[?2004l[?2004h>                         stripped_content = strip_comments_iso8859_1(content_bytes)
+[?2004l[?2004h>                         if stripped_content:
+[?2004l[?2004h>                             # Try parsing as UTF-8 after stripping comments, as ISO-8859-1
+[?2004l[?2004h>                             # is a subset of Unicode for common characters.
+[?2004l[?2004h>                             # If this fails, the original problem implies it should be parsable
+[?2004l[?2004h>                             # after stripping.
+[?2004l[?2004h>                             data = parse_json_content(stripped_content.encode('utf-8'), encoding='utf-8')
+[?2004l[?2004h>                             is_valid_json = bool(data)
+[?2004l[?2004h>                         else:
+[?2004l[?2004h>                             print(f"  No content after stripping comments from {item_path.name}")
+[?2004l[?2004h>                     except Exception as e:
+[?2004l[?2004h>                         print(f"  Error processing legacy file {item_path.name}: {e}")
+[?2004l[?2004h>                         data = {}
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 if is_valid_json and is_optimal_run(data):
+[?2004l[?2004h>                     run_id, objective_value, timestamp = get_key_fields(data)
+[?2004l[?2004h>                     if run_id is not None and objective_value is not None and timestamp is not None:
+[?2004l[?2004h>                         valid_optimal_runs.append({
+[?2004l[?2004h>                             'id': run_id,
+[?2004l[?2004h>                             'objective_value': objective_value,
+[?2004l[?2004h>                             'timestamp': timestamp,
+[?2004l[?2004h>                             # Store original data for winner's x array later
+[?2004l[?2004h>                             'original_data': data 
+[?2004l[?2004h>                         })
+[?2004l[?2004h>                         print(f"  Added valid optimal run from {item_path.name}: ID {run_id}")
+[?2004l[?2004h>                     else:
+[?2004l[?2004h>                         print(f"  Run from {item_path.name} is optimal but missing required fields (id, objective_value, timestamp). Skipping.")
+[?2004l[?2004h>                 elif is_valid_json:
+[?2004l[?2004h>                     print(f"  Run from {item_path.name} is not optimal. Skipping.")
+[?2004l[?2004h>                 else:
+[?2004l[?2004h>                     print(f"  Could not parse valid JSON from {item_path.name}. Skipping.")
+[?2004l[?2004h>             except IOError as e:
+[?2004l[?2004h>                 print(f"  Error reading file {item_path.name}: {e}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Stage 2: The Audit Manifest
+[?2004l[?2004h>     print("\nStage 2: Generating Audit Manifest...")
+[?2004l[?2004h>     manifest_generated = generate_manifest(valid_optimal_runs, MANIFEST_FILE)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Stage 3: Winner Selection
+[?2004l[?2004h>     print("\nStage 3: Winner Selection...")
+[?2004l[?2004h>     winner = select_winner(valid_optimal_runs, settings)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Stage 4: Final Report
+[?2004l[?2004h>     print("\nStage 4: Generating Final Report...")
+[?2004l[?2004h>     if winner:
+[?2004l[?2004h>         audit_date = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+[?2004l[?2004h>         manifest_sha256 = calculate_manifest_sha256(MANIFEST_FILE)
+[?2004l[?2004h>         manifest_line = find_winner_line_in_manifest(winner['id'], MANIFEST_FILE)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Get 'x' array from winner's original_data
+[?2004l[?2004h>         x_array = winner['original_data'].get('x', [])
+[?2004l[?2004h>         variables_str = format_variables(x_array, variable_threshold)
+[?2004l[?2004h>         
+[?2004l[?2004h>         report_generated = generate_report(
+[?2004l[?2004h>             audit_date,
+[?2004l[?2004h>             winner['id'],
+[?2004l[?2004h>             manifest_sha256,
+[?2004l[?2004h>             manifest_line,
+[?2004l[?2004h>             variables_str,
+[?2004l[?2004h>             REPORT_FILE
+[?2004l[?2004h>         )
+[?2004l[?2004h>         if report_generated:
+[?2004l[?2004h>             print("All stages completed successfully.")
+[?2004l[?2004h>             print("Deliverables:")
+[?2004l[?2004h>             print(f"- {MANIFEST_FILE.relative_to(Path.cwd())}")
+[?2004l[?2004h>             print(f"- {REPORT_FILE.relative_to(Path.cwd())}")
+[?2004l[?2004h>     else:
+[?2004l[?2004h>         print("No winner was selected. Report generation skipped.")
+[?2004l[?2004h>         # Optionally, create an empty or error report if required
+[?2004l[?2004h> 
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     main()
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test# chmod +x process_solver_data.py
+[?2004l[?2004hroot@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test# python3 process_solver_data.py
+[?2004lStarting Optimization Audit & Consolidation Task...
+Loading system settings...
+Loaded settings: variable_threshold=0.001, tie_breaker='latest'
+Stage 1: Ingestion & Normalization...
+Processing file: run_a.json
+Error parsing JSON (encoding: utf-8): Expecting value: line 1 column 1 (char 0)
+  Could not parse valid JSON from run_a.json. Skipping.
+Processing file: run_b.json
+Error parsing JSON (encoding: utf-8): Expecting value: line 1 column 1 (char 0)
+  Could not parse valid JSON from run_b.json. Skipping.
+Processing file: run_d.json
+Error parsing JSON (encoding: utf-8): Expecting value: line 1 column 1 (char 0)
+  Could not parse valid JSON from run_d.json. Skipping.
+
+Stage 2: Generating Audit Manifest...
+No valid optimal runs found to generate manifest.
+
+Stage 3: Winner Selection...
+No valid runs to select a winner from.
+
+Stage 4: Generating Final Report...
+No winner was selected. Report generation skipped.
+[?2004hroot@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test# 

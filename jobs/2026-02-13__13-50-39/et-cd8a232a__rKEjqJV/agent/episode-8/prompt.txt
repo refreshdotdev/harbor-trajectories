@@ -1,0 +1,67 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user/scripts# cat >> filter_errors.sh << 'EOF'
+>
+> # Extract error categories and count occurrences
+> awk -v summary_csv="\$summary_csv" '
+>     BEGIN {
+>         print "error_category,count" > summary_csv;
+>         counts["PAYMENT_FAILURE"] = 0;
+>         counts["HTTP_5XX"] = 0;
+>         counts["FATAL"] = 0;
+>     }
+>     /^\\[[0-9]{4}-[0-9]{2}-[0-9]{2}/ {
+>         if (entry != "") {
+>             # Determine category based on first matching rule
+>             category = "UNKNOWN"
+>             if (entry ~ /Payment failed/) {
+>                 category = "PAYMENT_FAILURE"
+>             } else if (entry ~ /HTTP\\/1\\.1 5[0-9]{2}/) {
+>                 category = "HTTP_5XX"
+>             } else if (entry ~ /FATAL/) {
+>                 category = "FATAL"
+>             }
+>
+>             if (category != "UNKNOWN") {
+>                 counts[category]++
+>             }
+>
+>             entry = ""
+>         }
+>
+>         # Start new entry
+>         entry = $0 "\n"
+>         in_entry = 1
+>     }
+>     in_entry && !/^[\\[]/{
+>         entry = entry $0 "\n"
+>     }
+>     END {
+>         if (entry != "") {
+>             # Process last entry
+>             if (entry ~ /Payment failed/) {
+>                 counts["PAYMENT_FAILURE"]++
+>             } else if (entry ~ /HTTP\\/1\\.1 5[0-9]{2}/) {
+>                 counts["HTTP_5XX"]++
+>             } else if (entry ~ /FATAL/) {
+>                 counts["FATAL"]++
+>             }
+>         }
+>
+>         # Output counts in sorted order
+>         # First sort by count descending, then category ascending
+>         print counts["PAYMENT_FAILURE"] ~ /./ ? "PAYMENT_FAILURE," counts["PAYMENT_FAILURE"] : "" > "summary_csv.tmp"
+>         print counts["HTTP_5XX"] ~ /./ ? "HTTP_5XX," counts["HTTP_5XX"] : "" >> "summary_csv.tmp"
+>         print counts["FATAL"] ~ /./ ? "FATAL," counts["FATAL"] : "" >> "summary_csv.tmp"
+>
+>         # Sort the lines and overwrite summary file
+>         sort -t, -k1,1 -k2,2nr < "summary_csv.tmp" > "summary_csv.sorted"
+>         mv "summary_csv.sorted" "$summary_csv"
+>         rm "summary_csv.tmp"
+>     }' "$critical_log"
+> EOF
+root@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user/scripts#

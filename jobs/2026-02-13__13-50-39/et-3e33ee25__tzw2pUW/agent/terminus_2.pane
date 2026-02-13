@@ -1,0 +1,216 @@
+[?2004hroot@575b4abc-7c46-4d84-91f7-19e81e66c20e:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@575b4abc-7c46-4d84-91f7-19e81e66c20e:~# clear
+[?2004l[H[J[?2004hroot@575b4abc-7c46-4d84-91f7-19e81e66c20e:~# mkdir -p /home/user/reports
+[?2004l[?2004hroot@575b4abc-7c46-4d84-91f7-19e81e66c20e:~# mkdir -p /home/user/sample_data
+[?2004l[?2004hroot@575b4abc-7c46-4d84-91f7-19e81e66c20e:~# mkdir -p /home/user/config
+[?2004l[?2004hroot@575b4abc-7c46-4d84-91f7-19e81e66c20e:~# cat > /home/user/sample_data/mock_netstat.txt << 'EOF'
+[?2004l[?2004h> tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      
+[?2004l[?2004h> tcp        0      0 127.0.0.1:3306          0.0.0.0:*               LISTEN      
+[?2004l[?2004h> udp        0      0 0.0.0.0:161             0.0.0.0:*                           
+[?2004l[?2004h> tcp        0      0 192.168.1.100:9000      0.0.0.0:*               LISTEN      
+[?2004l[?2004h> EOFcat > /home/user/sample_data/mock_passwd << 'EOF'
+[?2004l[?2004h> root:x:0:0:root:/root:/bin/bash
+[?2004l[?2004h> bin:x:1:1:bin:/bin:/bin/false
+[?2004l[?2004h> daemon:x:2:2:daemon:/sbin:/bin/false
+[?2004l[?2004h> adm:x:3:4:adm:/var/adm:/bin/false
+[?2004l[?2004h> lp:x:4:7:lp:/var/spool/lpd:/bin/false
+[?2004l[?2004h> EOFcat > /home/user/sample_data/service_names.csv << 'EOF'
+[?2004l[?2004h> 80/tcp,http
+[?2004l[?2004h> 22/tcp,ssh
+[?2004l[?2004h> 3306/tcp,mysql
+[?2004l[?2004h> 161/udp,snmp
+[?2004l[?2004h> 9000/tcp,BjörnApp
+[?2004l[?2004h> EOFcat > /home/user/config/user_blacklist.txt << 'EOF'
+[?2004l[?2004h> nagios
+[?2004l[?2004h> zabbix
+[?2004l[?2004h> EOFcat > /home/user/reports/run_security_scan.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Enterprise Security Baseline Automation (SOP-992)
+[?2004l[?2004h> # Ticket SEC-4022: Automate daily infrastructure snapshot report
+[?2004l[?2004h> 
+[?2004l[?2004h> set -eo pipefail
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration
+[?2004l[?2004h> OUTPUT_DIR="/home/user/reports"
+[?2004l[?2004h> SAMPLE_DATA_DIR="/home/user/sample_data"
+[?2004l[?2004h> CONFIG_DIR="/home/user/config"
+[?2004l[?2004h> 
+[?2004l[?2004h> tmp_dir="$(mktemp -d)"
+[?2004l[?2004h> UID_LIMIT=1000
+[?2004l[?2004h> 
+[?2004l[?2004h> # Cleanup function for temporary files
+[?2004l[?2004h>  cleanup() {
+[?2004l[?2004h>     rm -rf "${tmp_dir}"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Register cleanup function
+[?2004l[?2004h>  trap cleanup EXIT
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to extract port from netstat line
+[?2004l[?2004h>  get_port() {
+[?2004l[?2004h>     echo "$1" | awk -F'[ :]' '{for(i=1; i<=NF; i++) {if($i ~ /^\d+\/tcp$/ || $i ~ /^\d+\/udp$/) {split($i, a, "/"); print a[1]; break}}}'
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to classify scope
+[?2004l[?2004h>  classify_scope() {
+[?2004l[?2004h>     local addr="${1}"
+[?2004l[?2004h>     local proto="${2}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [[ "${addr}" == "0.0.0.0:*" || "${addr}" == "0.0.0.0" ]]; then
+[?2004l[?2004h>         echo "public-${proto}"
+[?2004l[?2004h>     elif [[ "${addr}" == "127.0.0.1:*" || "${addr}" == "127.0.0.1" ]]; then
+[?2004l[?2004h>         echo "local-${proto}"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "${proto}"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to enrich process name
+[?2004l[?2004h>  enrich_process() {
+[?2004l[?2004h>     local process="${1}"
+[?2004l[?2004h>     local port_proto="${2}"
+[?2004l[?2004h>     local service_name="${3}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [[ -n "${service_name}" ]]; then
+[?2004l[?2004h>         echo "${process} (${service_name})"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "${process}"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Job 1: Network Exposure Analysis
+[?2004l[?2004h>  analyze_network() {
+[?2004l[?2004h>     local netstat_file="${SAMPLE_DATA_DIR}/mock_netstat.txt"
+[?2004l[?2004h>     local service_file="${SAMPLE_DATA_DIR}/service_names.csv"
+[?2004l[?2004h>     local output_file="${tmp_dir}/network_results.txt"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Strip BOM from service file
+[?2004l[?2004h>     local service_file_clean="${tmp_dir}/service_names_clean.csv"
+[?2004l[?2004h>     tail -c +4 "${service_file}" > "${service_file_clean}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     grep -E 'LISTEN|udp' "${netstat_file}" | awk '{print $1,$4,$6}' | 
+[?2004l[?2004h>     while read -r proto local_addr state; do
+[?2004l[?2004h>         port="$(get_port "${local_addr}")"
+[?2004l[?2004h>         service_name="$(grep -E "^${port}/${proto}," "${service_file_clean}" | cut -d',' -f2)"
+[?2004l[?2004h>         
+[?2004l[?2004h>         classified_proto="$(classify_scope "${local_addr}" "${proto}")"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Extract process name from netstat (last column)
+[?2004l[?2004h>         grep "${local_addr}" "${netstat_file}" | awk '{print $NF}' | sort -u | 
+[?2004l[?2004h>         while read -r process; do
+[?2004l[?2004h>             enriched_process="$(enrich_process "${process}" "${port_proto}" "${service_name}")"
+[?2004l[?2004h>             echo -e "${port}\t${classified_proto}\t${enriched_process}"
+[?2004l[?2004h>         done
+[?2004l[?2004h>     done | sort -k1,1n > "${output_file}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "${output_file}"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Job 2: User Audit
+[?2004l[?2004h>  analyze_users() {
+[?2004l[?2004h>     local passwd_file="${SAMPLE_DATA_DIR}/mock_passwd"
+[?2004l[?2004h>     local blacklist_file="${CONFIG_DIR}/user_blacklist.txt"
+[?2004l[?2004h>     local output_file="${tmp_dir}/user_results.txt"
+[?2004l[?2004h>     
+[?2004l[?2004h>     grep -v ':/bin/false:$' "${passwd_file}" | 
+[?2004l[?2004h>     awk -F':' -v uid_limit="${UID_LIMIT}" -v blacklist_file="${CONFIG_DIR}/user_blacklist.txt" '{ 
+[?2004l[?2004h>         if($3 < uid_limit && $3 != 0) {
+[?2004l[?2004h>             if(!system("grep -qx \""$1"\" \""blacklist_file"\"")) {
+[?2004l[?2004h>                 print $1
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }' | sort > "${output_file}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "${output_file}"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate reports
+[?2004l[?2004h>  generate_reports() {
+[?2004l[?2004h>     local start_epoch="${1}"
+[?2004l[?2004h>     local end_epoch="${2}"
+[?2004l[?2004h>     local network_results="${3}"
+[?2004l[?2004h>     local user_results="${4}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Calculate input hash
+[?2004l[?2004h>     local input_hash="$((cat "${SAMPLE_DATA_DIR}/mock_netstat.txt" "${SAMPLE_DATA_DIR}/mock_passwd" | \
+[?2004l[?2004h>         md5sum | cut -d' ' -f1))"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Generate YAML report (ISO-8859-1 encoded)
+[?2004l[?2004h>     local yaml_file="${OUTPUT_DIR}/infra_security_report.yml"
+[?2004l[?2004h>     
+[?2004l[?2004h>     {
+[?2004l[?2004h>         echo "---"
+[?2004l[?2004h>         echo "meta:" 
+[?2004l[?2004h>         echo "  input_hash: ${input_hash}"
+[?2004l[?2004h>         echo "insecure_users:" 
+[?2004l[?2004h>         while read -r user; do
+[?2004l[?2004h>             echo "  - ${user}"
+[?2004l[?2004h>         done < "${user_results}"
+[?2004l[?2004h>         echo "open_ports:" 
+[?2004l[?2004h>         while read -r line; do
+[?2004l[?2004h>             port="$(echo "${line}" | cut -f1)"
+[?2004l[?2004h>             protocol="$(echo "${line}" | cut -f2)"
+[?2004l[?2004h>             process="$(echo "${line}" | cut -f3)"
+[?2004l[?2004h>             echo "  - port: ${port}"
+[?2004l[?2004h>             echo "    protocol: ${protocol}"
+[?2004l[?2004h>             echo "    process: ${process}"
+[?2004l[?2004h>         done < "${network_results}"
+[?2004l[?2004h>     } | iconv -t ISO-8859-1 > "${yaml_file}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Generate CSV report (CRLF line endings)
+[?2004l[?2004h>     local csv_file="${OUTPUT_DIR}/scan_exec_time.log"
+[?2004l[?2004h>     local duration="$((${end_epoch} - ${start_epoch}))"
+[?2004l[?2004h>     echo -e "${start_epoch},${end_epoch},${duration}" | \
+[?2004l[?2004h>         sed 's/$/\r/' > "${csv_file}"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main script execution
+[?2004l[?2004h>  start_epoch=$$(date +%s)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Run jobs in parallel
+[?2004l[?2004h>  network_output=$$(analyze_network &)
+[?2004l[?2004h>  user_output=$$(analyze_users &)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Wait for background jobs to complete
+[?2004l[?2004h>  wait
+[?2004l[?2004h> 
+[?2004l[?2004h>  end_epoch=$$(date +%s)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate final reports
+[?2004l[?2004h>  generate_reports "${start_epoch}" "${end_epoch}" "${network_output}" "${user_output}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Set executable permission
+[?2004l[?2004h>  chmod +x "${OUTPUT_DIR}/run_security_scan.sh"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Security scan completed successfully"
+[?2004l[?2004h> EOF/home/user/reports/run_security_scan.sh
+[?2004l[?2004h> ls -la /home/user/reports/
+[?2004l[?2004h> file /home/user/reports/infra_security_report.yml
+[?2004l[?2004h> file /home/user/reports/scan_exec_time.log
+[?2004l[?2004h> cat /home/user/reports/infra_security_report.yml
+[?2004l[?2004h> cat /home/user/reports/scan_exec_time.log
+[?2004l[?2004h> ls -la /home/user/reports/
+[?2004l[?2004h> head -5 /home/user/reports/infra_security_report.yml
+[?2004l[?2004h> head -1 /home/user/reports/scan_exec_time.log
+[?2004l[?2004h> wc -l /home/user/reports/*
+[?2004l[?2004h> pwd
+[?2004l[?2004h> ls -la /home/user/reports/
+[?2004l[?2004h> ls -la /home/user/sample_data/
+[?2004l[?2004h> ls -la /home/user/config/
+[?2004l[?2004h> clear
+[?2004l[?2004h> ls -la /home/user/
+[?2004l[?2004h> find /home/user -type f -name '*.sh' -o -name '*.txt' -o -name '*.csv' -o -name '*.yml' -o -name '*.log'
+[?2004l[?2004h> exit
+[?2004l[?2004h> bash
+[?2004l[?2004h> cd /home/user
+[?2004l[?2004h> ls -la
+[?2004l[?2004h> whoami
+[?2004l[?2004h> df -h
+[?2004l[?2004h> test -d /home/user && echo "Directory exists" || echo "Directory missing"
+[?2004l[?2004h> echo "Testing terminal output"
+[?2004l[?2004h> hostname
+[?2004l[?2004h> uname -a
+[?2004l[?2004h> 

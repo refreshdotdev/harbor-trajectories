@@ -1,0 +1,23 @@
+{
+  "analysis": "I need to create a Bash script at /home/user/scripts/filter_errors.sh that processes log files and produces two output files. The script must handle multi-line log entries, perform regex-based filtering, redact email addresses, and generate a sorted CSV summary of error categories. I'm starting from a clean environment.",
+  "plan": "I will create the scripts directory, then write the filter_errors.sh script with proper POSIX-compliant Bash syntax. The script will use awk for multi-line processing, sed for redaction, and sort for CSV formatting. I'll include argument validation, output directory creation, and execution logging.",
+  "commands": [
+    {
+      "keystrokes": "mkdir -p /home/user/scripts\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat > /home/user/scripts/filter_errors.sh << 'EOF'\n#!/bin/bash\n\n# POSIX-compliant mode\nset -o posix\n\n# Strict error checking\nset -euo pipefail\n\n# Input validation\nif [ $# -ne 2 ]; then\n    echo \"Usage: $0 <input_log> <output_dir>\" >&2\n    exit 1\nfi\n\ninput_log=\"$1\"\noutput_dir=\"$2\"\n\n# Create output directory\nmkdir -p \"$output_dir\"\n\n# Get absolute paths\ninput_log_abs=\"$(realpath -s -- \"${input_log}\")\"\noutput_dir_abs=\"$(realpath -s -- \"${output_dir}\")\"\n\n# Define output files\nfiltered_log=\"${output_dir_abs}/critical_errors.log\"\ncsv_summary=\"${output_dir_abs}/error_summary.csv\"\n\n# --- AWK script for multi-line processing ---\nawk -v input_log_abs=\"${input_log_abs}\" '\nBEGIN {\n    FS = \"\"\n    OFS = \"\"\n    print \"# Source: \" input_log_abs > \"'${filtered_log}'\"\n    print \"error_category,count\" > \"'${csv_summary}'\"\n    \n    error_regex = \"ERROR|FATAL|HTTP\\/1\\.1 5[0-9]{2}\"\n    email_regex = \"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}\"\n    payment_regex = \"Payment failed\"\n    http5_regex = \"HTTP\\/1\\.1 5[0-9]{2}\"\n    fatal_regex = \"FATAL\"\n    \n    stats[\"PAYMENT_FAILURE\"] = 0\n    stats[\"HTTP_5XX\"] = 0  \n    stats[\"FATAL\"] = 0\n    \n    state = 1\n    in_entry = 0\n    block_buffer = \"\"\n    current_category = \"\"\n}\n\n{\n    if (substr($0, 1, 1) == \"[\") {\n        if (in_entry) {\n            process_block()\n        }\n        \n        block_buffer = $0 \"\\n\"\n        in_entry = 1\n        \n        if ($0 ~ payment_regex) {\n            current_category = \"PAYMENT_FAILURE\"\n        } else if ($0 ~ http5_regex) {\n            current_category = \"HTTP_5XX\"\n        } else if ($0 ~ fatal_regex) {\n            current_category = \"FATAL\"\n        } else {\n            current_category = \"UNKNOWN\"\n        }\n    } else {\n        if (in_entry) {\n            block_buffer = block_buffer $0 \"\\n\"\n        }\n    }\n}\n\nEND {\n    if (in_entry) {\n        process_block()\n    }\n    \n    # Sort CSV: count descending, then category ascending\n    \"sort -t, -k2,2nr -k1,1\" < \"'${csv_summary}'\" > \"'${csv_summary}.tmp'\"\n    mv \"'${csv_summary}.tmp'\" \"'${csv_summary}'\"\n}\n\nfunction process_block() {\n    if (block_buffer ~ error_regex) {\n        gsub(email_regex, \"<REDACTED>\", block_buffer)\n        printf \"%s\", block_buffer >> \"'${filtered_log}'\"\n        \n        if (current_category != \"UNKNOWN\") {\n            stats[current_category]++\n        }\n    }\n    \n    in_entry = 0\n    block_buffer = \"\"\n}\n\nfunction add_stats() {\n    for (cat in stats) {\n        if (stats[cat] > 0) {\n            print cat \",\" stats[cat] >> \"'${csv_summary}'\"\n        }\n    }\n}\n' EOF\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "chmod +x /home/user/scripts/filter_errors.sh\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "ls -la /home/user/scripts/\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}

@@ -1,0 +1,109 @@
+New Terminal Output:
+
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# mkdir -p /home/user/storage/incoming /home/user/storage/archive
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# cat > /home/user/storage/params.conf << 'EOF'
+> cutoff_days = 30
+> max_bak_kb = 1024
+> # This is a comment explaining the parameters
+> EOF
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# cat > /usr/local/bin/storage_maintenance.sh << 'EOF'
+> #!/bin/bash
+>
+> # Phase 1: Configuration
+> CONFIG_FILE="/home/user/storage/params.conf"
+> if [[ ! -f "$CONFIG_FILE" ]]; then
+>     echo "Configuration file missing: $CONFIG_FILE"
+>     exit 1
+> fi
+>
+> declare -A PARAMS
+> while IFS='=' read -r key value; do
+>     if [[ ! "$key" =~ ^# && -n "$key" ]]; then
+>         PARAMS[$key]=$(echo "$value" | xargs)
+>     fi
+> done < "$CONFIG_FILE"
+>
+> cutoff_days=${PARAMS[cutoff_days]:-0}
+> max_bak_kb=${PARAMS[max_bak_kb]:-0}
+>
+> echo "Loaded parameters: cutoff_days=$cutoff_days, max_bak_kb=$max_bak_kb KB"
+>
+> # Phase 2: Pruning .bak files
+> deleted_bytes=0
+> corrupt_count=0
+>
+> find /home/user/storage/incoming -type f -name "*.bak" ! -name "_*.bak" -print0 | while IFS= read -r -d '' bakfile; do
+>     filesize_kb=$(du -k --apparent-size "$bakfile" | cut -f1)
+>     if [[ $filesize_kb -gt $max_bak_kb ]]; then
+>         bytes_deleted=$(du -b "$bakfile" | cut -f1)
+>         rm "$bakfile"
+>         deleted_bytes=$((deleted_bytes + bytes_deleted))
+>         echo "Deleted large .bak file: $bakfile (${filesize_kb}KB)"
+>     fi
+> done
+>
+> # Phase 3: Archival of .txt files
+> cutoff_time=$(date -d "-$cutoff_days days" +%s)
+> find /home/user/storage/incoming -type f -name "*.txt" -print0 | while IFS= read -r -d '' txtfile; do
+>     if [[ -n $(file -i "$txtfile" | grep -v 'charset=utf-8') ]]; then
+>         corrupt_count=$((corrupt_count + 1))
+>         mv "$txtfile" "${txtfile}.corrupt"
+>         echo "Renamed corrupt file: $txtfile"
+>     else
+>         mv "$txtfile" /home/user/storage/archive/
+>         echo "Archived valid UTF-8 file: $txtfile"
+>     fi
+> done
+>
+> # Phase 4: Manifest Generation
+> ARCHIVE_DIR="/home/user/storage/archive"
+> MANIFEST_FILE="$ARCHIVE_DIR/manifest.csv"
+>
+> # Create manifest with CRLF line endings
+> { echo -e "Filename,Size,MD5"
+> find "$ARCHIVE_DIR" -type f -exec sh -c 'for f; do printf "%s,%d,%s\r\n" "\$f" "\$(du -b \"\$f\" | cut -f1)" "\$(md5sum \"\$f\" | cut -d' ' -f1)"; done' sh {}
+ +
+> } | sort -t, -k3 > "$MANIFEST_FILE"
+>
+> # Phase 5: Audit Report
+> cat > /home/user/storage/summary.xml << EOF
+> <?xml version="1.0" encoding="ISO-8859-1"?>
+> <audit>
+>     <deleted_bytes>$deleted_bytes</deleted_bytes>
+>     <corrupt_files>$corrupt_count</corrupt_files>
+>     <manifest_sha1>$(sha1sum "$MANIFEST_FILE" | cut -d' ' -f1)</manifest_sha1>
+> </audit>
+> EOF
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~#
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# # Final Cleanup
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# find /home/user/storage/incoming -type d -empty -delete
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~#
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# echo "Maintenance complete. Deleted bytes: $deleted_bytes, Corrupt files: $corrupt_count"
+Maintenance complete. Deleted bytes: , Corrupt files:
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# EOF
+bash: EOF: command not found
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# chmod +x /usr/local/bin/storage_maintenance.sh
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# /usr/local/bin/storage_maintenance.sh
+Loaded parameters: cutoff_days=0, max_bak_kb=0 KB
+Deleted large .bak file: /home/user/storage/incoming/project1/delete_me.bak (2560KB)
+Deleted large .bak file: /home/user/storage/incoming/project1/small.bak (1KB)
+/usr/local/bin/storage_maintenance.sh: line 39: file: command not found
+Archived valid UTF-8 file: /home/user/storage/incoming/project2/invalid_utf8.txt
+/usr/local/bin/storage_maintenance.sh: line 39: file: command not found
+Archived valid UTF-8 file: /home/user/storage/incoming/project2/new.txt
+/usr/local/bin/storage_maintenance.sh: line 39: file: command not found
+Archived valid UTF-8 file: /home/user/storage/incoming/project2/valid_old.txt
+/usr/local/bin/storage_maintenance.sh: line 39: file: command not found
+Archived valid UTF-8 file: /home/user/storage/incoming/space dir/file
+name.txt
+ -f1)"; done: 1: Syntax error: Unterminated quoted string
+/usr/local/bin/storage_maintenance.sh: line 65: warning: here-document at line 59 delimited by end-of-file (wanted `EOF')
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# ls -la /home/user/storage/
+total 8
+drwxr-xr-x 1 root root  95 Feb 13 18:51 .
+drwxrwxrwx 1 root root  29 Feb 13 18:50 ..
+drwxr-xr-x 1 root root 107 Feb 13 18:51 archive
+drwxr-xr-x 1 root root  91 Feb 13 18:51 incoming
+-rw-r--r-- 1 root root  81 Feb 13 18:51 params.conf
+-rw-r--r-- 1 root root 211 Feb 13 18:51 summary.xml
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~#

@@ -1,0 +1,64 @@
+New Terminal Output:
+
+root@694ad4e3-9067-4d10-8dc9-1e2fa392651c:/home/user/workspace# python3 -c "
+> import sqlite3, hmac, hashlib
+> import os
+>
+> # Registration data
+> version = 'v1.0.0'
+> timestamp = 1698400800
+> key = 'super-secret-key-value'
+> payload = f'{version}{timestamp}'.encode('utf-8')
+> hmac_digest = hmac.new(key.encode('utf-8'), payload, hashlib.sha256).hexdigest()
+>
+> # Database registration
+> db_path = '/var/lib/db/production.db'
+> conn = sqlite3.connect(db_path)
+> cursor = conn.cursor()
+>
+> # Create table if not exists (idempotent)
+> cursor.execute('''
+>     CREATE TABLE IF NOT EXISTS deployment_log (
+>         id INTEGER PRIMARY KEY AUTOINCREMENT,
+>         iso_version TEXT,
+>         deploy_time INTEGER,
+>         integrity_hash TEXT,
+>         status TEXT
+>     )
+> ''')
+>
+> # Insert record
+> cursor.execute('''
+>     INSERT INTO deployment_log (iso_version, deploy_time, integrity_hash, status)
+>     VALUES (?, ?, ?, ?)
+> ''', (version, timestamp, hmac_digest, 'pending_audit'))
+>
+> conn.commit()
+> conn.close()
+> print('Database registration complete')
+> " 2>/dev/null
+Database registration complete
+root@694ad4e3-9067-4d10-8dc9-1e2fa392651c:/home/user/workspace# python3 -c "
+> import sqlite3, hmac, hashlib
+> import os
+>
+> # Registration data
+> version = 'v1.0.0'
+> timestamp = 1698400800
+> key = 'super-secret-key-value'
+> payload = f'{version}{timestamp}'.encode('utf-8')
+> hmac_digest = hmac.new(key.encode('utf-8'), payload, hashlib.sha256).hexdigest()
+>
+> db_path = '/var/lib/db/production.db'
+> conn = sqlite3.connect(db_path)
+> cursor = conn.cursor()
+> cursor.execute('SELECT * FROM deployment_log')
+> print('Database contents:')
+> for row in cursor.fetchall():
+>     print(row)
+> conn.close()
+> " 2>/dev/null
+Database contents:
+(1, 'v0.9.0', 1600000000, 'deadbeef', 'archived')
+(2, 'v1.0.0', 1698400800, '0a2b1998992efc83a1d6e95217a69bfc32fb5500fab9824f0c29423775e5ca44', 'pending_audit')
+root@694ad4e3-9067-4d10-8dc9-1e2fa392651c:/home/user/workspace#

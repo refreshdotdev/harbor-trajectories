@@ -1,0 +1,218 @@
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# clear
+[?2004l[H[J[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# mkdir -p /home/user/configs
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# mkdir -p /home/user/backups
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# mkdir -p /home/user/backup_logs
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# echo "v1.2-2023" > /home/user/backup_id
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cat > /home/user/configs/app.conf << 'EOF'
+[?2004l[?2004h> # Application Configuration
+[?2004l[?2004h> host=localhost
+[?2004l[?2004h> port=8080
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cat > /home/user/configs/subdir/my\ config.yml << 'EOF'
+[?2004l[?2004h> ---
+[?2004l[?2004h> database:
+[?2004l[?2004h>   host: db.example.com
+[?2004l[?2004h>   user: admin
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cat > /home/user/configs/another.conf << 'EOF'
+[?2004l[?2004h> [settings]
+[?2004l[?2004h> log_level=INFO
+[?2004l[?2004h> max_connections=100
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cat > /home/user/configs/test.conf << 'EOF'
+[?2004l[?2004h> # This file should be excluded
+[?2004l[?2004h> exclude=true
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# dd if=/dev/zero of=/home/user/configs/large.yml bs=1 count=513 status=none
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cp /home/user/configs/app.conf /home/user/configs/duplicate\_name.conf
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cat > /home/user/backup_configurations.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Exit on any error
+[?2004l[?2004h> set -e
+[?2004l[?2004h> 
+[?2004l[?2004h> # Define directories and backup ID
+[?2004l[?2004h> BASE_CONFIG_PATH="/home/user/configs"
+[?2004l[?2004h> BACKUP_DIR="/home/user/backups"
+[?2004l[?2004h> LOG_DIR="/home/user/backup_logs"
+[?2004l[?2004h> BACKUP_ID_FILE="/home/user/backup_id"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read backup ID, trim whitespace
+[?2004l[?2004h> BACKUP_ID=$(cat "$BACKUP_ID_FILE")
+[?2004l[?2004h> BACKUP_ID="${BACKUP_ID//[^[:alnum:].-]/}"  # Sanitize ID
+[?2004l[?2004h> 
+[?2004l[?2004h> # Ensure directories exist
+[?2004l[?2004h> mkdir -p "$BACKUP_DIR"
+[?2004l[?2004h> mkdir -p "$LOG_DIR"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to create individual archives
+[?2004l[?2004h> create_individual_archive() {
+[?2004l[?2004h>   local filepath="$1"
+[?2004l[?2004h>   local rel_path="${filepath#$BASE_CONFIG_PATH/}"
+[?2004l[?2004h>   local filename="$(basename "${filepath#*/}")"
+[?2004l[?2004h>   local basename="${filename%.*}"
+[?2004l[?2004h>   local ext="${filename##*.}"
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Determine compression based on extension
+[?2004l[?2004h>   local archive_ext=""
+[?2004l[?2004h>   local tar_option=""
+[?2004l[?2004h>   if [ "$ext" == "conf" ]; then
+[?2004l[?2004h>     archive_ext="tar.gz"
+[?2004l[?2004h>     tar_option="z"
+[?2004l[?2004h>   elif [ "$ext" == "yml" ]; then
+[?2004l[?2004h>     archive_ext="tar.bz2"
+[?2004l[?2004h>     tar_option="j"
+[?2004l[?2004h>   else
+[?2004l[?2004h>     echo "ERROR: Unknown extension $ext for file $filepath" >&2
+[?2004l[?2004h>     return 1
+[?2004l[?2004h>   fi
+[?2004l[?2004h> 
+[?2004l[?2004h>   local archive_name="${basename}_${BACKUP_ID}.${archive_ext}"
+[?2004l[?2004h>   local archive_path="${BACKUP_DIR}/${archive_name}"
+[?2004l[?2004h> 
+[?2004l[?2004h>   # Create archive, preserving relative path
+[?2004l[?2004h>   # -C /home/user/configs creates archive with path relative to configs
+[?2004l[?2004h>   # -h is for dereferencing symlinks (if any), not strictly needed here
+[?2004l[?2004h>   tar -c${tar_option}h -f "${archive_path}" -C "${BASE_CONFIG_PATH}" "${rel_path}" 
+[?2004l[?2004h>   
+[?2004l[?2004h> echo "Created archive: ${archive_path}"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to log file details
+[?2004l[?2004h> log_file_details() {
+[?2004l[?2004h>   local filepath="$1"
+[?2004l[?2004h>   local rel_path="${filepath#$BASE_CONFIG_PATH/}"
+[?2004l[?2004h>   local filename="$(basename "${filepath#*/}")"
+[?2004l[?2004h>   local basename="${filename%.*}"
+[?2004l[?2004h>   local ext="${filename##*.}"
+[?2004l[?2004h> 
+[?2004l[?2004h>   local archive_name="${basename}_${BACKUP_ID}"
+[?2004l[?2004h>   if [ "$ext" == "conf" ]; then
+[?2004l[?2004h>     archive_name+=".tar.gz"
+[?2004l[?2004h>   elif [ "$ext" == "yml" ]; then
+[?2004l[?2004h>     archive_name+=".tar.bz2"
+[?2004l[?2004h>   fi
+[?2004l[?2004h> 
+[?2004l[?2004h>   local sha256="$(sha256sum "$filepath" | awk '{print $1}')"
+[?2004l[?2004h>   local size="$(wc -c < "$filepath" | tr -d ' \n')"
+[?2004l[?2004h>   
+[?2004l[?2004h>   echo "${rel_path}|${archive_name}|${sha256}|${size}"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Find valid files and process in parallel
+[?2004l[?2004h> find "$BASE_CONFIG_PATH" -type f \( -name "*.conf" -o -name "*.yml" \) -not -name "test.conf" -size -512c -print0 | \
+[?2004l[?2004h> while IFS= read -r -d '' filepath; do
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Create archive in background
+[?2004l[?2004h>   create_individual_archive "$filepath" &
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Log details
+[?2004l[?2004h>   log_file_details "$filepath"
+[?2004l[?2004h> done > "${LOG_DIR}/file_details_${BACKUP_ID}.tmp"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Wait for all background jobs to finish
+[?2004l[?2004h> wait
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create log file header and sort content
+[?2004l[?2004h> # Ensure temporary log file has unique lines first (if any duplicates from different basenames)
+[?2004l[?2004h> sort -u -k1,1 -t'|' "${LOG_DIR}/file_details_${BACKUP_ID}.tmp" | \
+[?2004l[?2004h> sort -k3,3 > "${LOG_DIR}/backup_${BACKUP_ID}.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add header to the log file
+[?2004l[?2004h> sed -i '1i\REL_PATH|ARCHIVE_NAME|SHA256|SIZE' "${LOG_DIR}/backup_${BACKUP_ID}.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Clean up temporary file
+[?2004l[?2004h> rm "${LOG_DIR}/file_details_${BACKUP_ID}.tmp"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create full archive
+[?2004l[?2004h> full_archive_name="configs_full_${BACKUP_ID}.tar.xz"
+[?2004l[?2004h> full_archive_path="${BACKUP_DIR}/${full_archive_name}"
+[?2004l[?2004h> tar -cJ -f "${full_archive_path}" -C "$(dirname "$BASE_CONFIG_PATH")" "$(basename "$BASE_CONFIG_PATH")"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Created full archive: ${full_archive_path}"
+[?2004l[?2004h> echo "Backup process complete. Log file: ${LOG_DIR}/backup_${BACKUP_ID}.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> exit 0
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# chmod +x /home/user/backup_configurations.sh
+[?2004l[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# /home/user/backup_configurations.sh
+[?2004lCreated full archive: /home/user/backups/configs_full_v1.2-2023.tar.xz
+Backup process complete. Log file: /home/user/backup_logs/backup_v1.2-2023.log
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# ls -la /home/user/backups/
+[?2004ltotal 32
+drwxr-xr-x 2 root root 4096 Feb 13 18:57  .
+drwxr-xr-x 1 root root  167 Feb 13 18:57  ..
+-rw-r--r-- 1 root root  170 Feb 13 18:57  another_v1.2-2023.tar.gz
+-rw-r--r-- 1 root root  163 Feb 13 18:57  app_v1.2-2023.tar.gz
+-rw-r--r-- 1 root root  660 Feb 13 18:57  configs_full_v1.2-2023.tar.xz
+-rw-r--r-- 1 root root  116 Feb 13 18:57  db_v1.2-2023.tar.bz2
+-rw-r--r-- 1 root root  171 Feb 13 18:57  duplicate_name_v1.2-2023.tar.gz
+-rw-r--r-- 1 root root  174 Feb 13 18:57 'my config_v1.2-2023.tar.bz2'
+-rw-r--r-- 1 root root  120 Feb 13 18:57  nginx_v1.2-2023.tar.gz
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# wc -l /home/user/backup_logs/backup_v1.2-2023.log
+[?2004l13 /home/user/backup_logs/backup_v1.2-2023.log
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# head -5 /home/user/backup_logs/backup_v1.2-2023.log
+[?2004lREL_PATH|ARCHIVE_NAME|SHA256|SIZE
+another.conf|another_v1.2-2023.tar.gz|e40725be3a1e6a49e81a829989efc10c93f02c8a77a61cead4f1decddc14a398|46
+app.conf|app_v1.2-2023.tar.gz|a6a7baf1c18fae82e572baf2b74bd82da47a274a51af97bea17194e2f2bb6d53|53
+db.yml|db_v1.2-2023.tar.bz2|e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855|0
+duplicate_name.conf|duplicate_name_v1.2-2023.tar.gz|a6a7baf1c18fae82e572baf2b74bd82da47a274a51af97bea17194e2f2bb6d53|53
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# tar -tzf /home/user/backups/app_v1.2-2023.tar.gz
+[?2004lapp.conf
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# file /home/user/backups/app_v1.2-2023.tar.gz
+[?2004lbash: file: command not found
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# tar -tzf /home/user/backups/'my config_v1.2-2023.tar.bz2'
+[?2004l
+gzip: stdin: not in gzip format
+tar: Child returned status 1
+tar: Error is not recoverable: exiting now
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# file /home/user/backups/'my config_v1.2-2023.tar.bz2'
+[?2004lbash: file: command not found
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# tar -tJf /home/user/backups/configs_full_v1.2-2023.tar.xz | head -10
+[?2004lconfigs/
+configs/legacy/
+configs/legacy/big_blob.conf
+configs/nginx/
+configs/nginx/nginx.conf
+configs/nginx/old.conf.bak
+configs/subdir/
+configs/subdir/my config.yml
+configs/app.conf
+configs/another.conf
+tar: stdout: write error
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# file /home/user/backups/configs_full_v1.2-2023.tar.xz
+[?2004lbash: file: command not found
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# sort -t'|' -k3 -c /home/user/backup_logs/backup_v1.2-2023.log
+[?2004lsort: /home/user/backup_logs/backup_v1.2-2023.log:3: disorder: app.conf|app_v1.2-2023.tar.gz|a6a7baf1c18fae82e572baf2b74bd82da47a274a51af97bea17194e2f2bb6d53|53
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# awk -F'|' 'length($1) && length($2) && length($3) && length($4) {print NF}' /home/user/backup_logs/backup_v1.2-2023.log
+[?2004l4
+4
+4
+4
+4
+4
+4
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# /home/user/backup_configurations.sh
+[?2004lCreated full archive: /home/user/backups/configs_full_v1.2-2023.tar.xz
+Backup process complete. Log file: /home/user/backup_logs/backup_v1.2-2023.log
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# tar -tzf /home/user/backups/app_v1.2-2023.tar.gz
+[?2004lapp.conf
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# tar -tf /home/user/backups/'my config_v1.2-2023.tar.bz2'
+[?2004lsubdir/my config.yml
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# tar -tJf /home/user/backups/configs_full_v1.2-2023.tar.xz | head -5
+[?2004lconfigs/
+configs/legacy/
+configs/legacy/big_blob.conf
+configs/nginx/
+configs/nginx/nginx.conf
+tar: stdout: write error
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# head -1 /home/user/backup_logs/backup_v1.2-2023.log
+[?2004lREL_PATH|ARCHIVE_NAME|SHA256|SIZE
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# awk -F'|' 'NR>1 && NF==4 {print $1":"$2":"$3":"$4}' /home/user/backup_logs/backup_v1.2-2023.log | head -3
+[?2004lanother.conf:another_v1.2-2023.tar.gz:e40725be3a1e6a49e81a829989efc10c93f02c8a77a61cead4f1decddc14a398:46
+app.conf:app_v1.2-2023.tar.gz:a6a7baf1c18fae82e572baf2b74bd82da47a274a51af97bea17194e2f2bb6d53:53
+db.yml:db_v1.2-2023.tar.bz2:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855:0
+[?2004hroot@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# 

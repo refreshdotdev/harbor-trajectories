@@ -1,0 +1,177 @@
+[?2004hroot@b0567c87-de1e-47ba-bcd9-4add759f43c7:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@b0567c87-de1e-47ba-bcd9-4add759f43c7:~# clear
+[?2004l[H[J[?2004hroot@b0567c87-de1e-47ba-bcd9-4add759f43c7:~# cd /home/user/experiments
+[?2004l[?2004hroot@b0567c87-de1e-47ba-bcd9-4add759f43c7:/home/user/experiments# ls -la
+[?2004ltotal 4
+drwxrwxrwx 1 root root 175 Feb 12 21:48 [0m[34;42m.[0m
+drwxrwxrwx 1 root root  33 Feb 12 21:48 [34;42m..[0m
+-rwxrwxrwx 1 root root  35 Feb 12 21:48 [01;32mexperiment_config.txt[0m
+drwxrwxrwx 1 root root  28 Feb 12 21:48 [34;42mlegacy_node[0m
+drwxrwxrwx 1 root root  36 Feb 12 21:48 [34;42mrun_alpha[0m
+drwxrwxrwx 1 root root  36 Feb 12 21:48 [34;42mrun_beta[0m
+drwxrwxrwx 1 root root   6 Feb 12 21:48 [34;42mrun_gamma[0m
+drwxrwxrwx 1 root root  28 Feb 12 21:48 [34;42mrun_unstable[0m
+drwxrwxrwx 1 root root  36 Feb 12 21:48 [34;42mtest_run_01[0m
+[?2004hroot@b0567c87-de1e-47ba-bcd9-4add759f43c7:/home/user/experiments# cat experiment_config.txt
+[?2004lexclude_regex=.*test.*
+precision=3
+[?2004hroot@b0567c87-de1e-47ba-bcd9-4add759f43c7:/home/user/experiments# cat > aggregate_results.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os
+[?2004l[?2004h> import re
+[?2004l[?2004h> import csv
+[?2004l[?2004h> import json
+[?2004l[?2004h> import glob
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import datetime
+[?2004l[?2004h> from typing import List, Dict, Tuple, Optional
+[?2004l[?2004h> 
+[?2004l[?2004h> class ExperimentAggregator:
+[?2004l[?2004h>     def __init__(self, config_path: str):
+[?2004l[?2004h>         self.exclude_regex = ""
+[?2004l[?2004h>         self.precision = 2
+[?2004l[?2004h>         self.valid_runs = []
+[?2004l[?2004h>         self.min_objectives = []
+[?2004l[?2004h>         self.latest_mtime = 0.0
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Read and parse configuration
+[?2004l[?2004h>         if os.path.exists(config_path):
+[?2004l[?2004h>             with open(config_path, 'r') as f:
+[?2004l[?2004h>                 for line in f:
+[?2004l[?2004h>                     line = line.strip()
+[?2004l[?2004h>                     if line and not line.startswith('#'):
+[?2004l[?2004h>                         key, value = line.split('=', 1)
+[?2004l[?2004h>                         key = key.strip().lower()
+[?2004l[?2004h>                         value = value.strip()
+[?2004l[?2004h>                         if key == 'exclude_regex':
+[?2004l[?2004h>                             self.exclude_regex = value
+[?2004l[?2004h>                         elif key == 'precision':
+[?2004l[?2004h>                             try:
+[?2004l[?2004h>                                 self.precision = int(value)
+[?2004l[?2004h>                             except ValueError:
+[?2004l[?2004h>                                 pass  # Default to 2 if invalid
+[?2004l[?2004h>         else:
+[?2004l[?2004h>             print(f"Warning: Config file {config_path} not found.")
+[?2004l[?2004h>         
+[?2004l[?2004h>         self.exclude_pattern = re.compile(self.exclude_regex)
+[?2004l[?2004h>     
+[?2004l[?2004h>     def should_exclude_dir(self, dir_name: str) -> bool:
+[?2004l[?2004h>         return bool(self.exclude_pattern.search(dir_name))
+[?2004l[?2004h>     
+[?2004l[?2004h>     def parse_log_file(self, log_path: str) -> Optional[float]:
+[?2004l[?2004h>         min_objective = None
+[?2004l[?2004h>         encoding = 'utf-8'
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Try UTF-8 first
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(log_path, 'r', encoding=encoding) as f:
+[?2004l[?2004h>                 reader = csv.DictReader(f)
+[?2004l[?2004h>                 for row in reader:
+[?2004l[?2004h>                     try:
+[?2004l[?2004h>                         obj_val = float(row.get('objective', ''))
+[?2004l[?2004h>                         # Check for NaN, Inf, -Inf
+[?2004l[?2004h>                         if not row.get('objective') or obj_val in [float('nan'), float('inf'), float('-inf')]:
+[?2004l[?2004h>                             return None  # Unstable run
+[?2004l[?2004h>                         if min_objective is None or obj_val < min_objective:
+[?2004l[?2004h>                             min_objective = obj_val
+[?2004l[?2004h>                     except (ValueError, TypeError):
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>         except UnicodeDecodeError:
+[?2004l[?2004h>             # Fallback to ISO-8859-1 (Latin-1)
+[?2004l[?2004h>             encoding = 'iso-8859-1'
+[?2004l[?2004h>             try:
+[?2004l[?2004h>                 with open(log_path, 'r', encoding=encoding) as f:
+[?2004l[?2004h>                     reader = csv.DictReader(f)
+[?2004l[?2004h>                     for row in reader:
+[?2004l[?2004h>                         try:
+[?2004l[?2004h>                             obj_val = float(row.get('objective', ''))
+[?2004l[?2004h>                             if not row.get('objective') or obj_val in [float('nan'), float('inf'), float('-inf')]:
+[?2004l[?2004h>                                 return None
+[?2004l[?2004h>                             if min_objective is None or obj_val < min_objective:
+[?2004l[?2004h>                                 min_objective = obj_val
+[?2004l[?2004h>                         except (ValueError, TypeError):
+[?2004l[?2004h>                             continue
+[?2004l[?2004h>             except Exception as e:
+[?2004l[?2004h>                 print(f"Error reading {log_path} as {encoding}: {e}")
+[?2004l[?2004h>                 return None
+[?2004l[?2004h>         return min_objective
+[?2004l[?2004h>     
+[?2004l[?2004h>     def process_directory(self, root_dir: str):
+[?2004l[?2004h>         for dirpath, dirnames, filenames in os.walk(root_dir):
+[?2004l[?2004h>             # Exclude directories matching the regex pattern
+[?2004l[?2004h>             dirnames[:] = [d for d in dirnames if not self.should_exclude_dir(d)]
+[?2004l[?2004h>             
+[?2004l[?2004h>             for filename in filenames:
+[?2004l[?2004h>                 if filename == 'solver_run.log':
+[?2004l[?2004h>                     log_path = os.path.join(dirpath, filename)
+[?2004l[?2004h>                     try:
+[?2004l[?2004h>                         # Get file modification time
+[?2004l[?2004h>                         mtime = os.path.getmtime(log_path)
+[?2004l[?2004h>                         if mtime > self.latest_mtime:
+[?2004l[?2004h>                             self.latest_mtime = mtime
+[?2004l[?2004h>                         
+[?2004l[?2004h>                         # Process log file
+[?2004l[?2004h>                         min_obj = self.parse_log_file(log_path)
+[?2004l[?2004h>                         if min_obj is not None:
+[?2004l[?2004h>                             self.min_objectives.append(min_obj)
+[?2004l[?2004h>                             self.valid_runs.append(log_path)
+[?2004l[?2004h>                     except Exception as e:
+[?2004l[?2004h>                         print(f"Error processing {log_path}: {e}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     def generate_summary(self, output_dir: str):
+[?2004l[?2004h>         if not self.min_objectives:
+[?2004l[?2004h>             print("No valid runs found.")
+[?2004l[?2004h>             return
+[?2004l[?2004h>         
+[?2004l[?2004h>         avg_min = sum(self.min_objectives) / len(self.min_objectives)
+[?2004l[?2004h>         rounded_avg = round(avg_min, self.precision)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Convert latest_mtime to ISO format
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             latest_activity = datetime.datetime.fromtimestamp(self.latest_mtime).isoformat()
+[?2004l[?2004h>         except Exception:
+[?2004l[?2004h>             latest_activity = "1970-01-01T00:00:00"
+[?2004l[?2004h>         
+[?2004l[?2004h>         summary_data = {
+[?2004l[?2004h>             "valid_runs": len(self.min_objectives),
+[?2004l[?2004h>             "average_min_objective": rounded_avg,
+[?2004l[?2004h>             "latest_activity": latest_activity
+[?2004l[?2004h>         }
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Write summary.json in ASCII
+[?2004l[?2004h>         with open(os.path.join(output_dir, 'summary.json'), 'w', encoding='ascii') as f:
+[?2004l[?2004h>             json.dump(summary_data, f, ensure_ascii=True)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Generate manifest
+[?2004l[?2004h>         with open(os.path.join(output_dir, 'summary.json'), 'rb') as f:
+[?2004l[?2004h>             md5 = hashlib.md5(f.read()).hexdigest()
+[?2004l[?2004h>         manifest_str = f"summary.json:{md5}"
+[?2004l[?2004h>         
+[?2004l[?2004h>         with open(os.path.join(output_dir, 'manifest.txt'), 'w') as f:
+[?2004l[?2004h>             f.write(manifest_str)
+[?2004l[?2004h>             # Ensure no trailing newline
+[?2004l[?2004h>             f.seek(0, os.SEEK_END)
+[?2004l[?2004h>             f.truncate()
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     aggregator = ExperimentAggregator('experiment_config.txt')
+[?2004l[?2004h>     aggregator.process_directory('.')  # Current directory
+[?2004l[?2004h>     aggregator.generate_summary('.')   # Output files in current directory
+[?2004l[?2004h> EOFpython3 aggregate_results.py
+[?2004l[?2004h> ls -la summary.json manifest.txt
+[?2004l[?2004h> cat summary.json
+[?2004l[?2004h> file summary.json
+[?2004l[?2004h> cat manifest.txt
+[?2004l[?2004h> wc -c manifest.txt
+[?2004l[?2004h> ls
+[?2004l[?2004h> pwd
+[?2004l[?2004h> ls -la
+[?2004l[?2004h> echo "test"
+[?2004l[?2004h> ls /home/user/experiments/
+[?2004l[?2004h> find . -name 'summary.json' -o -name 'manifest.txt'ls aggregate_results.py
+[?2004l[?2004h> python3 aggregate_results.py
+[?2004l[?2004h> whoami
+[?2004l[?2004h> 

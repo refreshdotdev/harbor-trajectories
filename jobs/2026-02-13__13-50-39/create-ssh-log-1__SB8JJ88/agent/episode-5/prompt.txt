@@ -1,0 +1,64 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+EOF
+/root/.daytona/sessions/d8ee7aac-3989-406d-995b-1075a81a050e/c762f7ac-30e0-433b-8807-7e9fca8f5daf/output.log
+/root/.daytona/sessions/f3e49845-fb22-49eb-8477-fe4843fded05/85a843be-a752-42a9-b88a-247616c3fd0d/output.log
+/root/.daytona/sessions/503c1aba-179a-4f8f-a248-21ef9c345bad/cc27f42a-f70c-42b2-8456-08edce85dfb3/output.log
+/root/.daytona/sessions/34767178-9613-4379-a835-c65f17ed2f5f/daed9650-38c4-41db-9392-c67de346c025/output.log
+/root/.daytona/sessions/624689d2-82bb-4f11-903d-f889e7adbeea/4fb42c64-2ef8-40a6-b5ca-1031f50aff49/output.log
+/root/.daytona/sessions/69d96177-d0d7-4842-8f1f-434a6abe722f/3d2c3a07-1985-4a32-b96b-e3a8a04f7e2d/output.log
+/root/.daytona/sessions/306abcac-be72-4528-ab75-30cfcd58daa2/308139ac-392f-45ba-a0f8-427bf4c84455/output.log
+/root/.daytona/sessions/3027d179-b28f-4e40-8109-8ce57641caa4/55c43af3-41d4-4215-9acc-d51e2a61514a/output.log
+/root/.daytona/sessions/fa79a8b1-c5ed-4212-a165-92af7dea58a0/3d013371-c4b9-47f9-a19c-4fd9bfe44f67/output.log
+/root/.daytona/sessions/46b95a2a-1aef-47a1-815d-1019a623ddd5/57f513b1-8bed-4e45-9c08-392312b92416/output.log
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# mkdir -p /home/user/out
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# cat > sample_log.txt << 'EOF'
+> Jan 15 10:30:22 server1 sshd[12345]: Failed password for root from 192.168.1.100 port 50000 ssh2
+> Jan 15 10:30:23 server1 sshd[12345]: Failed password for root from 192.168.1.100 port 50000 ssh2
+> Jan 15 10:30:24 server1 sshd[12346]: Failed password for invalid_user from 10.0.0.5 port 22 ssh2
+> EOF
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# gzip -c sample_log.txt > sample_log.txt.gz
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# ls -la *.txt *.gz
+-rw-r--r-- 1 root root 291 Feb 13 18:57 sample_log.txt
+-rw-r--r-- 1 root root 162 Feb 13 18:57 sample_log.txt.gz
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# cat > process_logs.sh << 'EOF'
+> #!/bin/bash
+>
+> # Configuration
+> evidence_dir="/home/user/evidence"
+> output_file="/home/user/out/cleaned_combined.log"
+> min_port=45000
+>
+> # Create output directory
+> mkdir -p $(dirname "$output_file")
+>
+> # Initialize empty output file
+> echo "" > "$output_file"
+>
+> echo "Processing evidence files..."
+>
+> # Process plain text files
+> for file in "$evidence_dir"/*.log "$evidence_dir"/*.txt 2>/dev/null; do
+>     [ -f "$file" ] || continue
+>     echo "Processing $file..."
+>     # Sanitize content: remove null bytes and control characters
+>     cat "$file" | tr -d '\000' | tr -dc '\11\12\40-\176' >> "$output_file"
+> done
+>
+> # Process gzipped files
+> for file in "$evidence_dir"/*.gz 2>/dev/null; do
+>     [ -f "$file" ] || continue
+>     echo "Processing $file..."
+>     # Decompress, sanitize, and append
+> echo "Processing $file..."
+> zcat "$file" | tr -d '\000' | tr -dc '\11\12\40-\176' >> "$output_file"
+> done
+>
+> echo "Log processing complete. Output: $output_file"
+> EOF
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# chmod +x process_logs.sh
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user#

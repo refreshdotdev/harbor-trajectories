@@ -1,0 +1,159 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are a backend engineer tasked with generating a formal compliance audit for the 2023-Q4 release artifacts. The auditors use a legacy mainframe system to verify these logs, so adherence to specific binary formats and encoding standards is critical.
+
+**The Source Material**
+All artifacts are located in `/home/user/source_files/`. The directory contains a mixture of production files, documentation, temporary data, and symbolic links. 
+
+**Filtering & Selection Logic**
+We only audit "valid" release artifacts. A file is considered a valid artifact if it meets the following criteria:
+1. It is a **text file** (ends in `.txt`), regardless of size.
+2. OR, it is any other regular file larger than or equal to **1024 bytes** (1KB).
+3. **Symbolic links** must be followed. If a symlink points to a valid artifact (based on the target's properties), treat the symlink itself as the artifact (record the symlink's name, but hash the target's contents). Ignore broken symlinks.
+4. Explicitly **exclude** any hidden files (starting with `.`) and any subdirectories.
+
+**Task A: The Audit Log**
+Create a directory `/home/user/audit_2023Q4` (mode 0700). Inside, generate a log file named `checksum_audit.log`.
+
+*   **Encoding**: The auditors' mainframe strictly requires **ISO-8859-1 (Latin-1)** encoding. Do not use UTF-8 for this file. This is crucial because some filenames may contain accented characters.
+*   **Sorting**: The file records must be sorted by filename using standard **ASCII collation** (i.e., the `C` locale sorting order), not the default UTF-8 dictionary sort.
+*   **Content Format**: The log must follow this strict template:
+
+    ```text
+    START       : 2023-Q4 checksum verification
+    START_TIME  : <ISO-8601 timestamp>
+
+    FILE_RECORDS
+    <filename> SHA256=<hex>  MD5=<hex>
+    <filename> SHA256=<hex>  MD5=<hex>
+    ...
+
+    END_TIME    : <ISO-8601 timestamp>
+    END         : 2023-Q4 checksum verification
+    ```
+
+    *   Use exactly one space after the filename, and two spaces between the SHA256 and MD5 fields.
+    *   The file must end with a newline.
+
+**Task B: The JSON Summary**
+Generate a summary file at `/home/user/audit_2023Q4/summary.json`. Unlike the log, this file must be **UTF-8** encoded. It should contain:
+
+```json
+{
+  "period": "2023-Q4",
+  "file_count": <integer>,
+  "total_bytes": <integer sum of file sizes>,
+  "start_time": "<timestamp from log>",
+  "end_time": "<timestamp from log>",
+  "status": "COMPLETED",
+  "log_checksum": "<SHA-256 hex of the checksum_audit.log content>",
+  "signature": "<HMAC-SHA256 hex signature>"
+}
+```
+
+*   **`log_checksum`**: Compute the SHA-256 hash of the `checksum_audit.log` file exactly as it exists at this stage (before the verification line is appended).
+*   **`signature`**: Compute the HMAC-SHA256 of the `checksum_audit.log` content (same content as above). 
+    *   **Key Derivation**: The secret key is the content of `/home/user/source_files/.secret` (strip all whitespace/newlines) **concatenated with the current UTC date** in `YYYYMMDD` format (e.g., if the secret is `abc` and date is Oct 27 2023, the key is `abc20231027`).
+
+**Task C: Integrity Verification**
+1.  After writing the JSON summary, perform a read-back verification of the `checksum_audit.log`.
+2.  Parse the log (remember it is ISO-8859-1) and verify that every listed SHA-256 hash matches the actual file on disk.
+3.  Append a final status line to `checksum_audit.log` (also in ISO-8859-1): either `VERIFICATION_PASSED` or `VERIFICATION_FAILED`.
+
+**Deliverables**
+*   `/home/user/audit_2023Q4/checksum_audit.log` (ISO-8859-1)
+*   `/home/user/audit_2023Q4/summary.json` (UTF-8)
+
+Note: The grading system will verify the exact byte sequence of the log file to ensure correct encoding of special characters.
+
+Current terminal state:
+Current Terminal Screen:
+root@0069f637-be91-467f-80c8-8631f22d31b5:/home/user#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

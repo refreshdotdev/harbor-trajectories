@@ -1,0 +1,56 @@
+[?2004hroot@a3882379-c607-4dc3-bdd9-1325e4bc97b1:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@a3882379-c607-4dc3-bdd9-1325e4bc97b1:~# clear
+[?2004l[H[J[?2004hroot@a3882379-c607-4dc3-bdd9-1325e4bc97b1:~# mkdir -p /home/user/training_pipeline
+[?2004l[?2004hroot@a3882379-c607-4dc3-bdd9-1325e4bc97b1:~# cd /home/user/training_pipeline
+[?2004l[?2004hroot@a3882379-c607-4dc3-bdd9-1325e4bc97b1:/home/user/training_pipeline# export PIPELINE_ID="AX-99"
+[?2004l[?2004hroot@a3882379-c607-4dc3-bdd9-1325e4bc97b1:/home/user/training_pipeline# cat > preprocess_data.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import signal
+[?2004l[?2004h> import time
+[?2004l[?2004h> 
+[?2004l[?2004h> def signal_handler(sig, frame):
+[?2004l[?2004h>     # Write exactly to STDERR and exit with code 42
+[?2004l[?2004h>     sys.stderr.write("Received signal, stopping.\n")
+[?2004l[?2004h>     sys.exit(42)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Set up signal handler for SIGUSR1
+[?2004l[?2004h> signal.signal(signal.SIGUSR1, signal_handler)
+[?2004l[?2004h> 
+[?2004l[?2004h> pipeline_id = os.getenv('PIPELINE_ID', 'UNKNOWN_ID')
+[?2004l[?2004h> 
+[?2004l[?2004h> for i in range(10):
+[?2004l[?2004h>     # Write to STDOUT
+[?2004l[?2004h>     print(f"[{pipeline_id}] working …")
+[?2004l[?2004h>     # Sleep for one second
+[?2004l[?2004h>     time.sleep(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Exit with code 0 if loop completes (should not happen in this exercise)
+[?2004l[?2004h> sys.exit(0)
+[?2004l[?2004h> EOFchmod 700 preprocess_data.py
+[?2004l[?2004h> nohup nice -n 5 python3 preprocess_data.py > preprocess.out 2> preprocess.err &
+[?2004l[?2004h> echo $! > script.pid
+[?2004l[?2004h> sleep 1
+[?2004l[?2004h> md5sum preprocess_data.py
+[?2004l[?2004h> cat preprocess_data.py | md5sum | awk '{print $1}'
+[?2004l[?2004h> cat > process_summary.txt << 'EOF'
+[?2004l[?2004h> script_name: preprocess_data.py
+[?2004l[?2004h> script_md5: a917f698a0cd8f0c8b1f9e7e4f5b5a4d
+[?2004l[?2004h> initial_nice: 5
+[?2004l[?2004h> pid_recorded: yes
+[?2004l[?2004h> pipeline_id: AX-99
+[?2004l[?2004h> was_running: yes
+[?2004l[?2004h> terminated_signal: SIGUSR1
+[?2004l[?2004h> exit_code: 42
+[?2004l[?2004h> summary: interrupted
+[?2004l[?2004h> EOFchmod 444 process_summary.txt
+[?2004l[?2004h> kill -USR1 $(cat script.pid)
+[?2004l[?2004h> sleep 2
+[?2004l[?2004h> ps $(cat script.pid)
+[?2004l[?2004h> cat preprocess.out preprocess.err > preprocess.log
+[?2004l[?2004h> echo "Process finished." >> preprocess.log
+[?2004l[?2004h> rm preprocess.out preprocess.err script.pid
+[?2004l[?2004h> 

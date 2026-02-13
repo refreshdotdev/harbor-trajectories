@@ -1,0 +1,148 @@
+Current terminal state:
+New Terminal Output:
+
+> cat > solve.sh << 'END_SCRIPT'
+("\$filename")
+
+        # Calculate MD5 hash
+        file_hashes["\$filename"]="\$(md5sum "\$csv_file" | awk '{print \$1}')"
+
+        # Count data rows (excluding header)
+        row_count="\$(tail -n +2 "\$csv_file" | wc -l)"
+        total_records="\$((total_records + row_count))"
+
+        # Move to raw backup
+        mv "\$csv_file" "\$RAW_BACKUP_DIR/"
+    fi
+done
+
+# Archival (CSV to TSV conversion)
+cd "\$RAW_BACKUP_DIR"
+archive_files=()
+for csv in *.csv; do
+    tsv="\${csv%.csv}.tsv"
+    sed 's/,/\\t/g' "\$csv" > "\$tsv"
+    archive_files+=("\$tsv")
+done
+
+# Create tarball
+archive_name="data_\$REGION_CODE_\$TODAY_\$total_records.tar.gz"
+tar -czf "\$ARCHIVE_DIR/\$archive_name" "\${archive_files[@]}" 2>/dev/null
+rm -f "\${archive_files[@]}" 2>/dev/null
+
+# Staging (extract and sort orders.tsv)
+cd "\$STAGING_DIR"
+tar -xzf "\$ARCHIVE_DIR/\$archive_name"
+
+# Sort orders.tsv by amount (3rd column)
+if [ -f "orders.tsv" ]; then
+    sort -t$'\\t' -k3,3nr "orders.tsv" > "orders.tsv.new"
+    mv "orders.tsv.new" "orders.tsv"
+fi
+
+# Manifest generation
+cd "\$LOG_DIR"
+echo "Legacy ETL Manifest © 2023" > "process_manifest.txt"
+for file in \$(printf '%s\\n' "\${processed_files[@]}" | sort); do
+    hash="\${file_hashes[\$file]}"
+    count="\$(tail -n +2 \"\$RAW_BACKUP_DIR/\$file\" | wc -l)"
+    echo "\$file|\$hash|\$count" >> "process_manifest.txt"
+done
+
+# Convert to ISO-8859-1
+iconv -f UTF-8 -t ISO-8859-1 "process_manifest.txt" -o "process_manifest.txt"
+
+echo "ETL process completed"
+END_SCRIPT
+> #!/bin/bash
+>
+> # Legacy Data Ingestion Script
+> # Configuration
+> REGION_CODE="DEFAULT"
+> TODAY=$(date +%%Y%%m%%d)
+> ARCHIVE_DIR="/home/user/etl/archive"
+> QUARANTINE_DIR="/home/user/etl/quarantine"
+> RAW_BACKUP_DIR="/home/user/etl/raw_backup"
+> STAGING_DIR="/home/user/etl/staging"
+> LOG_DIR="/home/user/etl/logs"
+> INCOMING_DIR="/home/user/incoming"
+>
+> echo "Starting ETL process..."
+>
+> # Create directories
+> mkdir -p "\$ARCHIVE_DIR" "\$QUARANTINE_DIR" "\$RAW_BACKUP_DIR" "\$STAGING_DIR" "\$LOG_DIR"
+>
+> # Initialize variables
+> total_records=0
+> processed_files=()
+> declare -A file_hashes
+>
+> # File validation and processing
+> for csv_file in "\$INCOMING_DIR"/*.csv; do
+>     [ -e "\$csv_file" ] || continue
+>     filename="\$(basename -- "\$csv_file")"
+>
+>     # Check for BOM
+>     if file "\$csv_file" | grep -q "UTF-8 Unicode text, with BOM"; then
+>         echo "Moving \$filename to quarantine (BOM detected)"
+>         mv "\$csv_file" "\$QUARANTINE_DIR/"
+>     else
+>         echo "Processing \$filename..."
+>         processed_files+=("\$filename")
+>
+>         # Calculate MD5 hash
+>         file_hashes["\$filename"]="\$(md5sum "\$csv_file" | awk '{print \$1}')"
+>
+>         # Count data rows (excluding header)
+>         row_count="\$(tail -n +2 "\$csv_file" | wc -l)"
+>         total_records="\$((total_records + row_count))"
+>
+>         # Move to raw backup
+>         mv "\$csv_file" "\$RAW_BACKUP_DIR/"
+>     fi
+> done
+>
+> # Archival (CSV to TSV conversion)
+> cd "\$RAW_BACKUP_DIR"
+> archive_files=()
+> for csv in *.csv; do
+>     tsv="\${csv%.csv}.tsv"
+>     sed 's/,/\\t/g' "\$csv" > "\$tsv"
+>     archive_files+=("\$tsv")
+> done
+>
+> # Create tarball
+> archive_name="data_\$REGION_CODE_\$TODAY_\$total_records.tar.gz"
+> tar -czf "\$ARCHIVE_DIR/\$archive_name" "\${archive_files[@]}" 2>/dev/null
+> rm -f "\${archive_files[@]}" 2>/dev/null
+>
+> # Staging (extract and sort orders.tsv)
+> cd "\$STAGING_DIR"
+> tar -xzf "\$ARCHIVE_DIR/\$archive_name"
+>
+> # Sort orders.tsv by amount (3rd column)
+> if [ -f "orders.tsv" ]; then
+>     sort -t$'\\t' -k3,3nr "orders.tsv" > "orders.tsv.new"
+>     mv "orders.tsv.new" "orders.tsv"
+> fi
+>
+> # Manifest generation
+> cd "\$LOG_DIR"
+> echo "Legacy ETL Manifest © 2023" > "process_manifest.txt"
+> for file in \$(printf '%s\\n' "\${processed_files[@]}" | sort); do
+>     hash="\${file_hashes[\$file]}"
+>     count="\$(tail -n +2 \"\$RAW_BACKUP_DIR/\$file\" | wc -l)"
+>     echo "\$file|\$hash|\$count" >> "process_manifest.txt"
+> done
+>
+> # Convert to ISO-8859-1
+> iconv -f UTF-8 -t ISO-8859-1 "process_manifest.txt" -o "process_manifest.txt"
+>
+> echo "ETL process completed"
+> END_SCRIPT
+> chmod +x solve.sh
+> wc -l solve.sh
+>
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

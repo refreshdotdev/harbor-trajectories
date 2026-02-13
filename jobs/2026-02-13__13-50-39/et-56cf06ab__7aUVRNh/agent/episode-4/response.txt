@@ -1,0 +1,22 @@
+{
+  "analysis": "There was a syntax error in the jq command due to empty mounts array when using '[:-2]' slice. I need to handle the case where there are no valid reports gracefully.",
+  "plan": "1. Check if any valid reports were processed. 2. Create the summary JSON file with proper handling of empty mounts array. 3. Calculate checksum for the summary file. 4. Print the absolute path of the summary file.",
+  "commands": [
+    {
+      "keystrokes": "[[ -z \"$mounts\" ]] && echo '{}' > summary/disk_usage_summary.json || jq -n --arg gen \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\" --argjson t \"${totalGB:-0}\" --argjson u \"${usedGB:-0}\" --argjson f \"${freeGB:-0}\" --argjson p \"${usagePercent:-0}\" --argjson tm \"${totalMonthlyCost:-0}\" '{generatedAt: $gen, totals: {totalGB: $t, usedGB: $u, freeGB: $f, usagePercent: $p, totalMonthlyCost: $tm}, mounts: [ '$mounts' | if (. == \"\") then [] else .[:-2] | sort_by(-.usagePercent) end ]}' > summary/disk_usage_summary.json\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "sha256sum summary/disk_usage_summary.json > summary/checksum.sha256\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "chmod 644 summary/disk_usage_summary.json summary/checksum.sha256\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "realpath summary/disk_usage_summary.json\n",
+      "duration": 0.1
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:~# clear
+[?2004l[H[J[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:~# cd /home/user/inventory
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# grep -v '^ *#' ssh_audit.csv | awk -F, 'match($4, /^2/) {print $1}' | sort -u > server_hostnames.txt
+[?2004lgrep: ssh_audit.csv: binary file matches
+[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# stat --format '%Y' ssh_audit.csv | xargs -I{} date -u -d @{} '+%Y-%m-%dT%H:%M:%SZ' > timestamp.txt
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# mkdir -p task_logs
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# timestamp=$(cat timestamp.txt) && echo "${timestamp} | iconv -f ISO-8859-1 -t UTF-8 ssh_audit.csv > ssh_audit_utf8.csv" > task_logs/column_manipulation.log
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# echo '{"valid_records":0,"legacy_nodes_detected":0}' > audit_manifest.json
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# echo '#!/bin/bash' > process_commands.sh && echo 'BASE_PROCESSING="iconv -f ISO-8859-1 -t UTF-8 ssh_audit.csv | grep -v ^\\s*# | tr ,   \"\\n\\""' >> process_commands.sh && chmod +x process_commands.sh
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# iconv -f ISO-8859-1 -t UTF-8 ssh_audit.csv > ssh_audit_utf8.csv
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# grep "->" legacy_map.conf | sed 's/\\s*->\\s*/ /' > rename_rules.txt
+[?2004lgrep: invalid option -- '>'
+Usage: grep [OPTION]... PATTERNS [FILE]...
+Try 'grep --help' for more information.
+[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# awk_process="awk -F, -v OFS=' | ' \"\$(grep -v '^\\s*#' ssh_audit_utf8.csv | awk -F, 'match(\\$4, /^2$/) {print}' | awk -F, 'match(\\$4, /^2$/) {print \\$1, \\$5}' | sort -k1,1)\" | while read -r line; do server=\\$(echo \"\$line\" | cut -d' ' -f1); permit=\\$(echo \"\$line\" | cut -d' ' -f2); echo \"\$server | \$permit\"; done | sort\"" && echo "$timestamp | $awk_process" >> task_logs/column_manipulation.log && eval "$awk_process" > ssh_root_status.txt
+[?2004lbash: unexpected EOF while looking for matching `"'
+bash: syntax error: unexpected end of file
+[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# awk -F' -> ' '{print $1}' legacy_map.conf > old_names.txt
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# awk -F' -> ' '{print $2}' legacy_map.conf > new_names.txt
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# awk -F, 'NR==1 {next} !/^ *#/ {if ((\$4 == 2) || system("grep -q ^\"\$1\" old_names.txt")) {if (system("grep -q ^\"\$1\" old_names.txt")) {while (getline < "new_names.txt") {if (\$0 ~ "^"\$1"/" ) {server=\$2; break}} } else {server=\$1}; permit=\$5; gsub(/prohibit-password/, "without-password", permit); gsub(/forced-commands-only/, "no", permit); print server " | " permit } }' ssh_audit_utf8.csv | sort | unix2dos > ssh_root_status.txt
+[?2004lawk: cmd. line:1: NR==1 {next} !/^ *#/ {if ((\$4 == 2) || system("grep -q ^\"\$1\" old_names.txt")) {if (system("grep -q ^\"\$1\" old_names.txt")) {while (getline < "new_names.txt") {if (\$0 ~ "^"\$1"/" ) {server=\$2; break}} } else {server=\$1}; permit=\$5; gsub(/prohibit-password/, "without-password", permit); gsub(/forced-commands-only/, "no", permit); print server " | " permit } }
+awk: cmd. line:1:                            ^ backslash not last character on line
+awk: cmd. line:1: NR==1 {next} !/^ *#/ {if ((\$4 == 2) || system("grep -q ^\"\$1\" old_names.txt")) {if (system("grep -q ^\"\$1\" old_names.txt")) {while (getline < "new_names.txt") {if (\$0 ~ "^"\$1"/" ) {server=\$2; break}} } else {server=\$1}; permit=\$5; gsub(/prohibit-password/, "without-password", permit); gsub(/forced-commands-only/, "no", permit); print server " | " permit } }
+awk: cmd. line:1:                            ^ syntax error
+[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# awk -F, 'NR==1 || !/^ *#/ {print (($1 in old_names) ? new_names[$1] : $1), $5}' ssh_audit_utf8.csv > processing_input.txt
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# awk_process="awk -F, '{if ((\$4 == 2) || (\$1 ~ /^old_server_name/)) {gsub(/prohibit-password/, \"without-password\", \$5); gsub(/forced-commands-only/, \"no\", \$5); print \$1, \$5}}' processing_input.txt | sort | unix2dos" && eval "$awk_process" > ssh_root_status.txt
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# awk -F, 'NR==1 {next} !/^ *#/ {print $2, $1, $6}' ssh_audit_utf8.csv > ssh_priority_intermediate.tsv
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# sort -k1n -k2r ssh_priority_intermediate.tsv > sorted_priority.tsv
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# iconv -f UTF-8 -t UTF-16LE -B sorted_priority.tsv > ssh_priority.tsv && sed -i '1s/^/\xef\xbb\xbf/' ssh_priority.tsv
+[?2004liconv: invalid option -- 'B'
+Try `iconv --help' or `iconv --usage' for more information.
+[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# iconv -f UTF-8 -t UTF-16LE sorted_priority.tsv > ssh_priority.tsv
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# sed -i '1s/^/\xef\xbb\xbf/' ssh_priority.tsv
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# awk_process="valid_records=\$(wc -l < ssh_root_status.txt) && legacy_nodes=\$(awk -F, 'NR==1 {next} !/^ *#/ {if (\$4 == 2 || \$1 ~ /^old_server_name/) print \$1}' ssh_audit_utf8.csv | sort -u | wc -l) && echo \"{\\\"valid_records\\\":\\\"\$valid_records\\\",\\\"legacy_nodes_detected\\\":\\\"\$legacy_nodes\\\"}\" > audit_manifest.json" && echo "$timestamp | $awk_process" >> task_logs/column_manipulation.log && eval "$awk_process" > audit_manifest.json
+[?2004lbash: !/: event not found
+[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# valid_records=$(wc -l < ssh_root_status.txt) && legacy_nodes=$(awk -F, 'NR==1 {next} !/^ *#/ {if ($4 == 2 || $1 ~ /^old_server_name/) print $1}' ssh_audit_utf8.csv | sort -u | wc -l) && echo "{\"valid_records\":$valid_records,\"legacy_nodes_detected\":$legacy_nodes}" > audit_manifest.json
+[?2004l[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# ls -la ssh_root_status.txt ssh_priority.tsv audit_manifest.json task_logs/column_manipulation.log
+[?2004l-rw-r--r-- 1 root root  46 Feb 13 19:10 audit_manifest.json
+-rw-r--r-- 1 root root 191 Feb 13 19:09 ssh_priority.tsv
+-rw-r--r-- 1 root root   0 Feb 13 19:08 ssh_root_status.txt
+-rw-r--r-- 1 root root 359 Feb 13 19:06 task_logs/column_manipulation.log
+[?2004hroot@bff6ad84-8ae6-4892-9247-81dcae4b04d9:/home/user/inventory# 

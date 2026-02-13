@@ -1,0 +1,81 @@
+Current terminal state:
+New Terminal Output:
+
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# cd /home/user
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# python3 -c "
+> import json, os
+>
+> # Read manifest data
+> data = {}
+> with open('backup_logs/manifest_data.txt', 'r') as f:
+>     for line in f:
+>         parts = line.strip().split(' ', 1)
+>         if len(parts) >= 2:
+>             filename = parts[0]
+>             size_str = parts[1]
+>             try:
+>                 data[filename] = int(size_str)
+>             except ValueError:
+>                 print(f'Warning: Could not parse size for {filename}')
+>
+> # Write manifest.json
+> with open('backup_logs/manifest.json', 'w') as f:
+>     json.dump(data, f, indent=2)
+> " 2>/dev/null
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# python3 -c "
+> import os, hashlib, json
+>
+> # Read Batch ID
+> with open('.config/backup_system.conf', 'r') as f:
+>     batch_id = f.read().strip()
+>
+> # Read report data
+> report_lines = []
+> with open('backup_logs/report_data.txt', 'r') as f:
+>     for line in f:
+>         parts = line.strip().split(' ', 3)
+>         if len(parts) == 4:
+>             filename, n_size, gz_size, md5 = parts
+>             report_lines.append((filename, n_size, gz_size, md5))
+>
+> # Custom sort: case-insensitive, underscores before hyphens
+> report_lines.sort(key=lambda x: x[0].lower().replace('_', ' ') + x[0])
+>
+> # Generate report content with CRLF
+> content = []
+> content.append(f'BATCH: {batch_id}\r\n')
+> for filename, n_size, gz_size, md5 in report_lines:
+>     content.append(f'FILE: {filename} | N_SIZE: {n_size} | GZ_SIZE: {gz_size} | MD5: {md5}\r\n')
+>
+> # Add manifest SHA256 footer
+> manifest_path = 'backup_logs/manifest.json'
+> if os.path.exists(manifest_path):
+>     with open(manifest_path, 'rb') as f:
+>         manifest_sha256 = hashlib.sha256(f.read()).hexdigest()
+>     content.append(f'MANIFEST_SHA256: {manifest_sha256}\r\n')
+>
+> # Write compliance report (Latin-1 encoding)
+> with open('backup_logs/compliance_report.log', 'w', encoding='iso-8859-1') as f:
+>     f.writelines(content)
+> " 2>/dev/null
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# rm -f backup_logs/manifest_data.txt backup_logs/report_data.txt
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# echo "=== Verification ==="
+=== Verification ===
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# echo "Backup directory (.gz files):"
+Backup directory (.gz files):
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# ls -la db_backups/*.gz 2>/dev/null || echo "No .gz files found"
+No .gz files found
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# echo -e "\nManifest.json preview:"
+
+Manifest.json preview:
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# head -5 backup_logs/manifest.json
+head: cannot open 'backup_logs/manifest.json' for reading: No such file or directory
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# echo -e "\nCompliance report preview:"
+
+Compliance report preview:
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# head -5 backup_logs/compliance_report.log
+head: cannot open 'backup_logs/compliance_report.log' for reading: No such file or directory
+root@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

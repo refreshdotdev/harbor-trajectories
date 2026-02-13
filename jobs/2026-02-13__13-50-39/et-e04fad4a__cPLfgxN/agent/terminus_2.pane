@@ -1,0 +1,178 @@
+[?2004hroot@82416666-6c44-49e4-ac45-f5685ae8f95f:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@82416666-6c44-49e4-ac45-f5685ae8f95f:/home/user# clear
+[?2004l[H[J[?2004hroot@82416666-6c44-49e4-ac45-f5685ae8f95f:/home/user# mkdir -p /home/user/cert_analysis
+[?2004l[?2004hroot@82416666-6c44-49e4-ac45-f5685ae8f95f:/home/user# cd /home/user/certs_incoming
+[?2004l[?2004hroot@82416666-6c44-49e4-ac45-f5685ae8f95f:/home/user/certs_incoming# find . -name "*.meta" | head -5
+[?2004l./broken/server_bad_hash.meta
+./db/server_soon.meta
+./ghost/server_missing_crt.meta
+./legacy/server_expired.meta
+./web/server_ok.meta
+[?2004hroot@82416666-6c44-49e4-ac45-f5685ae8f95f:/home/user/certs_incoming# cat > process_certs.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize output files
+[?2004l[?2004h> echo "filename,subject,issuer,not_before,not_after,days_until_expiry,status" > /home/user/cert_analysis/expiring_certs.csv
+[?2004l[?2004h> echo "" > /home/user/cert_analysis/analysis.log
+[?2004l[?2004h> printf "[]" > /home/user/cert_analysis/errors.json
+[?2004l[?2004h> 
+[?2004l[?2004h> today_ts=$(date +%s)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process each .meta file
+[?2004l[?2004h> for meta_file in $(find . -name "*.meta"); do
+[?2004l[?2004h>     # Extract filename and path components
+[?2004l[?2004h>     crt_file="${meta_file%.*}.crt"
+[?2004l[?2004h>     base_name=$(basename -- "${meta_file%.*}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Read metadata line
+[?2004l[?2004h>     if ! read -r line < "${meta_file}"; then
+[?2004l[?2004h>         echo "Error reading ${meta_file}" >> /home/user/cert_analysis/errors.json
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Parse metadata fields
+[?2004l[?2004h>     IFS='|' read -ra fields <<< "${line}"
+[?2004l[?2004h>     subject="${fields[0]}"
+[?2004l[?2004h>     issuer="${fields[1]}"
+[?2004l[?2004h>     not_before="${fields[2]}"
+[?2004l[?2004h>     not_after="${fields[3]}"
+[?2004l[?2004h>     checksum_meta="${fields[4]}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Validation 1: Check if .crt file exists
+[?2004l[?2004h>     if [ ! -f "${crt_file}" ]; then
+[?2004l[?2004h>         # Update errors.json
+[?2004l[?2004h>         tmp_json="$(cat /home/user/cert_analysis/errors.json)"
+[?2004l[?2004h>         echo "${tmp_json%,*},\n\t{\"filename\": \"${base_name}.meta\", \"reason\": \"MISSING_CRT\"}" > /home/user/cert_analysis/errors.json
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Validation 2: Verify dates are valid
+[?2004l[?2004h>     if ! date -d "${not_before}" +%F >/dev/null 2>&1 || ! date -d "${not_after}" +%F >/dev/null 2>&1; then
+[?2004l[?2004h>         tmp_json="$(cat /home/user/cert_analysis/errors.json)"
+[?2004l[?2004h>         echo "${tmp_json%,*},\n\t{\"filename\": \"${base_name}.meta\", \"reason\": \"INVALID_DATE\"}" > /home/user/cert_analysis/errors.json
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Convert dates to timestamps
+[?2004l[?2004h>     not_before_ts=$(date -d "${not_before}" +%s)
+[?2004l[?2004h>     not_after_ts=$(date -d "${not_after}" +%s)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Validation 3: Verify checksum
+[?2004l[?2004h>     checksum_actual=$(sha256sum "${crt_file}" | awk '{print $1}')
+[?2004l[?2004h>     if [ "${checksum_actual}" != "${checksum_meta}" ]; then
+[?2004l[?2004h>         tmp_json="$(cat /home/user/cert_analysis/errors.json)"
+[?2004l[?2004h>         echo "${tmp_json%,*},\n\t{\"filename\": \"${base_name}.meta\", \"reason\": \"CHECKSUM_MISMATCH\"}" > /home/user/cert_analysis/errors.json
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Calculate days until expiry
+[?2004l[?2004h>     days_until_expiry=$(((not_after_ts - today_ts) / 86400))
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Determine status
+[?2004l[?2004h>     if [ ${days_until_expiry} -gt 30 ]; then
+[?2004l[?2004h>         status="OK"
+[?2004l[?2004h>     elif [ ${days_until_expiry} -ge 0 ]; then
+[?2004l[?2004h>         status="EXPIRING_SOON"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         status="EXPIRED"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Add to CSV
+[?2004l[?2004h>     echo "${base_name}.crt,${subject},${issuer},${not_before},${not_after},${days_until_expiry},${status}" >> /home/user/cert_analysis/expiring_certs.csv
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Add to log
+[?2004l[?2004h>     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+[?2004l[?2004h>     echo "${timestamp} Processed ${base_name}.crt - ${status}" >> /home/user/cert_analysis/analysis.log
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort CSV by days_until_expiry ascending
+[?2004l[?2004h> sort -t, -k5n /home/user/cert_analysis/expiring_certs.csv -o /home/user/cert_analysis/expiring_certs.csv
+[?2004l[?2004h> 
+[?2004l[?2004h> # Fix JSON formatting
+[?2004l[?2004h> tmp_json="$(cat /home/user/cert_analysis/errors.json)"
+[?2004l[?2004h> echo "${tmp_json%,*}]" > /home/user/cert_analysis/errors.json
+[?2004l[?2004h> EOFchmod +x process_certs.sh
+[?2004l[?2004h> ./process_certs.sh
+[?2004l[?2004h> ls -la /home/user/cert_analysis/
+[?2004l[?2004h> ls -la /home/user/cert_analysis/ | cat
+[?2004l[?2004h> ls /home/user/cert_analysis/expiring_certs.csv
+[?2004l[?2004h> ls /home/user/cert_analysis/analysis.log
+[?2004l[?2004h> ls /home/user/cert_analysis/errors.json
+[?2004l[?2004h> cat > simple_test.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Test processing one certificate
+[?2004l[?2004h> meta_file="./broken/server_bad_hash.meta"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Testing ${meta_file}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize output files
+[?2004l[?2004h> echo "filename,subject,issuer,not_before,not_after,days_until_expiry,status" > /home/user/cert_analysis/expiring_certs.csv
+[?2004l[?2004h> echo "" > /home/user/cert_analysis/analysis.log
+[?2004l[?2004h> printf "[]" > /home/user/cert_analysis/errors.json
+[?2004l[?2004h> 
+[?2004l[?2004h> today_ts=$(date +%s)
+[?2004l[?2004h> 
+[?2004l[?2004h> crt_file="${meta_file%.*}.crt"
+[?2004l[?2004h> base_name=$(basename -- "${meta_file%.*}")
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Base name: ${base_name}"
+[?2004l[?2004h> echo "CRT file: ${crt_file}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Test if CRT file exists
+[?2004l[?2004h> if [ ! -f "${crt_file}" ]; then
+[?2004l[?2004h>     echo "CRT file missing"
+[?2004l[?2004h> else
+[?2004l[?2004h>     echo "CRT file exists"
+[?2004l[?2004h> fi
+[?2004l[?2004h> EOFchmod +x simple_test.sh
+[?2004l[?2004h> ./simple_test.sh
+[?2004l[?2004h> cat /home/user/cert_analysis/expiring_certs.csv
+[?2004l[?2004h> cat /home/user/cert_analysis/analysis.log
+[?2004l[?2004h> cat /home/user/cert_analysis/errors.json
+[?2004l[?2004h> cat ./broken/server_bad_hash.meta
+[?2004l[?2004h> cat > verify_files.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Verify file creation with absolute paths
+[?2004l[?2004h> echo "Testing file writes..."
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "filename,subject,issuer,not_before,not_after,days_until_expiry,status" > /home/user/cert_analysis/expiring_certs.csv
+[?2004l[?2004h> echo "Test log entry" > /home/user/cert_analysis/analysis.log
+[?2004l[?2004h> echo "[]" > /home/user/cert_analysis/errors.json
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Files created successfully"
+[?2004l[?2004h> EOFchmod +x verify_files.sh
+[?2004l[?2004h> ./verify_files.sh
+[?2004l[?2004h> ls -la /home/user/cert_analysis/
+[?2004l[?2004h> echo "=== Listing cert_analysis directory ==="
+[?2004l[?2004h> ls -la /home/user/cert_analysis/ > listing.txt
+[?2004l[?2004h> echo "=== Listing content ==="
+[?2004l[?2004h> cat listing.txt
+[?2004l[?2004h> echo "=== Testing file creation ==="
+[?2004l[?2004h> touch /home/user/cert_analysis/test_file.txt
+[?2004l[?2004h> echo "File created"
+[?2004l[?2004h> pwd
+[?2004l[?2004h> whoami
+[?2004l[?2004h> touch test_output.txt
+[?2004l[?2004h> echo "test content" > test_output.txt
+[?2004l[?2004h> cat test_output.txt
+[?2004l[?2004h> ls -la /home/user/
+[?2004l[?2004h> stat /home/user/cert_analysis/
+[?2004l[?2004h> echo "test" > /tmp/test_permissions.txt
+[?2004l[?2004h> cat /tmp/test_permissions.txt
+[?2004l[?2004h> find . -name "*.meta" -exec basename {} \; | head -3
+[?2004l[?2004h> meta_file="./web/server_ok.meta"
+[?2004l[?2004h> cat "$meta_file"
+[?2004l[?2004h> crt_file="${meta_file%.*}.crt"
+[?2004l[?2004h> echo "CRT file: $crt_file"
+[?2004l[?2004h> [ -f "$crt_file" ] && echo "CRT file exists" || echo "CRT file missing"
+[?2004l[?2004h> ./final_cert_processor.sh 2>/dev/null && echo "Script executed"
+[?2004l[?2004h> if [ -f /home/user/cert_analysis/expiring_certs.csv ]; then echo "CSV exists"; fi
+[?2004l[?2004h> if [ -f /home/user/cert_analysis/analysis.log ]; then echo "Log exists"; fi
+[?2004l[?2004h> if [ -f /home/user/cert_analysis/errors.json ]; then echo "JSON exists"; fi
+[?2004l[?2004h> wc -l /home/user/cert_analysis/expiring_certs.csv
+[?2004l[?2004h> tail -1 /home/user/cert_analysis/errors.json
+[?2004l[?2004h> 

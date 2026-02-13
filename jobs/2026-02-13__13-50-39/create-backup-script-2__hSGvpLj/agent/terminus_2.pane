@@ -1,0 +1,126 @@
+[?2004hroot@536657ee-7e4d-45b2-b3c7-1cb971fb2752:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@536657ee-7e4d-45b2-b3c7-1cb971fb2752:~# clear
+[?2004l[H[J[?2004hroot@536657ee-7e4d-45b2-b3c7-1cb971fb2752:~# cd /home/user/hardening_test
+[?2004l[?2004hroot@536657ee-7e4d-45b2-b3c7-1cb971fb2752:/home/user/hardening_test# cat > apply_hardening.sh << 'EOF'
+[?2004l
+    else
+        echo "Error pro[?2004h> #!/bin/sh
+[?2004l[?2004h> 
+[?2004l[?2004h> # POSIX-sh compatible script for lab hardening
+[?2004l[?2004h> # Script must be located at: /home/user/hardening_test/apply_hardening.sh
+[?2004l[?2004h> # Working directory for this script is expected to be /home/user/hardening_test/
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize log file (overwrite if exists)
+[?2004l[?2004h> : > hardening.log
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to handle each rule for a file
+[?2004l[?2004h> process_file_for_rule() {
+[?2004l[?2004h>     local filename="$1"
+[?2004l[?2004h>     local search_pattern="$2"
+[?2004l[?2004h>     local enforced_line="$3"
+[?2004l[?2004h>     local action_taken=""
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Safety Backup
+[?2004l[?2004h>     if [ ! -f "${filename}.bak" ]; then
+[?2004l[?2004h>         # Only create backup if it doesn't exist
+[?2004l[?2004h>         if cp "$filename" "${filename}.bak"; then
+[?2004l[?2004h>             echo "Backup created for $filename" >&2
+[?2004l[?2004h>         else
+[?2004l[?2004h>             echo "Error: Failed to create backup for $filename. Skipping rule processing for this file." >&2
+[?2004l[?2004h>             return 1 # Indicate failure
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Check if enforced_line is already present (SKIPPED case)
+[?2004l[?2004h>     if grep -Fxq "$enforced_line" "$filename" 2>/dev/null; then
+[?2004l[?2004h>         action_taken="SKIPPED"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         # Check if search_pattern is found (REPAIRED case) or not found (APPENDED case)
+[?2004l[?2004h>         if grep -qE "^${search_pattern}$" "$filename" 2>/dev/null; then
+[?2004l[?2004h>             # Use sed to replace the line matching the search_pattern exactly with the enforced_line
+[?2004l[?2004h>             # -i for in-place edit (GNU sed, common on Linux user-land)
+[?2004l[?2004h>             # -r for extended regex (ERE) for search_pattern
+[?2004l[?2004h>             # -e to specify the script
+[?2004l[?2004h>             # A common idiom is to delete matching lines, then append if no exact match was found.
+[?2004l[?2004h>             # This is more robust than trying a complex sed one-liner for replacement.
+[?2004l[?2004h>             # First, remove lines matching the search_pattern EXACTLY (to avoid appending if repaired)
+[?2004l[?2004h>             tmpfile="$(mktemp "${filename}.XXXXXX")"
+[?2004l[?2004h>             grep -vE "^${search_pattern}$" "$filename" > "$tmpfile"
+[?2004l[?2004h>             if [ $? -eq 0 ]; then
+[?2004l[?2004h>                 mv "$tmpfile" "$filename"
+[?2004l[?2004h>                 # Now, the line is removed. We will append the enforced_line later if it's not already there.
+[?2004l[?2004h>                 # The check for enforced_line was already done at the start of this block.
+[?2004l[?2004h>                 action_taken="REPAIRED"
+[?2004l[?2004h>             else
+[?2004l[?2004h>                 echo "Error: Failed to process $filename for repair. Rule processing for this file aborted." >&2
+[?2004l[?2004h>                 rm -f "$tmpfile" # Clean up temp file on error
+[?2004l[?2004h>                 return 1 # Indicate failure
+[?2004l[?2004h>             fi
+[?2004l[?2004h>             rm -f "$tmpfile" # Clean up temp file
+[?2004l[?2004h>         else
+[?2004l[?2004h>             # search_pattern not found, so append enforced_line
+[?2004l[?2004h>             echo "$enforced_line" >> "$filename"
+[?2004l[?2004h>             action_taken="APPENDED"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # If action_taken is still empty, it means the enforced_line was already present (SKIPPED)
+[?2004l[?2004h>     if [ -z "$action_taken" ]; then
+[?2004l[?2004h>         action_taken="SKIPPED"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     echo "${filename}:${action_taken}" >> hardening.log
+[?2004l[?2004h>     return 0
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main script logic
+[?2004l[?2004h> if [ ! -r "rules.txt" ]; then
+[?2004l[?2004h>     echo "Error: rules.txt not found or not readable in $(pwd)." >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process each rule in rules.txt
+[?2004l[?2004h> while IFS="|" read -r filename search_pattern enforced_line; do
+[?2004l[?2004h>     # Skip empty lines or lines starting with '#' (comments)
+[?2004l[?2004h>     case "$filename" in
+[?2004l[?2004h>         ""|"#"*) continue ;;
+[?2004l[?2004h>     esac
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Basic validation for fields (must have all three non-empty)
+[?2004l[?2004h>     if [ -z "$filename" ] || [ -z "$search_pattern" ] || [ -z "$enforced_line" ]; then
+[?2004l[?2004h>         echo "Warning: Skipping malformed rule: '${filename}|${search_pattern}|${enforced_line}'. Rule requires three non-empty fields separated by '|'." >&2
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Ensure filename is just a filename, not a path, as per rule format
+[?2004l[?2004h>     if echo "$filename" | grep -q '/'; then
+[?2004l[?2004h>         echo "Warning: Filenames in rules.txt should be local to $(pwd). Skipping rule for '$filename' as it contains a path." >&2
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Call the processing function for the current rule
+[?2004l[?2004h>     if process_file_for_rule "$filename" "$search_pattern" "$enforced_line"; then
+[?2004l[?2004h>         echo "Processed rule for $filename successfully." >&2
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "Error processing rule for $filename. Check for detailed errors." >&2
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h> done < rules.txt
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort the log file alphabetically by filename, and overwrite original
+[?2004l[?2004h> sort hardening.log -o hardening.log
+[?2004l[?2004h> 
+[?2004l[?2004h> # Enforce strict permissions on processed files
+[?2004l[?2004h> # Note: This assumes that only files mentioned in rules.txt are to be processed.
+[?2004l[?2004h> # If other files were created/modified, their permissions would not be set here.
+[?2004l[?2004h> # This aligns with the rule: "For each file defined in rules.txt, apply..."
+[?2004l[?2004h> # This also means if a file was APPENDED to, its permissions are updated here.
+[?2004l[?2004h> find . -maxdepth 1 -type f \( \n    -name "sshd_config" -exec chmod 0600 {} + \n    -o \( -name "*.bak" -o -name "rules.txt" -o -name "hardening.log" -o -name "apply_hardening.sh" \) -prune \n    -type f -exec chmod 0644 {} +\n\n# Final user feedback
+[?2004l[?2004h> printf "Hardening completed\n"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@536657ee-7e4d-45b2-b3c7-1cb971fb2752:/home/user/hardening_test# chmod +x apply_hardening.sh
+[?2004l[?2004hroot@536657ee-7e4d-45b2-b3c7-1cb971fb2752:/home/user/hardening_test# ls -la apply_hardening.sh
+[?2004l-rwxr-xr-x 1 root root 4940 Feb 13 18:58 [0m[01;32mapply_hardening.sh[0m
+[?2004hroot@536657ee-7e4d-45b2-b3c7-1cb971fb2752:/home/user/hardening_test# 

@@ -1,0 +1,185 @@
+[?2004hroot@be43a4ce-7819-4478-a685-e07ad41d9d12:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@be43a4ce-7819-4478-a685-e07ad41d9d12:~# clear
+[?2004l[H[J[?2004hroot@be43a4ce-7819-4478-a685-e07ad41d9d12:~# cd /home/user
+[?2004l[?2004hroot@be43a4ce-7819-4478-a685-e07ad41d9d12:/home/user# mkdir -p forensics
+[?2004l[?2004hroot@be43a4ce-7819-4478-a685-e07ad41d9d12:/home/user# cd forensics
+[?2004l[?2004hroot@be43a4ce-7819-4478-a685-e07ad41d9d12:/home/user/forensics# python3 -m venv clean_env
+[?2004lecho 'export PS1="(AUDIT_SAFE) "' >> clean_env/bin/activate
+[?2004hroot@be43a4ce-7819-4478-a685-e07ad41d9d12:/home/user/forensics# echo 'export PS1="(AUDIT_SAFE) "' >> clean_env/bin/activate
+[?2004l[?2004hroot@be43a4ce-7819-4478-a685-e07ad41d9d12:/home/user/forensics# source clean_env/bin/activate
+[?2004l[?2004h(AUDIT_SAFE) pip install wheel
+[?2004lLooking in indexes: https://invalid.pypi.org/simple
+[33mWARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7862ce350040>: Failed to establish a new connection: [Errno -5] No address associated with hostname')': /simple/wheel/[0m[33m
+[0m[33mWARNING: Retrying (Retry(total=3, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7862ce350250>: Failed to establish a new connection: [Errno -5] No address associated with hostname')': /simple/wheel/[0m[33m
+[0mpip freeze
+[33mWARNING: Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7862ce350460>: Failed to establish a new connection: [Errno -5] No address associated with hostname')': /simple/wheel/[0m[33m
+[0m[33mWARNING: Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7862ce350610>: Failed to establish a new connection: [Errno -5] No address associated with hostname')': /simple/wheel/[0m[33m
+[0m[33mWARNING: Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7862ce3507c0>: Failed to establish a new connection: [Errno -5] No address associated with hostname')': /simple/wheel/[0m[33m
+[0m[31mERROR: Could not find a version that satisfies the requirement wheel (from versions: none)[0m[31m
+[0m[31mERROR: No matching distribution found for wheel[0m[31m
+[0m[?2004h(AUDIT_SAFE) pip freeze
+[?2004l[?2004h(AUDIT_SAFE) cp /var/lib/secops/legacy_banlist.txt ./legacy_banlist.txt
+[?2004l[?2004h(AUDIT_SAFE) cat > process_banlist.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> # Script to process legacy_banlist.txt
+[?2004l[?2004h> # Ensure we are in the current working directory for relative paths
+[?2004l[?2004h> cd "$(dirname "$0")" || exit 1
+[?2004l[?2004h> 
+[?2004l[?2004h> BANLIST_FILE="legacy_banlist.txt"
+[?2004l[?2004h> PROCESSED_BANLIST="processed_banlist.txt"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Define a temporary file for ISO-8859-1 processing
+[?2004l[?2004h> ISO_CONVERTED_FILE="banlist_iso_converted.txt"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Processing banlist: $BANLIST_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Convert from ISO-8859-1 to UTF-8 and replace CRLF with LF
+[?2004l[?2004h> iconv -f ISO-8859-1 -t UTF-8 "$BANLIST_FILE" > "$ISO_CONVERTED_FILE" || {
+[?2004l[?2004h>     echo "Warning: iconv failed or not available. Attempting to process without explicit ISO-8859-1 conversion, assuming file might be UTF-8 or errors are tolerable for this step."
+[?2004l[?2004h>     # Fallback: try to use dos2unix to handle line endings, then process
+[?2004l[?2004h>     # This part is a fallback and might not perfectly handle all encoding issues
+[?2004l[?2004h>     cp "$BANLIST_FILE" "$ISO_CONVERTED_FILE" 2>/dev/null || { echo "Failed to copy banlist for fallback processing."; exit 1; }
+[?2004l[?2004h>     if command -v dos2unix >/dev/null 2>&1; then
+[?2004l[?2004h>         dos2unix "$ISO_CONVERTED_FILE"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "Warning: dos2unix not found. Line endings might be CRLF. Attempting to process as is."
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Filter lines: ignore comments (starting with #) and empty lines
+[?2004l[?2004h> # Extract package names, convert to lowercase for case-insensitive matching
+[?2004l[?2004h> grep -v "^#" "$ISO_CONVERTED_FILE" | grep -v "^\\s*$" | awk '{print tolower($0)}' > "$PROCESSED_BANLIST"
+[?2004l[?2004h> 
+[?2004l[?2004h> if [ ! -s "$PROCESSED_BANLIST" ]; then
+[?2004l[?2004h>     echo "Error: Processed banlist is empty or not created. Check input file and conversion steps."
+[?2004l[?2004h>     # Still proceed, but list will be empty
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Processed banlist written to: $PROCESSED_BANLIST"
+[?2004l[?2004h> wc -l "$PROCESSED_BANLIST"
+[?2004l[?2004h> EOF
+[?2004l[?2004h(AUDIT_SAFE) chmod +x process_banlist.sh
+[?2004l[?2004h(AUDIT_SAFE) ./process_banlist.sh
+[?2004lProcessing banlist: legacy_banlist.txt
+Processed banlist written to: processed_banlist.txt
+2 processed_banlist.txt
+[?2004h(AUDIT_SAFE) pip freeze
+[?2004l[?2004h(AUDIT_SAFE) cat processed_banlist.txt
+[?2004lsetuptools  
+unsafe-lib
+[?2004h(AUDIT_SAFE) python -c "import pkg_resources; [print(f'{dist.project_name}=={dist.version}') for dist in pkg_resources.working_set if dist.key.lower() not in (line.strip().lower() for line in open('processed_banlist.txt', 'r').readlines() if line.strip())]"
+[?2004lpip==22.0.2
+[?2004h(AUDIT_SAFE) cat > generate_manifest.py << 'EOF'
+[?2004lst will be empty or incomplete. Ensure package filtering is done correctly.")
+
+# Sort packages alphabetically by name
+packages = sorted(packages, key=lambda x: x['name'])
+
+# Create the manifest dictionary
+manifest = {
+    "scan_timestamp": scan_timestamp,
+    "environment_inode": environment_inode,
+    "packages": packages
+}
+
+# Write the manifest to a file in minified JSON format
+manifest_file = 'audit_manifest.json'
+with open(manifest_file, 'w') as f:
+    json.dump(manifest, f, separators=(',', ':')) # Minify JSON
+
+print(f"Manifest generated: {manifest_file}")
+print(f"Scan Timestamp: {scan_timestamp}")
+print(f"Environment Inode: {environment_inode}")
+print(f"Number of packages in manifest: {len(packages)}")
+EOF
+[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import json
+[?2004l[?2004h> import os
+[?2004l[?2004h> import datetime
+[?2004l[?2004h> import sys
+[?2004l[?2004h> 
+[?2004l[?2004h> # Define manifest fields
+[?2004l[?2004h> scan_timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004h> # Environment directory inode
+[?2004l[?2004h> venv_dir = '/home/user/forensics/clean_env'
+[?2004l[?2004h> try:
+[?2004l[?2004h>     environment_inode = os.stat(venv_dir).st_ino
+[?2004l[?2004h> except FileNotFoundError:
+[?2004l[?2004h>     print(f"Error: Environment directory '{venv_dir}' not found.")
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read filtered packages
+[?2004l[?2004h> # Assuming packages are already filtered and sorted, and saved to a file like filtered_packages.list
+[?2004l[?2004h> # For this script, let's assume the input comes from a file or standard input
+[?2004l[?2004h> # For this example, I'll show how to read from a file
+[?2004l[?2004h> # Let's create a list of package dicts
+[?2004l[?2004h> packages = []
+[?2004l[?2004h> 
+[?2004l[?2004h> # For testing, let's assume we have a file 'filtered_packages.list' with content like:
+[?2004l[?2004h> # pkg1==1.0
+[?2004l[?2004h> # pkg2==2.0
+[?2004l[?2004h> # 
+[?2004l[?2004h> # If we don't have this file yet, this script will create an empty list or fail gracefully.
+[?2004l[?2004h> # We need to generate this list first.
+[?2004l[?2004h> # For now, let's assume the filtering is done externally and this script just formats it.
+[?2004l[?2004h> # The actual filtering command will be run before this script.
+[?2004l[?2004h> # For the purpose of this script, let's try to read from stdin or a predefined file.
+[?2004l[?2004h> # Let's make it read from a file 'filtered_packages.list' which should contain lines like "package_name==version"
+[?2004l[?2004h> try:
+[?2004l[?2004h>     with open('filtered_packages.list', 'r') as f:
+[?2004l[?2004h>         for line in f:
+[?2004l[?2004h>             line = line.strip()
+[?2004l[?2004h>             if line:
+[?2004l[?2004h>                 # Split into name and version
+[?2004l[?2004h>                 # Assuming '==' is the only separator
+[?2004l[?2004h>                 parts = line.split('==', 1)
+[?2004l[?2004h>                 if len(parts) == 2:
+[?2004l[?2004h>                     package_name = parts[0]
+[?2004l[?2004h>                     package_version = parts[1]
+[?2004l[?2004h>                     packages.append({"name": package_name, "version": package_version})
+[?2004l[?2004h>                 else:
+[?2004l[?2004h>                     print(f"Warning: Could not parse package line: {line}")
+[?2004l[?2004h> except FileNotFoundError:
+[?2004l[?2004h>     print("Info: 'filtered_packages.list' not found. Manifest will be empty or incomplete. Ensure package filtering is done correctly.")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort packages alphabetically by name
+[?2004l[?2004h> packages = sorted(packages, key=lambda x: x['name'])
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create the manifest dictionary
+[?2004l[?2004h> manifest = {
+[?2004l[?2004h>     "scan_timestamp": scan_timestamp,
+[?2004l[?2004h>     "environment_inode": environment_inode,
+[?2004l[?2004h>     "packages": packages
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write the manifest to a file in minified JSON format
+[?2004l[?2004h> manifest_file = 'audit_manifest.json'
+[?2004l[?2004h> with open(manifest_file, 'w') as f:
+[?2004l[?2004h>     json.dump(manifest, f, separators=(',', ':')) # Minify JSON
+[?2004l[?2004h> 
+[?2004l[?2004h> print(f"Manifest generated: {manifest_file}")
+[?2004l[?2004h> print(f"Scan Timestamp: {scan_timestamp}")
+[?2004l[?2004h> print(f"Environment Inode: {environment_inode}")
+[?2004l[?2004h> print(f"Number of packages in manifest: {len(packages)}")
+[?2004l[?2004h> EOF
+[?2004l[?2004h(AUDIT_SAFE) chmod +x generate_manifest.py
+[?2004l[?2004h(AUDIT_SAFE) python generate_manifest.py
+[?2004lInfo: 'filtered_packages.list' not found. Manifest will be empty or incomplete. Ensure package filtering is done correctly.
+Manifest generated: audit_manifest.json
+Scan Timestamp: 2026-02-13T19:09:36Z
+Environment Inode: 2256534821
+Number of packages in manifest: 0
+[?2004h(AUDIT_SAFE) sha512sum audit_manifest.json | cut -d' ' -f1 > audit_manifest.sig
+[?2004l[?2004h(AUDIT_SAFE) python -c "import pkg_resources; [print(f'{dist.project_name}=={dist.version}') for dist in sorted(pkg_resources.working_set, key=lambda dist: dist.project_name) if dist.key.lower() not in (line.strip().lower() for line in open('processed_banlist.txt', 'r').readlines() if line.strip())]" > filtered_packages.list
+[?2004l[?2004h(AUDIT_SAFE) python generate_manifest.py
+[?2004lManifest generated: audit_manifest.json
+Scan Timestamp: 2026-02-13T19:09:58Z
+Environment Inode: 2256534821
+Number of packages in manifest: 1
+[?2004h(AUDIT_SAFE) sha512sum audit_manifest.json | cut -d' ' -f1 > audit_manifest.sig
+[?2004l[?2004h(AUDIT_SAFE) cat audit_manifest.json
+[?2004l{"scan_timestamp":"2026-02-13T19:09:58Z","environment_inode":2256534821,"packages":[{"name":"pip","version":"22.0.2"}]}[?2004h(AUDIT_SAFE) cat audit_manifest.sig
+[?2004l853382fbf1a34958029cf2b724ea9c2757a20b2a9d2ac3a8058a6ec0ac8276549affa2570a8440bfed426149c6147e57eaa1107cdbcaa19306c49707e1531d5e
+[?2004h(AUDIT_SAFE) 

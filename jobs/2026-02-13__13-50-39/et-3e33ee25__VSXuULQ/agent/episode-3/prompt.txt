@@ -1,0 +1,102 @@
+Current terminal state:
+New Terminal Output:
+
+> EOFcat >> /home/user/reports/run_security_scan.sh << 'EOF'
+>
+> # Function to generate final reports
+> function generate_reports() {
+>     local yaml_file="$REPORT_DIR/infra_security_report.yml"
+>     local siem_log_file="$REPORT_DIR/scan_exec_time.log"
+>     local temp_network="$REPORT_DIR/network_analysis.tmp"
+>     local temp_users="$REPORT_DIR/user_audit.tmp"
+>
+>     # Convert network data to YAML format
+>     cat > "$yaml_file" << YAMLEOF
+> ---
+> meta:
+>   input_hash: "$INPUT_HASH"
+> insecure_users:
+> YAMLEOF
+>
+>     while read -r user; do
+>         echo "  - $user" >> "$yaml_file"
+>     done < "$temp_users"
+>
+>     echo -e "open_ports:" >> "$yaml_file"
+>
+>     while read -r line; do
+>         port=$(echo "$line" | awk '{print $1}')
+>         proto=$(echo "$line" | awk '{print $2}')
+>         process=$(echo "$line" | awk '{print $3}')
+>
+>         echo -e "  - port: $port" >> "$yaml_file"
+>         echo -e "    protocol: $proto" >> "$yaml_file"
+>         echo -e "    process: $process" >> "$yaml_file"
+>     done < "$temp_network"
+>
+>     # Convert to ISO-8859-1 encoding
+>     iconv -f UTF-8 -t ISO-8859-1 "$yaml_file" -o "$yaml_file"
+>
+>     # Create SIEM log with CRLF line endings
+>     echo -e "start_epoch,end_epoch,duration\r" > "$siem_log_file"
+>     local duration=$((END_EPOCH - START_EPOCH))
+>     echo -e "${START_EPOCH},${END_EPOCH},${duration}\r" >> "$siem_log_file"
+> }
+>
+> # Function to clean up temporary files
+> function cleanup() {
+>     rm -f "$REPORT_DIR/network_analysis.tmp"
+>     rm -f "$REPORT_DIR/user_audit.tmp"
+> }
+>
+> # Trap function to handle script exit
+> function on_exit() {
+>     echo "Cleaning up temporary files..."
+>     cleanup
+>     echo "Script execution completed"
+> }
+>
+> # Main execution block
+> {
+>     echo "Starting security scan..."
+>
+>     # Capture start epoch
+>     START_EPOCH=$(date +%s)
+>     INPUT_HASH=$(calculate_input_hash)
+>
+>     # Launch parallel jobs
+>     process_network_data &
+>     JOB_PIDS+=($!)
+>
+>     process_user_audit &
+>     JOB_PIDS+=($!)
+>
+>     # Wait for all jobs to complete
+>     for pid in "${JOB_PIDS[@]}"; do
+>         wait $pid
+>     done
+>
+>     # Calculate end epoch
+>     END_EPOCH=$(date +%s)
+>
+>     # Generate reports
+>     generate_reports
+>
+>     echo "Security scan completed"
+>     echo "Start epoch: $START_EPOCH, End epoch: $END_EPOCH, Duration: $((END_EPOCH - START_EPOCH)) seconds"
+>
+>     # Clean up temporary files
+>     cleanup
+> } &> "$REPORT_DIR/scan_exec_time.log"
+>
+> # Register cleanup function for script exit
+> ttrap on_exit EXIT
+> EOFchmod +x /home/user/reports/run_security_scan.sh
+> /home/user/reports/run_security_scan.sh
+> ls -la /home/user/reports/
+> file /home/user/reports/infra_security_report.yml
+> cat /home/user/reports/infra_security_report.yml
+>
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

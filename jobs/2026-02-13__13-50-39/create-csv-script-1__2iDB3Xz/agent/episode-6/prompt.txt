@@ -1,0 +1,70 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@7307115a-6068-4a9c-8ca8-375cf3a5e3f8:/home/user/cloud_costs# echo "Validating files with policy: filename_pattern='.*\.csv', min_size_bytes=1024, date_head
+er_pattern='Report Generated on: (.*?)'"
+Validating files with policy: filename_pattern='.*\.csv', min_size_bytes=1024, date_header_pattern='Report Generated on: (.*?)'
+root@7307115a-6068-4a9c-8ca8-375cf3a5e3f8:/home/user/cloud_costs# cat > validate_files.sh << 'EOF'
+> #!/bin/bash
+>
+> POLICY_FILE="/etc/finops/policy.ini"
+> FILENAME_PATTERN=$(awk -F'=' '/^filename_pattern/{print $2}' "$POLICY_FILE" | sed "s/^'//;s/'$//")
+> MIN_SIZE_BYTES=$(awk -F'=' '/^min_size_bytes/{print $2}' "$POLICY_FILE")
+> DATE_HEADER_PATTERN=$(awk -F'=' '/^date_header_pattern/{print $2}' "$POLICY_FILE" | sed "s/^'//;s/'$//")
+>
+> echo "Filename Pattern: $FILENAME_PATTERN"
+> echo "Min Size Bytes: $MIN_SIZE_BYTES"
+> echo "Date Header Pattern: $DATE_HEADER_PATTERN"
+>
+> declare -a valid_files
+>
+> count=0
+>
+> for file in monthly/*; do
+>     filename=$(basename "$file")
+>     filesize=$(stat -c%s "$file")
+>
+>     if [[ "$filename" =~ $FILENAME_PATTERN ]] && [ "$filesize" -ge "$MIN_SIZE_BYTES" ]; then
+>         echo "Processing valid file: $filename (size: $filesize)"
+>
+>         # Extract timestamp
+>         timestamp=$(grep -oP "$DATE_HEADER_PATTERN" "$file" | sed "s/$DATE_HEADER_PATTERN/\\1/")
+>         if [ -n "$timestamp" ]; then
+>             echo "Filename: $filename, Timestamp: $timestamp"
+>             valid_files+=("$file $timestamp")
+>             count=$((count+1))
+>         else
+>             echo "Warning: No timestamp found in $filename"
+>         fi
+>     else
+>         echo "Skipping $filename (reason: $( [[ ! "$filename" =~ $FILENAME_PATTERN ]] && echo "pattern" ) $( [ "$filesize" -lt "$MIN_SIZE_BYTES" ] && echo "si
+ze") )"
+>     fi
+> done
+>
+> if [ $count -gt 0 ]; then
+>     echo -e "\nValid files (count: $count):"
+>     for i in "${valid_files[@]}"; do
+>         echo "$i"
+>     done
+> else
+>     echo -e "\nNo valid files found matching policy criteria."
+> fi
+> EOF
+root@7307115a-6068-4a9c-8ca8-375cf3a5e3f8:/home/user/cloud_costs# chmod +x validate_files.sh
+root@7307115a-6068-4a9c-8ca8-375cf3a5e3f8:/home/user/cloud_costs# ./validate_files.sh
+Filename Pattern: ^.*\.csv$
+Min Size Bytes: 1024
+Date Header Pattern: ^Report Generated on: (.*?)$
+Skipping cost_2023-05.csv (reason:  size )
+Skipping cost_2023-06.csv (reason:  size )
+Skipping cost_2023-07_v2.csv (reason:  size )
+Skipping cost_2023-08_draft.csv (reason:  size )
+Skipping cost_2023-09_tiny.csv (reason:  size )
+Skipping old_data.txt (reason: pattern size )
+
+No valid files found matching policy criteria.
+root@7307115a-6068-4a9c-8ca8-375cf3a5e3f8:/home/user/cloud_costs#

@@ -1,0 +1,203 @@
+New Terminal Output:
+
+root@f4c90a6e-8663-49b2-8a14-1779432a3257:~/data_science_project# cat > Makefile << 'EOF'
+> .PHONY: all clean analyze package
+>
+> # Default variables
+> PROJECT_LOG ?= pipeline.log
+> MIN_LIMIT ?= $(shell if [ -f config/params.json ]; then jq -r '.policy.limits.min_amount' config/params.json; else echo 0; fi)
+>
+> # Helper functions
+> define LOG
+> @echo "[$(shell date +%s)] $1" >> $(PROJECT_LOG)
+> endef
+>
+> # Clean target: Process raw CSV files
+> # Requirements:
+> # - batch_a.csv (ISO-8859-1) -> UTF-8
+> # - batch_b.csv (UTF-16LE with BOM) -> UTF-8
+> # - Drop rows where status is "Cancelled" (case-insensitive)
+> # - Drop rows where amount < MIN_LIMIT (preserve whitespace in amount)
+> # - Output to cleaned/ as .tsv with CRLF line endings
+> # - Preserve header row
+> clean: $(patsubst raw_data/%.csv, cleaned/%.tsv, $(wildcard raw_data/*.csv))
+> @mkdir -p cleaned
+> $(foreach file, $(wildcard raw_data/*.csv), \
+>
+config/   raw_data/ scripts/
+> $(eval input_file=$(file))\
+>
+config/   raw_data/ scripts/
+> $(eval output_file=$(patsubst raw_data/%.csv, cleaned/%.tsv, $(input_file)))\
+>
+config/   raw_data/ scripts/
+> $(call LOG,clean $(input_file))\
+>
+config/   raw_data/ scripts/
+> $(if $(filter raw_data/batch_a.csv, $(input_file)), \
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+> iconv -f ISO-8859-1 -t UTF-8 $(input_file) | \
+>
+config/   raw_data/ scripts/
+> )\
+>
+config/   raw_data/ scripts/
+> $(if $(filter raw_data/batch_b.csv, $(input_file)), \
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+> iconv -f UTF-16LE -t UTF-8 $(input_file) | \
+>
+config/   raw_data/ scripts/
+> )\
+>
+config/   raw_data/ scripts/
+> awk -v min_limit=$(MIN_LIMIT) 'BEGIN {FS=","; OFS="\t"} \
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+> function is_number(value) { return value ~ /^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$/ }\
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+> NR==1 {print; next} \
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+> { \
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+> gsub(/[[:space:]]+/, "", $$3); \
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+> gsub(/^\047|\047$/, "", $$3); \
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+> if (is_number($$3) && $$3 >= min_limit && tolower($$4) != "cancelled") { \
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+> print \
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+> } \
+>
+config/   raw_data/ scripts/
+>
+config/   raw_data/ scripts/
+> } \
+>
+config/   raw_data/ scripts/
+> ' | \
+>
+config/   raw_data/ scripts/
+> awk 'BEGIN {ORS="\r\n"} {print}' > $(output_file) \
+> ;
+> )
+>
+> # Analyze target: Generate JSON summaries from cleaned TSV files
+> analyze: $(patsubst cleaned/%.tsv, analysis/%.json, $(wildcard cleaned/*.tsv))
+> @mkdir -p analysis
+> $(foreach file, $(wildcard cleaned/*.tsv), \
+>
+config/   raw_data/ scripts/
+> $(eval input_file=$(file))\
+>
+config/   raw_data/ scripts/
+> $(eval output_file=$(patsubst cleaned/%.tsv, analysis/%.json, $(input_file)))\
+>
+config/   raw_data/ scripts/
+> $(call LOG,analyze $(input_file))\
+>
+config/   raw_data/ scripts/
+> valid_rows=0 \
+>
+config/   raw_data/ scripts/
+> total_amount=0 \
+>
+config/   raw_data/ scripts/
+> valid_rows=$$(awk 'BEGIN {FS="\t"} NR>1 {total_amount+=$$3; valid_rows++} END {print valid_rows}' $(input_file)) \
+>
+config/   raw_data/ scripts/
+> total_amount=$$(awk 'BEGIN {FS="\t"; OFMT="%.2f"} NR>1 {sum+=$$3} END {print sum}' $(input_file)) \
+>
+config/   raw_data/ scripts/
+> echo "{"source": \"$(input_file)\", \"valid_rows\": $${valid_rows}, \"total_amount\": $${total_amount}}" > $(output_file) \
+> ;
+> )
+>
+> # Package target: Create delivery.tar.gz archive
+> package: delivery.tar.gz
+> @mkdir -p cleaned analysis
+> $(call LOG,package)
+>
+> delivery.tar.gz: cleaned analysis
+> @rm -f delivery.tar.gz
+> @cd .. && tar -czvf $(notdir $(CURDIR))/delivery.tar.gz \
+>
+config/   raw_data/ scripts/
+> --exclude-vcs \
+>
+config/   raw_data/ scripts/
+> --exclude=raw_data \
+>
+config/   raw_data/ scripts/
+> --exclude=scripts \
+>
+config/   raw_data/ scripts/
+> --exclude=config/legacy_settings.yaml \
+>
+config/   raw_data/ scripts/
+> --exclude=config/params.json \
+>
+config/   raw_data/ scripts/
+> --exclude=.temp_cache \
+>
+config/   raw_data/ scripts/
+> --exclude=*.log \
+>
+config/   raw_data/ scripts/
+> --exclude=*.tar.gz \
+>
+config/   raw_data/ scripts/
+> $(notdir $(CURDIR))/cleaned \
+>
+config/   raw_data/ scripts/
+> $(notdir $(CURDIR))/analysis && cd -
+>
+> # Main target
+> all: package
+>
+> # Cleanup target (optional - not required by task)
+> clean_data:
+> @rm -rf cleaned analysis delivery.tar.gz
+>
+> EOF

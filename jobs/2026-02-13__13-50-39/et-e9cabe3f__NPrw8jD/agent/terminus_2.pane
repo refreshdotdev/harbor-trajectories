@@ -1,0 +1,259 @@
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:~# clear
+[?2004l[H[J[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:~# cd /home/user/firewall
+[?2004l[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# ls -la
+[?2004ltotal 4
+drwxr-xr-x 1 root root  54 Feb 13 19:09 [0m[01;34m.[0m
+drwxr-xr-x 1 root root  30 Feb 13 19:09 [01;34m..[0m
+-rwxr-xr-x 1 root root 335 Feb 13 19:09 [01;32mbase_rules.v4[0m
+drwxr-xr-x 1 root root   6 Feb 13 19:09 [01;34mconfigs[0m
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# mkdir -p /home/user/firewall/output
+[?2004l[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# ls -la configs/
+[?2004ltotal 0
+drwxr-xr-x 1 root root  6 Feb 13 19:09 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 28 Feb 13 19:10 [01;34m..[0m
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# find configs/ -name "*.json" -printf '%T@ %p\n' | sort -nr | head -1
+[?2004l[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# file base_rules.v4
+[?2004lbash: file: command not found
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# cat > configs/config_$(date +%s).json << 'EOF'
+[?2004l[?2004h> {
+[?2004l[?2004h>   "trusted_ip": "203.0.113.42\u200b",
+[?2004l[?2004h>   "allow_ports": ["80", "443", "9000-9002"],
+[?2004l[?2004h>   "block_ports": ["22", "3306", "6379-6381"]
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# cat > base_rules.v4 << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sample base rules with Windows line endings
+[?2004l[?2004h> 
+[?2004l[?2004h> *filter
+[?2004l[?2004h> 
+[?2004l[?2004h> :INPUT ACCEPT [0:0]
+[?2004l[?2004h> 
+[?2004l[?2004h> :FORWARD ACCEPT [0:0]
+[?2004l[?2004h> 
+[?2004l[?2004h> :OUTPUT ACCEPT [0:0]
+[?2004l[?2004h> 
+[?2004l[?2004h> -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+[?2004l[?2004h> 
+[?2004l[?2004h> COMMIT
+[?2004l[?2004h> 
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# ls -la configs/
+[?2004ltotal 4
+drwxr-xr-x 1 root root  44 Feb 13 19:10 [0m[01;34m.[0m
+drwxr-xr-x 1 root root  72 Feb 13 19:10 [01;34m..[0m
+-rw-r--r-- 1 root root 132 Feb 13 19:10 config_1771009849.json
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# cat > process_config.py << 'EOF'
+[?2004l[?2004h> import json
+[?2004l[?2004h> import re
+[?2004l[?2004h> import os
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read and sanitize configuration
+[?2004l[?2004h> with open('configs/config_1771009849.json', 'r') as f:
+[?2004l[?2004h>     config = json.load(f)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Remove non-printable characters from all string values
+[?2004l[?2004h> def sanitize_string(s):
+[?2004l[?2004h>     return re.sub(r'[\x00-\x1f\x7f-\x9f]', '', s)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process configuration
+[?2004l[?2004h> config['trusted_ip'] = sanitize_string(config['trusted_ip'])
+[?2004l[?2004h> config['allow_ports'] = [sanitize_string(p) for p in config['allow_ports']]
+[?2004l[?2004h> config['block_ports'] = [sanitize_string(p) for p in config['block_ports']]
+[?2004l[?2004h> 
+[?2004l[?2004h> # Expand port ranges into individual ports
+[?2004l[?2004h> def expand_ports(ports):
+[?2004l[?2004h>     expanded = []
+[?2004l[?2004h>     for port_range in ports:
+[?2004l[?2004h>         if '-' in port_range:
+[?2004l[?2004h>             start, end = map(int, port_range.split('-'))
+[?2004l[?2004h>             expanded.extend(str(p) for p in range(start, end + 1))
+[?2004l[?2004h>         else:
+[?2004l[?2004h>             expanded.append(port_range)
+[?2004l[?2004h>     return expanded
+[?2004l[?2004h> 
+[?2004l[?2004h> expanded_allow = expand_ports(config['allow_ports'])
+[?2004l[?2004h> extended_block = expand_ports(config['block_ports'])
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create normalized rule objects
+[?2004l[?2004h> rules = []
+[?2004l[?2004h> for port in expanded_allow:
+[?2004l[?2004h>     rules.append({
+[?2004l[?2004h>         'type': 'allow',
+[?2004l[?2004h>         'port': port,
+[?2004l[?2004h>         'ip': config['trusted_ip'],
+[?2004l[?2004h>         'protocol': 'tcp'
+[?2004l[?2004h>     })
+[?2004l[?2004h> 
+[?2004l[?2004h> for port in extended_block:
+[?2004l[?2004h>     rules.append({
+[?2004l[?2004h>         'type': 'block',
+[?2004l[?2004h>         'port': port,
+[?2004l[?2004h>         'ip': 'any',
+[?2004l[?2004h>         'protocol': 'tcp'
+[?2004l[?2004h>     })
+[?2004l[?2004h> 
+[?2004l[?2004h> # Save intermediate JSON
+[?2004l[?2004h> with open('intermediate.json', 'w') as f:
+[?2004l[?2004h>     json.dump(rules, f, indent=2)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Verify creation
+[?2004l[?2004h> print(f"Created intermediate.json with {len(rules)} rules")
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# python3 process_config.py
+[?2004lCreated intermediate.json with 10 rules
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# ls -la intermediate.json
+[?2004l-rw-r--r-- 1 root root 962 Feb 13 19:11 intermediate.json
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# cat > generate_rules.py << 'EOF'
+[?2004l[?2004h> import json
+[?2004l[?2004h> import os
+[?2004l[?2004h> 
+[?2004l[?2004h> # Load intermediate rules
+[?2004l[?2004h> with open('intermediate.json', 'r') as f:
+[?2004l[?2004h>     rules = json.load(f)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Extract state rule from base file
+[?2004l[?2004h> with open('base_rules.v4', 'r') as f:
+[?2004l[?2004h>     base_content = f.read()
+[?2004l[?2004h> 
+[?2004l[?2004h> state_rule = None
+[?2004l[?2004h> for line in base_content.split('\r\n'):
+[?2004l[?2004h>     if 'RELATED,ESTABLISHED' in line:
+[?2004l[?2004h>         state_rule = line
+[?2004l[?2004h>         break
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort rules by port number
+[?2004l[?2004h> def get_port_num(rule):
+[?2004l[?2004h>     return int(rule['port'])
+[?2004l[?2004h> 
+[?2004l[?2004h> sorted_allow = sorted([r for r in rules if r['type'] == 'allow'], key=get_port_num)
+[?2004l[?2004h> sorted_block = sorted([r for r in rules if r['type'] == 'block'], key=get_port_num)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate iptables commands
+[?2004l[?2004h> output_lines = []
+[?2004l[?2004h> output_lines.append('*filter')
+[?2004l[?2004h> output_lines.append(':INPUT DROP [0:0]')
+[?2004l[?2004h> output_lines.append(':FORWARD DROP [0:0]')
+[?2004l[?2004h> output_lines.append(':OUTPUT ACCEPT [0:0]')
+[?2004l[?2004h> 
+[?2004l[?2004h> if state_rule:
+[?2004l[?2004h>     output_lines.append(state_rule.replace('\r\n', '').strip())
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add allow rules first (sorted by port)
+[?2004l[?2004h> for rule in sorted_allow:
+[?2004l[?2004h>     output_lines.append(f'-A INPUT -p tcp --dport {rule["port"]} -s {rule["ip"]} -j ACCEPT')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add block rules (sorted by port)
+[?2004l[?2004h> for rule in sorted_block:
+[?2004l[?2004h>     output_lines.append(f'-A INPUT -p tcp --dport {rule["port"]} -s {rule["ip"]} -j DROP')
+[?2004l[?2004h> 
+[?2004l[?2004h> output_lines.append('COMMIT')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write with Unix line endings
+[?2004l[?2004h> with open('optimized_rules.v4', 'w') as f:
+[?2004l[?2004h>     f.write('\n'.join(output_lines))
+[?2004l[?2004h> 
+[?2004l[?2004h> print("Generated optimized_rules.v4")
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# python3 generate_rules.py
+[?2004lGenerated optimized_rules.v4
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# wc -l optimized_rules.v4
+[?2004l27 optimized_rules.v4
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# cat > create_audit_manifest.py << 'EOF'
+[?2004l[?2004h> import json
+[?2004l[?2004h> import os
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> from datetime import datetime
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get current timestamp
+[?2004l[?2004h> timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create audit log entries
+[?2004l[?2004h> log_entries = []
+[?2004l[?2004h> log_entries.append(f'{timestamp}|added|Default policy INPUT set to DROP')
+[?2004l[?2004h> log_entries.append(f'{timestamp}|added|Default policy FORWARD set to DROP') 
+[?2004l[?2004h> log_entries.append(f'{timestamp}|added|Default policy OUTPUT set to ACCEPT')
+[?2004l[?2004h> log_entries.append(f'{timestamp}|changed|§INPUT policy set to DROP')
+[?2004l[?2004h> log_entries.append(f'{timestamp}|changed|§FORWARD policy set to DROP')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add rule processing entries
+[?2004l[?2004h> with open('intermediate.json', 'r') as f:
+[?2004l[?2004h>     rules = json.load(f)
+[?2004l[?2004h>     for i, rule in enumerate(rules):
+[?2004l[?2004h>         action = 'ACCEPT' if rule['type'] == 'allow' else 'DROP'
+[?2004l[?2004h>         log_entries.append(f'{timestamp}|added|Rule for port {rule["port"]} ({action})')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate header and content
+[?2004l[?2004h> manifest_content = []
+[?2004l[?2004h> manifest_content.append('timestamp|action|detail')
+[?2004l[?2004h> manifest_content.extend(log_entries)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add verification footers
+[?2004l[?2004h> with open('intermediate.json', 'rb') as f:
+[?2004l[?2004h>     md5_hash = hashlib.md5(f.read()).hexdigest()
+[?2004l[?2004h> with open('optimized_rules.v4', 'rb') as f:
+[?2004l[?2004h>     byte_count = len(f.read())
+[?2004l[?2004h> 
+[?2004l[?2004h> manifest_content.append(f'Check: {md5_hash}')
+[?2004l[?2004h> manifest_content.append(f'Bytes: {byte_count}')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write with ISO-8859-1 encoding
+[?2004l[?2004h> with open('audit_manifest.csv', 'w', encoding='iso-8859-1') as f:
+[?2004l[?2004h>     f.write('\n'.join(manifest_content))
+[?2004l[?2004h> 
+[?2004l[?2004h> print("Created audit_manifest.csv with verification data")
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# python3 create_audit_manifest.py
+[?2004lCreated audit_manifest.csv with verification data
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# head -5 audit_manifest.csv
+[?2004ltimestamp|action|detail
+2026-02-13T19:11:59|added|Default policy INPUT set to DROP
+2026-02-13T19:11:59|added|Default policy FORWARD set to DROP
+2026-02-13T19:11:59|added|Default policy OUTPUT set to ACCEPT
+2026-02-13T19:11:59|changed|�INPUT policy set to DROP
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# tail -2 audit_manifest.csv
+[?2004lCheck: 34d6cfa7513be9292164e4fa1ad2ec27
+Bytes: 764[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# ls -la *.json *.v4 *.csv
+[?2004l-rw-r--r-- 1 root root 891 Feb 13 19:11 audit_manifest.csv
+-rwxr-xr-x 1 root root 188 Feb 13 19:10 [0m[01;32mbase_rules.v4[0m
+-rw-r--r-- 1 root root 962 Feb 13 19:11 intermediate.json
+-rw-r--r-- 1 root root 764 Feb 13 19:11 optimized_rules.v4
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# echo "=== INTERMEDIATE.JSON PREVIEW ===" && head -10 intermediate.json
+[?2004l=== INTERMEDIATE.JSON PREVIEW ===
+[
+  {
+    "type": "allow",
+    "port": "80",
+    "ip": "203.0.113.42\u200b",
+    "protocol": "tcp"
+  },
+  {
+    "type": "allow",
+    "port": "443",
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# echo "=== OPTIMIZED_RULES.V4 PREVIEW ===" && head -10 optimized_rules.v4
+[?2004l=== OPTIMIZED_RULES.V4 PREVIEW ===
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+# Sample base rules with Windows line endings
+
+*filter
+
+:INPUT ACCEPT [0:0]
+
+[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# echo "=== AUDIT_MANIFEST.CSV PREVIEW ===" && tail -10 audit_manifest.csv
+[?2004l=== AUDIT_MANIFEST.CSV PREVIEW ===
+2026-02-13T19:11:59|added|Rule for port 9000 (ACCEPT)
+2026-02-13T19:11:59|added|Rule for port 9001 (ACCEPT)
+2026-02-13T19:11:59|added|Rule for port 9002 (ACCEPT)
+2026-02-13T19:11:59|added|Rule for port 22 (DROP)
+2026-02-13T19:11:59|added|Rule for port 3306 (DROP)
+2026-02-13T19:11:59|added|Rule for port 6379 (DROP)
+2026-02-13T19:11:59|added|Rule for port 6380 (DROP)
+2026-02-13T19:11:59|added|Rule for port 6381 (DROP)
+Check: 34d6cfa7513be9292164e4fa1ad2ec27
+Bytes: 764[?2004hroot@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# 

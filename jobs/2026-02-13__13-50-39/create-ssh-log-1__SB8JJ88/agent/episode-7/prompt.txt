@@ -1,0 +1,55 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# cat > process_logs.sh << 'EOF'
+> #!/bin/bash
+>
+> # Configuration
+> evidence_dir="/home/user/evidence"
+> output_file="/home/user/out/cleaned_combined.log"
+> min_port=45000
+>
+> # Create output directory
+> mkdir -p $(dirname "$output_file")
+>
+> # Initialize empty output file
+> echo "" > "$output_file"
+>
+> echo "Processing evidence files..."
+>
+> # Process plain text files
+> for file in "$evidence_dir"/*.log "$evidence_dir"/*.txt; do
+>     [ -f "$file" ] || continue
+>     echo "Processing $file..."
+>     # Sanitize content: remove null bytes and control characters
+>     cat "$file" | tr -d '\000' | tr -dc '\11\12\40-\176' >> "$output_file"
+> done
+>
+> # Process gzipped files
+> for file in "$evidence_dir"/*.gz; do
+>     [ -f "$file" ] || continue
+>     echo "Processing $file..."
+>     # Decompress, sanitize, and append
+>     zcat "$file" | tr -d '\000' | tr -dc '\11\12\40-\176' >> "$output_file"
+> done
+>
+> echo "Log processing complete. Output: $output_file"
+> EOF
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# chmod +x process_logs.sh
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# ./process_logs.sh
+Processing evidence files...
+Processing /home/user/evidence/sample_log.txt...
+Processing /home/user/evidence/sample_log.txt.gz...
+Log processing complete. Output: /home/user/out/cleaned_combined.log
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# cat /home/user/out/cleaned_combined.log
+
+Jan 15 10:30:22 server1 sshd[12345]: Failed password for root from 192.168.1.100 port 50000 ssh2
+Jan 15 10:30:23 server1 sshd[12345]: Failed password for root from 192.168.1.100 port 50000 ssh2
+Jan 15 10:30:24 server1 sshd[12346]: Failed password for invalid_user from 10.0.0.5 port 22 ssh2
+Jan 15 10:30:22 server1 sshd[12345]: Failed password for root from 192.168.1.100 port 50000 ssh2
+Jan 15 10:30:23 server1 sshd[12345]: Failed password for root from 192.168.1.100 port 50000 ssh2
+Jan 15 10:30:24 server1 sshd[12346]: Failed password for invalid_user from 10.0.0.5 port 22 ssh2
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user#

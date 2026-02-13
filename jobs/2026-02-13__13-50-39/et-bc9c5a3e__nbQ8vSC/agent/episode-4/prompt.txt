@@ -1,0 +1,69 @@
+Current terminal state:
+New Terminal Output:
+
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# export AUDIT_LOCATION="/home/user/audit"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mkdir -p "$AUDIT_LOCATION" && chmod 700 "$AUDIT_LOCATION"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# if [ -f "$AUDIT_LOCATION/benchmark_audit.log" ]; then mv "$AUDIT_LOCATION/benchmark_audit.log" "$AUDIT_LOCATION/ben
+chmark_audit.log.old"; fi
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp1=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# cpu_cores=$(nproc)
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp1|CPU_CORES|$cpu_cores|count|nproc" >> "$AUDIT_LOCATION/benchmark_audit.log"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp2=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mem_kib=$(grep -E '^MemTotal:' /proc/meminfo | awk '{print $2}')
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mem_mib=$(echo "$mem_kib" | awk '{printf "%d", $1/1024}')
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp2|MEM_TOTAL_MIB|$mem_mib|MiB|grep MemTotal /proc/meminfo | awk '{print $2}'" >> "$AUDIT_LOCATION/be
+nchmark_audit.log"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp3=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# dd if=/dev/zero of="$AUDIT_LOCATION/disktest.tmp" bs=1M count=100 oflag=dsync 2>&1 | grep -oP '[0-9]+.[0-9]+ MB/s'
+| awk '{print $1}' | sed 's/MB/MiB/' > "$AUDIT_LOCATION/disk_speed.tmp"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# sleep 3
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# disk_speed_mibs=$(cat "$AUDIT_LOCATION/disk_speed.tmp" | awk '{printf "%.1f", $1}')
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# rm "$AUDIT_LOCATION/disk_speed.tmp"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp3|DISK_WRITE_MIBPS|$disk_speed_mibs|MiB/s|dd if=/dev/zero of=\"$AUDIT_LOCATION/disktest.tmp\" bs=1M
+ count=100 oflag=dsync 2>&1 | grep -oP '[0-9]+.[0-9]+ MB/s' | awk '{print $1}' | sed 's/MB/MiB/'" >> "$AUDIT_LOCATION/benchmark_audit.log"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# rm "$AUDIT_LOCATION/disktest.tmp"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# ping_output=$(ping -c 5 8.8.8.8 2>&1 | grep -E 'time=[0-9]+ ms' | awk -F'time=' '{print $2}' | awk '{print $1}' | t
+r '
+> ' ' ')
+latencies=($(cat "$AUDIT_LOCATION/ping_times.tmp"))
+rm "$AUDIT_LOCATION/ping_times.tmp"
+min_lat=${latencies[0]:-0}
+max_lat=${latencies[0]:-0}
+count_lat=0
+for lat in "${latencies[@]}"; do
+  if [[ -n "$lat" ]]; then
+    count_lat=$((count_lat+1))
+    if (( $(echo "$lat < $min_lat" | awk '{print ($1 < $2) ? "1" : "0"}') )); then
+      min_lat=$lat
+    fi
+    if (( $(echo "$lat > $max_lat" | awk '{print ($1 > $2) ? "1" : "0"}') )); then
+      max_lat=$lat
+    fi
+  fi
+done
+if [ $count_lat -eq 0 ]; then
+  median_lat=0
+  jitter=0
+else
+  sorted=($(for l in "${latencies[@]}"; do echo "$l"; done | sort -n))
+  median_lat=${sorted[$((count_lat/2))]:-0}
+  jitter=$(awk -v min="$min_lat" -v max="$max_lat" 'BEGIN {printf "%.1f", max - min}')
+fi
+timestamp4=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+echo "$timestamp4|NET_LATENCY_MS|$median_lat|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+timestamp5=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+echo "$timestamp5|NET_JITTER_MS|$jitter|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+log_start_ts=$(head -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+log_end_ts=$(tail -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+start_sec=$(date -u -d "$log_start_ts" +%s)
+end_sec=$(date -u -d "$log_end_ts" +%s)
+duration_sec=$(awk -v start="$start_sec" -v end="$end_sec" 'BEGIN {printf "%.3f", end - start}')
+awk -v cores="$cpu_cores" -v mem="$mem_kib" -v disk="$disk_speed_mibs" -v lat="$median_lat" -v jit="$jitter" -v dur="$duration_sec" -v ts="$(date -u +'%Y-%m-%dT
+%H:%M:%SZ')" 'BEGIN {printf "{\"cpu_core_count\":%d,\"total_memory_bytes\":%d,\"disk_write_mib_per_sec\":%.1f,\"network_latency_ms\":%.1f,\"network_jitter_ms\":
+%.1f,\"benchmark_duration_seconds\":%.3f,\"timestamp\":\"%s\"}\n", cores, mem, disk, lat, jit, dur, ts}' > "$AUDIT_LOCATION/benchmark_summary.json"
+cat "$AUDIT_LOCATION/benchmark_audit.log"
+ls -la "$AUDIT_LOCATION"
+
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

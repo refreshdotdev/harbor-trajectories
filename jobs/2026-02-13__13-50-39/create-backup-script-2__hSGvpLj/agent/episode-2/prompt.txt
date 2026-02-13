@@ -1,0 +1,129 @@
+Current terminal state:
+New Terminal Output:
+
+root@536657ee-7e4d-45b2-b3c7-1cb971fb2752:~# cd /home/user/hardening_test
+root@536657ee-7e4d-45b2-b3c7-1cb971fb2752:/home/user/hardening_test# cat > apply_hardening.sh << 'EOF'
+
+    else
+        echo "Error pro> #!/bin/sh
+>
+> # POSIX-sh compatible script for lab hardening
+> # Script must be located at: /home/user/hardening_test/apply_hardening.sh
+> # Working directory for this script is expected to be /home/user/hardening_test/
+>
+> # Initialize log file (overwrite if exists)
+> : > hardening.log
+>
+> # Function to handle each rule for a file
+> process_file_for_rule() {
+>     local filename="$1"
+>     local search_pattern="$2"
+>     local enforced_line="$3"
+>     local action_taken=""
+>
+>     # Safety Backup
+>     if [ ! -f "${filename}.bak" ]; then
+>         # Only create backup if it doesn't exist
+>         if cp "$filename" "${filename}.bak"; then
+>             echo "Backup created for $filename" >&2
+>         else
+>             echo "Error: Failed to create backup for $filename. Skipping rule processing for this file." >&2
+>             return 1 # Indicate failure
+>         fi
+>     fi
+>
+>     # Check if enforced_line is already present (SKIPPED case)
+>     if grep -Fxq "$enforced_line" "$filename" 2>/dev/null; then
+>         action_taken="SKIPPED"
+>     else
+>         # Check if search_pattern is found (REPAIRED case) or not found (APPENDED case)
+>         if grep -qE "^${search_pattern}$" "$filename" 2>/dev/null; then
+>             # Use sed to replace the line matching the search_pattern exactly with the enforced_line
+>             # -i for in-place edit (GNU sed, common on Linux user-land)
+>             # -r for extended regex (ERE) for search_pattern
+>             # -e to specify the script
+>             # A common idiom is to delete matching lines, then append if no exact match was found.
+>             # This is more robust than trying a complex sed one-liner for replacement.
+>             # First, remove lines matching the search_pattern EXACTLY (to avoid appending if repaired)
+>             tmpfile="$(mktemp "${filename}.XXXXXX")"
+>             grep -vE "^${search_pattern}$" "$filename" > "$tmpfile"
+>             if [ $? -eq 0 ]; then
+>                 mv "$tmpfile" "$filename"
+>                 # Now, the line is removed. We will append the enforced_line later if it's not already there.
+>                 # The check for enforced_line was already done at the start of this block.
+>                 action_taken="REPAIRED"
+>             else
+>                 echo "Error: Failed to process $filename for repair. Rule processing for this file aborted." >&2
+>                 rm -f "$tmpfile" # Clean up temp file on error
+>                 return 1 # Indicate failure
+>             fi
+>             rm -f "$tmpfile" # Clean up temp file
+>         else
+>             # search_pattern not found, so append enforced_line
+>             echo "$enforced_line" >> "$filename"
+>             action_taken="APPENDED"
+>         fi
+>     fi
+>
+>     # If action_taken is still empty, it means the enforced_line was already present (SKIPPED)
+>     if [ -z "$action_taken" ]; then
+>         action_taken="SKIPPED"
+>     fi
+>
+>     echo "${filename}:${action_taken}" >> hardening.log
+>     return 0
+> }
+>
+> # Main script logic
+> if [ ! -r "rules.txt" ]; then
+>     echo "Error: rules.txt not found or not readable in $(pwd)." >&2
+>     exit 1
+> fi
+>
+> # Process each rule in rules.txt
+> while IFS="|" read -r filename search_pattern enforced_line; do
+>     # Skip empty lines or lines starting with '#' (comments)
+>     case "$filename" in
+>         ""|"#"*) continue ;;
+>     esac
+>
+>     # Basic validation for fields (must have all three non-empty)
+>     if [ -z "$filename" ] || [ -z "$search_pattern" ] || [ -z "$enforced_line" ]; then
+>         echo "Warning: Skipping malformed rule: '${filename}|${search_pattern}|${enforced_line}'. Rule requires three non-empty fields separated by '|'." >&2
+>         continue
+>     fi
+>
+>     # Ensure filename is just a filename, not a path, as per rule format
+>     if echo "$filename" | grep -q '/'; then
+>         echo "Warning: Filenames in rules.txt should be local to $(pwd). Skipping rule for '$filename' as it contains a path." >&2
+>         continue
+>     fi
+>
+>     # Call the processing function for the current rule
+>     if process_file_for_rule "$filename" "$search_pattern" "$enforced_line"; then
+>         echo "Processed rule for $filename successfully." >&2
+>     else
+>         echo "Error processing rule for $filename. Check for detailed errors." >&2
+>     fi
+>
+> done < rules.txt
+>
+> # Sort the log file alphabetically by filename, and overwrite original
+> sort hardening.log -o hardening.log
+>
+> # Enforce strict permissions on processed files
+> # Note: This assumes that only files mentioned in rules.txt are to be processed.
+> # If other files were created/modified, their permissions would not be set here.
+> # This aligns with the rule: "For each file defined in rules.txt, apply..."
+> # This also means if a file was APPENDED to, its permissions are updated here.
+> find . -maxdepth 1 -type f \( \n    -name "sshd_config" -exec chmod 0600 {} + \n    -o \( -name "*.bak" -o -name "rules.txt" -o -name "hardening.log" -o -name
+ "apply_hardening.sh" \) -prune \n    -type f -exec chmod 0644 {} +\n\n# Final user feedback
+> printf "Hardening completed\n"
+> EOF
+root@536657ee-7e4d-45b2-b3c7-1cb971fb2752:/home/user/hardening_test# chmod +x apply_hardening.sh
+root@536657ee-7e4d-45b2-b3c7-1cb971fb2752:/home/user/hardening_test# ls -la apply_hardening.sh
+-rwxr-xr-x 1 root root 4940 Feb 13 18:58 apply_hardening.sh
+root@536657ee-7e4d-45b2-b3c7-1cb971fb2752:/home/user/hardening_test#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

@@ -1,0 +1,154 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+- Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@a1bcaa34-2d93-4e84-9324-2aed6c124b95:/home/user/cmtracker# cat > init_db.py << 'EOF'
+ KEY AUTOINCREMENT,
+            rel_path TEXT UNIQUE NOT NULL,
+            file_hash TEXT NOT NULL,
+            magic_hex TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL
+        )''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS audit_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id INTEGER NOT NULL,
+            event_type TEXT NOT NULL CHECK(event_type IN ('INIT', 'MODIFY', 'PERM')),
+            event_ts TEXT NOT NULL,
+            FOREIGN KEY (file_id) REFERENCES tracked_files (id)
+        )''')
+
+    conn.commit()
+
+    # Process files and insert into database
+    files_processed = 0
+    for filename in os.listdir(configs_dir):
+        filepath = os.path.join(configs_dir, filename)
+        if os.path.isfile(filepath):
+            try:
+                rel_path = filename
+                file_hash = get_file_sha256(filepath)
+                magic_hex = get_file_magic_hex(filepath)
+                size_bytes = os.path.getsize(filepath)
+                mtime_ts = datetime.datetime.fromtimestamp(os.path.getmtime(filepath)).strftime('%Y-%m-%d %H:%M:%S')
+
+                cursor.execute('''
+                    INSERT INTO tracked_files (rel_path, file_hash, magic_hex, size_bytes)
+                    VALUES (?, ?, ?, ?)
+                ''', (rel_path, file_hash, magic_hex, size_bytes))
+
+                file_id = cursor.lastrowid
+
+                cursor.execute('''
+                    INSERT INTO audit_events (file_id, event_type, event_ts)
+                    VALUES (?, 'INIT', ?)
+                ''', (file_id, mtime_ts))
+
+                files_processed += 1
+                conn.commit()
+                print(f"Processed: {filename}")
+            except Exception as e:
+                print(f"Error processing {filename}: {e}")
+
+    print(f"{files_processed} files processed successfully")
+    conn.close()
+
+if __name__ == '__main__':
+    main()
+EOF> #!/usr/bin/env python3
+> import sqlite3
+> import os
+> import hashlib
+> import datetime
+> from pathlib import Path
+>
+> def get_file_magic_hex(filepath):
+>     """Get first 4 bytes of file as lowercase hex string."""
+>     try:
+>         with open(filepath, 'rb') as f:
+>             magic_bytes = f.read(4)
+>         return magic_bytes.hex().lower()
+>     except Exception as e:
+>         return ''
+>
+> def get_file_sha256(filepath):
+>     """Get SHA-256 hash of file content."""
+>     try:
+>         hash_sha256 = hashlib.sha256()
+>         with open(filepath, 'rb') as f:
+>             for chunk in iter(lambda: f.read(4096), b''):
+>                 hash_sha256.update(chunk)
+>         return hash_sha256.hexdigest()
+>     except Exception as e:
+>         return ''
+>
+> def main():
+>     db_path = 'db/audit.db'
+>     configs_dir = 'configs'
+>
+>     # Create database and tables
+>     conn = sqlite3.connect(db_path)
+>     cursor = conn.cursor()
+>
+>     cursor.execute('''
+>         CREATE TABLE IF NOT EXISTS tracked_files (
+>             id INTEGER PRIMARY KEY AUTOINCREMENT,
+>             rel_path TEXT UNIQUE NOT NULL,
+>             file_hash TEXT NOT NULL,
+>             magic_hex TEXT NOT NULL,
+>             size_bytes INTEGER NOT NULL
+>         )''')
+>
+>     cursor.execute('''
+>         CREATE TABLE IF NOT EXISTS audit_events (
+>             event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+>             file_id INTEGER NOT NULL,
+>             event_type TEXT NOT NULL CHECK(event_type IN ('INIT', 'MODIFY', 'PERM')),
+>             event_ts TEXT NOT NULL,
+>             FOREIGN KEY (file_id) REFERENCES tracked_files (id)
+>         )''')
+>
+>     conn.commit()
+>
+>     # Process files and insert into database
+>     files_processed = 0
+>     for filename in os.listdir(configs_dir):
+>         filepath = os.path.join(configs_dir, filename)
+>         if os.path.isfile(filepath):
+>             try:
+>                 rel_path = filename
+>                 file_hash = get_file_sha256(filepath)
+>                 magic_hex = get_file_magic_hex(filepath)
+>                 size_bytes = os.path.getsize(filepath)
+>                 mtime_ts = datetime.datetime.fromtimestamp(os.path.getmtime(filepath)).strftime('%Y-%m-%d %H:%M:%S')
+>
+>                 cursor.execute('''
+>                     INSERT INTO tracked_files (rel_path, file_hash, magic_hex, size_bytes)
+>                     VALUES (?, ?, ?, ?)
+>                 ''', (rel_path, file_hash, magic_hex, size_bytes))
+>
+>                 file_id = cursor.lastrowid
+>
+>                 cursor.execute('''
+>                     INSERT INTO audit_events (file_id, event_type, event_ts)
+>                     VALUES (?, 'INIT', ?)
+>                 ''', (file_id, mtime_ts))
+>
+>                 files_processed += 1
+>                 conn.commit()
+>                 print(f"Processed: {filename}")
+>             except Exception as e:
+>                 print(f"Error processing {filename}: {e}")
+>
+>     print(f"{files_processed} files processed successfully")
+>     conn.close()
+>
+> if __name__ == '__main__':
+>     main()
+> EOFchmod +x init_db.py
+> python3 init_db.py
+>

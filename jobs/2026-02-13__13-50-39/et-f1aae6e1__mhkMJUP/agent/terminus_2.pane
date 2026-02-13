@@ -1,0 +1,89 @@
+[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# clear
+[?2004l[H[J[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# jq -R 'fromjson? | select(type == "object") | .cost |= if type == "string" then tonumber else . end | .total_cost |= if type == "string" then tonumber else . end' /home/user/cloud_costs/raw/weekly_costs_dump.json > /home/user/cloud_costs/processed/normalized_data.json
+[?2004lbash: /home/user/cloud_costs/processed/normalized_data.json: No such file or directory
+[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# sha256sum /home/user/cloud_costs/processed/normalized_data.json | cut -d' ' -f1 > /home/user/cloud_costs/processed/batch_id.txt
+[?2004lbash: /home/user/cloud_costs/processed/batch_id.txt: No such file or directory
+sha256sum: /home/user/cloud_costs/processed/normalized_data.json: No such file or directory
+[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# egrep -v "^#" /home/user/cloud_costs/config/blocked_accounts.txt > /tmp/blocked_accounts.txt
+[?2004l[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# jq -R 'split(",") | select(length > 0)' /var/opt/finance/2023_rates.csv > /tmp/rates_input.txt
+[?2004l[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# jq --slurp --rawfile BATCHID:/home/user/cloud_costs/processed/batch_id.txt --rawfile BLOCKED:/tmp/blocked_accounts.txt --rawfile RATES:/tmp/rates_input.txt \
+[?2004l[?2004h>   '. as $data |
+[?2004l[?2004h>   $BATCHID as $batch_id_value |
+[?2004l[?2004h>   $BLOCKED as $blocked_list |
+[?2004l[?2004h>   $RATES as $rates_input |
+[?2004l[?2004h>   ([$rates_input[] | select(. | length > 0) | .[:3]] | map(select(. | length == 3)) | map({ (.[0]): {currency: .[1], rate: (.[2] | tonumber)} })) as $rates_map |
+[?2004l[?2004h>   
+[?2004l[?2004h>   ($data |
+[?2004l[?2004h>     map(select(.account_id != null and .cost != null and .currency != null)) |
+[?2004l[?2004h>     map(select(.account_id | IN($blocked_list[] | gsub("\\r"; "")) | not)) |
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Convert to USD and add cost_in_usd
+[?2004l[?2004h>     map(. + {
+[?2004l[?2004h>       cost_in_usd: (.cost | tonumber) * ( if ($rates_map[.currency]) then $rates_map[.currency].rate else 1.0 end )
+[?2004l[?2004h>     }) |
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Calculate median of USD costs after filtering
+[?2004l[?2004h>     (map(.cost_in_usd) | sort | .[length/2] | if (length % 2 == 0) then (.[ (length/2) - 1] + .[length/2]) / 2 else . end) as $median_value |
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Filter and add batch_id
+[?2004l[?2004h>     map(select(.cost_in_usd > $median_value)) |
+[?2004l[?2004h>     map(. + { batch_id: $batch_id_value }) |
+[?2004l[?2004h>     map({
+[?2004l[?2004h>       account_id: .account_id,
+[?2004l[?2004h>       cost_in_usd: (.cost_in_usd | round(2)),
+[?2004l[?2004h>       original_currency: .currency,
+[?2004l[?2004h>       batch_id: .batch_id
+[?2004l[?2004h>     })
+[?2004l[?2004h>   )' /home/user/cloud_costs/processed/normalized_data.json | jq -c .[] > /home/user/cloud_costs/processed/high_spend.json
+[?2004lbash: /home/user/cloud_costs/processed/high_spend.json: No such file or directory
+jq: Bad JSON in --rawfile BATCHID:/home/user/cloud_costs/processed/batch_id.txt --rawfile: Could not open --rawfile: No such file or directory
+[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# jq -r '. | [.account_id, (.cost_in_usd | tostring), .original_currency] | @csv' /home/user/cloud_costs/processed/high_spend.json | \
+[?2004l[?2004h> sed 's/^/ACCOUNT_ID,USD_COST,Original_Currency\\n/' | iconv -t ISO-8859-1 > /home/user/cloud_costs/processed/summary.csv
+[?2004lbash: /home/user/cloud_costs/processed/summary.csv: No such file or directory
+jq: error: Could not open file /home/user/cloud_costs/processed/high_spend.json: No such file or directory
+[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# echo "Validation successful" > /home/user/cloud_costs/logs/validation.log
+[?2004lbash: /home/user/cloud_costs/logs/validation.log: No such file or directory
+[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# mkdir -p /home/user/cloud_costs/processed
+[?2004l[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# mkdir -p /home/user/cloud_costs/logs
+[?2004l[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# jq -R 'fromjson? | select(type == "object") | .cost |= if type == "string" then tonumber else . end | .total_cost |= if type == "string" then tonumber else . end' /home/user/cloud_costs/raw/weekly_costs_dump.json > /home/user/cloud_costs/processed/normalized_data.json
+[?2004ljq: error: Could not open file /home/user/cloud_costs/raw/weekly_costs_dump.json: No such file or directory
+[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# sha256sum /home/user/cloud_costs/processed/normalized_data.json | cut -d' ' -f1 > /home/user/cloud_costs/processed/batch_id.txt
+[?2004l[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# egrep -v "^#" /home/user/cloud_costs/config/blocked_accounts.txt > /tmp/blocked_accounts.txt
+[?2004l[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# jq -R 'split(",") | select(length > 0)' /var/opt/finance/2023_rates.csv > /tmp/rates_input.txt
+[?2004l[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# jq --slurp --rawfile BATCHID:/home/user/cloud_costs/processed/batch_id.txt --rawfile BLOCKED:/tmp/blocked_accounts.txt --rawfile RATES:/tmp/rates_input.txt \
+[?2004l[?2004h>   '. as $data |
+[?2004l[?2004h>   $BATCHID as $batch_id_value |
+[?2004l[?2004h>   $BLOCKED as $blocked_list |
+[?2004l[?2004h>   $RATES as $rates_input |
+[?2004l[?2004h>   ([$rates_input[] | select(. | length > 0) | .[:3]] | map(select(. | length == 3)) | map({ (.[0]): {currency: .[1], rate: (.[2] | tonumber)} })) as $rates_map |
+[?2004l[?2004h>   
+[?2004l[?2004h>   ($data |
+[?2004l[?2004h>     map(select(.account_id != null and .cost != null and .currency != null)) |
+[?2004l[?2004h>     map(select(.account_id | IN($blocked_list[] | gsub("\\r"; "")) | not)) |
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Convert to USD and add cost_in_usd
+[?2004l[?2004h>     map(. + {
+[?2004l[?2004h>       cost_in_usd: (.cost | tonumber) * ( if ($rates_map[.currency]) then $rates_map[.currency].rate else 1.0 end )
+[?2004l[?2004h>     }) |
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Calculate median of USD costs after filtering
+[?2004l[?2004h>     (map(.cost_in_usd) | sort | .[length/2] | if (length % 2 == 0) then (.[ (length/2) - 1] + .[length/2]) / 2 else . end) as $median_value |
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Filter and add batch_id
+[?2004l[?2004h>     map(select(.cost_in_usd > $median_value)) |
+[?2004l[?2004h>     map(. + { batch_id: $batch_id_value }) |
+[?2004l[?2004h>     map({
+[?2004l[?2004h>       account_id: .account_id,
+[?2004l[?2004h>       cost_in_usd: (.cost_in_usd | round(2)),
+[?2004l[?2004h>       original_currency: .currency,
+[?2004l[?2004h>       batch_id: .batch_id
+[?2004l[?2004h>     })
+[?2004l[?2004h>   )' /home/user/cloud_costs/processed/normalized_data.json | jq -c .[] > /home/user/cloud_costs/processed/high_spend.json
+[?2004ljq: Bad JSON in --rawfile BATCHID:/home/user/cloud_costs/processed/batch_id.txt --rawfile: Could not open --rawfile: No such file or directory
+[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# jq -r '. | [.account_id, (.cost_in_usd | tostring), .original_currency] | @csv' /home/user/cloud_costs/processed/high_spend.json | \
+[?2004l[?2004h> sed 's/^/ACCOUNT_ID,USD_COST,Original_Currency\\n/' | iconv -t ISO-8859-1 > /home/user/cloud_costs/processed/summary.csv
+[?2004l[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# echo "Validation successful" > /home/user/cloud_costs/logs/validation.log
+[?2004l[?2004hroot@e871b744-f1eb-45d6-8567-ac95ca010e24:/home/user# 

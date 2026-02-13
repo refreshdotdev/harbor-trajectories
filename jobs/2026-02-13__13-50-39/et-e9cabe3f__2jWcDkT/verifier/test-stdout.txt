@@ -1,0 +1,82 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 3 items
+
+../../tests/test_final_state.py::test_required_files_exist FAILED        [ 33%]
+../../tests/test_final_state.py::test_optimized_rules_content FAILED     [ 66%]
+../../tests/test_final_state.py::test_audit_manifest_encoding_and_structure FAILED [100%]
+
+=================================== FAILURES ===================================
+__________________________ test_required_files_exist ___________________________
+
+    def test_required_files_exist():
+        assert INTERMEDIATE_FILE.exists(), "intermediate.json is missing"
+>       assert OPTIMIZED_RULES.exists(), "optimized_rules.v4 is missing"
+E       AssertionError: optimized_rules.v4 is missing
+E       assert False
+E        +  where False = exists()
+E        +    where exists = PosixPath('/home/user/firewall/optimized_rules.v4').exists
+
+/tests/test_final_state.py:20: AssertionError
+_________________________ test_optimized_rules_content _________________________
+
+    def test_optimized_rules_content():
+        # Read binary to check for CRLF contamination
+>       content_bytes = OPTIMIZED_RULES.read_bytes()
+
+/tests/test_final_state.py:25: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.10/pathlib.py:1126: in read_bytes
+    with self.open(mode='rb') as f:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/user/firewall/optimized_rules.v4'), mode = 'rb'
+buffering = -1, encoding = None, errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return self._accessor.open(self, mode, buffering, encoding, errors,
+                                   newline)
+E       FileNotFoundError: [Errno 2] No such file or directory: '/home/user/firewall/optimized_rules.v4'
+
+/usr/lib/python3.10/pathlib.py:1119: FileNotFoundError
+__________________ test_audit_manifest_encoding_and_structure __________________
+
+    def test_audit_manifest_encoding_and_structure():
+        # 1. Check Encoding (Must be ISO-8859-1)
+        # We test this by reading as Latin-1 and looking for the Section Sign (\xa7)
+        try:
+            with open(AUDIT_MANIFEST, "r", encoding="iso-8859-1") as f:
+                lines = [l.strip() for l in f.readlines()]
+        except UnicodeDecodeError:
+            pytest.fail("audit_manifest.csv could not be read as ISO-8859-1.")
+    
+        # 2. Check Header and Delimiter
+        assert lines[0] == "timestamp|action|detail", "Header must use pipe delimiter: timestamp|action|detail"
+    
+        # 3. Check for Section Sign in details
+        # We look for at least one line with the section sign
+        found_section_sign = False
+        for line in lines:
+            parts = line.split("|")
+            if len(parts) >= 3:
+                if "\u00a7" in parts[2]: # \u00a7 is the unicode representation of §
+                    found_section_sign = True
+>       assert found_section_sign, "Did not find the required section sign (§) in the 'detail' column for policy changes."
+E       AssertionError: Did not find the required section sign (§) in the 'detail' column for policy changes.
+E       assert False
+
+/tests/test_final_state.py:91: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_required_files_exist - Assertion...
+FAILED ../../tests/test_final_state.py::test_optimized_rules_content - FileNo...
+FAILED ../../tests/test_final_state.py::test_audit_manifest_encoding_and_structure
+============================== 3 failed in 0.05s ===============================

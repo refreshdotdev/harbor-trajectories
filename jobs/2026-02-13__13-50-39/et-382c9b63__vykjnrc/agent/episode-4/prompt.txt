@@ -1,0 +1,63 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# TMP_WORK_DIR=$(mktemp -d)
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# VALID_LOG_FILES=()
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# CHECKSUM_FILE="${TMP_WORK_DIR}/checksums.txt"
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# touch "$CHECKSUM_FILE"
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~#
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# while IFS= read -r log_file_path; do
+>   echo "Processing $log_file_path..."
+>   # Extract scan date from Nmap header
+>   scan_date_line=$(grep -m 1 "Starting Nmap.*at" "$log_file_path" || true)
+>   if [ -z "$scan_date_line" ]; then
+>     echo "Warning: No Nmap start line in $log_file_path. Skipping."
+>     continue
+>   fi
+>
+>   extracted_date=$(echo "$scan_date_line" | awk -F"at " '{print $2}' | awk '{print $1}' | sed -e 's/ .*//' | xargs)
+>   if [ -z "$extracted_date" ]; then
+>     echo "Warning: Could not parse date from line in $log_file_path: $scan_date_line. Skipping."
+>     continue
+>   fi
+>
+>   # Convert extracted_date (e.g., YYYY-MM-DD) to YYYY-MM format
+>   file_month_year=$(date -d "$extracted_date" +"%Y-%m" 2>/dev/null || echo "")
+>   if [ -z "$file_month_year" ]; then
+>     echo "Warning: Invalid date format '$extracted_date' in $log_file_path. Skipping."
+>     continue
+>   fi
+>
+>   if [ "$file_month_year" = "2023-05" ]; then
+>     VALID_LOG_FILES+=("$log_file_path")
+>     # Get SHA256 checksum
+>     checksum=$(sha256sum "$log_file_path" | awk '{print $1}')
+>     echo "$log_file_path|$checksum" >> "${TMP_WORK_DIR}/checksums.txt"
+>   fi
+>
+> done < /tmp/candidate_logs.txt
+Processing /home/user/scan_logs/archive/scan_gw.log...
+Warning: No Nmap start line in /home/user/scan_logs/archive/scan_gw.log. Skipping.
+Processing /home/user/scan_logs/scan_latin.log...
+Warning: No Nmap start line in /home/user/scan_logs/scan_latin.log. Skipping.
+Processing /home/user/scan_logs/scan_old.log...
+Warning: No Nmap start line in /home/user/scan_logs/scan_old.log. Skipping.
+Processing /home/user/scan_logs/scan_std.log...
+Warning: No Nmap start line in /home/user/scan_logs/scan_std.log. Skipping.
+Processing /home/user/scan_logs/archive/scan_gw.log...
+Warning: No Nmap start line in /home/user/scan_logs/archive/scan_gw.log. Skipping.
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~#
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# if [ ${#VALID_LOG_FILES[@]} -eq 0 ]; then
+>   echo "No valid May 2023 log files found."
+>   rm -f "${TMP_WORK_DIR}/checksums.txt"
+> else
+>   echo "Found ${#VALID_LOG_FILES[@]} valid log files from May 2023."
+> fi
+No valid May 2023 log files found.
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~#
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# # Clean up candidate list
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# rm /tmp/candidate_logs.txt
+root@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~#

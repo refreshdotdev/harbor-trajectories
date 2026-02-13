@@ -1,0 +1,152 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are a database administrator who has been asked to formalise the way ad-hoc SQL files are “optimised”. A colleague left you an initial scratch directory, but the process needs to be robust, handle batch processing via environment variables, and produce structured metadata.
+
+A colleague already placed a raw SQL batch file here (this file already exists when you start):
+`/home/user/db_queries/raw_batch_42.sql`
+
+Your goal is to produce a final state that meets the following specifications:
+
+*   A dedicated, *user-local* Python virtual environment exists at `/home/user/.venvs/opt_queries`.
+    *   The directory must have the standard structure of a Python virtual environment.
+    *   Inside this environment, version **0.4.4** of the PyPI package “sqlparse” must be installed.
+    *   A dependency lock file named `/home/user/.venvs/opt_queries/requirements.txt` must exist containing `sqlparse==0.4.4`.
+
+*   A Python script named `/home/user/db_queries/process_batch.py` exists. The script must:
+    *   Be runnable with the venv’s `python`.
+    *   Read an environment variable named `DB_BATCH_ID` to determine which file to process. (For testing, you will use `DB_BATCH_ID=42`).
+    *   Read the input file `/home/user/db_queries/raw_batch_{DB_BATCH_ID}.sql`.
+    *   Create a *verbatim* backup of the input file at `/home/user/db_queries/raw_batch_{DB_BATCH_ID}_backup.sql`.
+    *   Process each query in the input file using `sqlparse`:
+        1.  Calculate the **MD5 hash** of the *original raw query string* (stripped of leading/trailing whitespace). This will be used for tracking.
+        2.  Produce a **single-line** version of the query with SQL keywords upper-cased and spaces around comparison operators (e.g., “salary>50000” → “... salary > 50000 ...”). Ensure newlines are replaced by spaces.
+        3.  Append a comment to the end of the optimized query in the format: ` -- id={md5_hash}`.
+    *   Classify queries and write them to separate files (preserving order within each category):
+        *   **Read Queries** (starting with `SELECT`, case-insensitive) go to `/home/user/db_queries/batch_{DB_BATCH_ID}_optimized_read.sql`.
+        *   **Write Queries** (INSERT, UPDATE, DELETE, etc.) go to `/home/user/db_queries/batch_{DB_BATCH_ID}_optimized_write.sql`.
+    *   Ensure every SQL statement in the output files ends with a semicolon.
+
+*   A JSON manifest file named `/home/user/db_queries/batch_{DB_BATCH_ID}_manifest.json` is created containing exactly:
+    ```json
+    {
+      "batch_id": "{DB_BATCH_ID}",
+      "read_count": <integer>,
+      "write_count": <integer>
+    }
+    ```
+
+*   A plain-text log file named `/home/user/db_queries/batch_{DB_BATCH_ID}_pipeline.log` is created containing exactly these lines:
+    ```text
+    PIPELINE START
+    Batch ID: {DB_BATCH_ID}
+    Input: raw_batch_{DB_BATCH_ID}.sql
+    Processed: <total_queries>
+    PIPELINE END
+    ```
+
+**Example for Batch 42:**
+If `raw_batch_42.sql` contains `select * from t;`, the script (run with `DB_BATCH_ID=42`) should produce:
+1. `raw_batch_42_backup.sql` (copy of original)
+2. `batch_42_optimized_read.sql` containing: `SELECT * FROM t; -- id=<md5_of_original>`
+3. `batch_42_optimized_write.sql` (empty if no write queries)
+4. `batch_42_manifest.json`
+5. `batch_42_pipeline.log`
+
+As a final result, print the following to the terminal:
+*   the first two lines of `/home/user/.venvs/opt_queries/requirements.txt`
+*   the full contents of `/home/user/db_queries/batch_42_manifest.json`
+*   the full contents of `/home/user/db_queries/batch_42_pipeline.log`
+
+No root privileges are needed. Everything must be achievable from an ordinary user shell.
+
+Current terminal state:
+Current Terminal Screen:
+root@36b070fb-d075-422d-b207-f735c3f0b34d:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

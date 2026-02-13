@@ -1,0 +1,160 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Firewall Lockdown Simulation: Advanced Compliance
+
+You are a Senior Security Engineer tasked with generating a compliant `iptables-save` configuration for a legacy financial gateway. This task simulates a "dry-run" preparation of configuration files. You must produce three specific artifacts: an intermediate data structure, the final rules file, and a strictly formatted audit manifest.
+
+## 1. Input Analysis & Discovery
+
+### The Base Rules
+A snapshot of the current firewall state is located at `/home/user/firewall/base_rules.v4`. 
+**Critical Context**: This file was exported from a Windows-based bastion host. Consequently, it uses Windows-style line endings (CRLF). Your processing pipeline must handle this correctly to ensure the final output uses standard Unix line endings (LF).
+
+### The Configuration Policy
+The security policy is managed dynamically. You will find a directory of configuration files at `/home/user/firewall/configs/`. 
+
+**Requirement**: You must identify and use the **single most recently modified** JSON file in this directory as your source of truth. Ignore all older files.
+
+**Data Sanitization Warning**: The upstream Configuration Management Database (CMDB) is known to inject typesetting artifacts into string values. Specifically, IP addresses often contain invisible Zero Width Spaces (`\u200b`) which cause firewall loading failures. You **must** sanitize all configuration values by stripping non-printable characters before use.
+
+The configuration file defines:
+*   `trusted_ip`: The source IP allowed to access restricted ports.
+*   `allow_ports`: A list of strings defining ports to ACCEPT. These may be single integers (e.g., "80") or hyphenated inclusive ranges (e.g., "8080-8085"). You must expand all ranges into individual rules.
+*   `block_ports`: A list of strings defining ports to DROP. Ranges are also possible here.
+
+## 2. Processing Pipeline
+
+You must implement a multi-stage generation process. The output of one stage is the input or verification key for the next.
+
+### Stage 1: Normalization & Intermediate State
+Parse the base rules and the active configuration. Create a normalized list of rule objects. 
+You must save this structured data to `/home/user/firewall/intermediate.json`. This file should be a JSON list of dictionaries, where each dictionary represents a rule to be applied.
+
+### Stage 2: Final Rule Generation (`optimized_rules.v4`)
+Generate the final iptables file `/home/user/firewall/optimized_rules.v4` based on the following logic:
+1.  **Default Policies**: Set INPUT and FORWARD to DROP. Set OUTPUT to ACCEPT.
+2.  **State Preservation**: The `base_rules.v4` file contains a rule for `RELATED,ESTABLISHED` traffic. You must identify and preserve this rule as the **very first** rule after the policy definitions.
+3.  **Allow Rules**: For every port in the expanded `allow_ports` list, create a rule ACCEPTing TCP traffic from the `trusted_ip`.
+4.  **Drop Rules**: For every port in the expanded `block_ports` list, create a rule DROPPing TCP traffic from any source.
+5.  **Sorting**: To prevent rule shadowing and ensure determinism, all ACCEPT and DROP rules (excluding the state rule) must be sorted by **destination port number** in ascending numeric order. If a port has both an ACCEPT and a DROP rule (e.g. specific allow vs general drop), the ACCEPT rule must come first.
+6.  **Formatting**: The file must start with `*filter` and end with `COMMIT`. Use Unix line endings (LF).
+
+### Stage 3: The Audit Manifest (`audit_manifest.csv`)
+Create a log file at `/home/user/firewall/audit_manifest.csv`. 
+
+**Compliance Standards**: 
+Due to integration with a legacy SIEM system, this file has strict binary requirements:
+1.  **Encoding**: The file **MUST** be encoded in **ISO-8859-1** (Latin-1). It must NOT be UTF-8.
+2.  **Delimiter**: Use the pipe character (`|`) as the column delimiter, not commas.
+3.  **Header**: The first line must be exactly: `timestamp|action|detail`
+
+**Content Requirements**:
+*   `timestamp`: ISO-8601 format (e.g., `2025-03-01T14:05:33`).
+*   `action`: One of `added`, `removed`, or `changed`.
+*   `detail`: A description of the change. 
+    *   **Special Requirement**: If the `action` is `changed` (e.g., changing default policies), the `detail` string must start with the section sign character (`§`) followed by the policy name. Example: `§INPUT policy set to DROP`.
+
+**Footer Verification**:
+The last two lines of the manifest must be verification checkpoints:
+*   The second-to-last line must be: `Check: <MD5_hash_of_intermediate.json>`
+*   The very last line must be: `Bytes: <Byte_count_of_optimized_rules.v4>`
+
+## Summary of Deliverables
+When finished, the following files must exist:
+1.  `/home/user/firewall/intermediate.json`
+2.  `/home/user/firewall/optimized_rules.v4`
+3.  `/home/user/firewall/audit_manifest.csv`
+
+**Note**: Do not attempt to load these rules into the kernel; only generate the files.
+
+Current terminal state:
+Current Terminal Screen:
+root@67d551b3-dfa5-4544-99b9-dc241d01296c:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

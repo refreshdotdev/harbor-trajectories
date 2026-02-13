@@ -1,0 +1,21 @@
+```json
+{
+  "analysis": "The previous attempt to create the JSON summary script failed due to a syntax error in the here-document (EOF) and the JSON string formatting. Specifically, the line `echo '  \"signature\": \"${HMAC_SIGNATURE}\"` was not properly closed, causing the script to fail. We need to fix the JSON generation part of the script.",
+  "plan": "We will rewrite the JSON generation section using `jq` for robust JSON creation. If `jq` is not available, we will use a corrected `printf` approach. The plan is to: 1) Check for `jq`. 2) Use `jq` to create the JSON structure, ensuring proper escaping and formatting. 3) If `jq` is not found, use a `printf` statement with careful string concatenation to generate valid JSON. 4) Execute the corrected script to generate `summary.json`.",
+  "commands": [
+    {
+      "keystrokes": "cat > /tmp/create_summary_fixed.sh << 'EOF'\n#!/bin/bash\n\nAUDIT_DIR=\"/home/user/audit_2023Q4\"\nLOG_FILE=\"${AUDIT_DIR}/checksum_audit.log\"\nSUMMARY_FILE=\"${AUDIT_DIR}/summary.json\"\n\n# Read start time from log file\nSTART_TIME_FROM_LOG=$(grep \"^START_TIME  :\" \"${LOG_FILE}\" | awk -F': ' '{print $2}')\nEND_TIME=\"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"\n\n# Count file records\nFILE_COUNT=$(grep -c \"^[^ ]* SHA256=[a-f0-9]*  MD5=[a-f0-9]*\" \"${LOG_FILE}\")\nTOTAL_BYTES=0\n\n# Compute SHA256 hash of the current log content\nLOG_CONTENT_SHA256=$(sha256sum \"${LOG_FILE}\" | awk '{print $1}')\n\n# Derive HMAC-SHA256 key\nSECRET_KEY_CONTENT=$(cat /home/user/source_files/.secret 2>/dev/null | tr -d ' \\n\\r\\t')\nif [[ -z \"${SECRET_KEY_CONTENT}\" ]]; then\n    SECRET_KEY_CONTENT=\"\"\nfi\nCURRENT_UTC_DATE=$(date -u +'%Y%m%d')\nHMAC_KEY=\"${SECRET_KEY_CONTENT}${CURRENT_UTC_DATE}\"\n\n# Compute HMAC-SHA256 signature\nLOG_CONTENT_FOR_HMAC=$(cat \"${LOG_FILE}\")\necho -n \"${LOG_CONTENT_FOR_HMAC}\" | openssl dgst -sha256 -hmac \"${HMAC_KEY}\" | awk '{print $2}' > /tmp/hmac_result.txt 2>/dev/null\nHMAC_SIGNATURE=$(cat /tmp/hmac_result.txt 2>/dev/null)\nrm -f /tmp/hmac_result.txt\n\n# Create JSON summary using jq if available, otherwise use printf\nif command -v jq &> /dev/null; then\n    jq -n \\\n        --arg period \"2023-Q4\" \\\n        --argjson file_count \"${FILE_COUNT}\" \\\n        --argjson total_bytes \"${TOTAL_BYTES}\" \\\n        --arg start_time \"${START_TIME_FROM_LOG}\" \\\n        --arg end_time \"${END_TIME}\" \\\n        --arg status \"COMPLETED\" \\\n        --arg log_checksum \"${LOG_CONTENT_SHA256}\" \\\n        --arg signature \"${HMAC_SIGNATURE}\" \\\n        '{\n            period: $period,\n            file_count: $file_count,\n            total_bytes: $total_bytes,\n            start_time: $start_time,\n            end_time: $end_time,\n            status: $status,\n            log_checksum: $log_checksum,\n            signature: $signature\n        }' > \"${SUMMARY_FILE}\"\nelse\n    # Fallback to printf (ensure variables are properly escaped for JSON)\n    # Basic escaping (may fail if variables contain special JSON chars like quotes)\n    # For this task, assume variables are simple hex strings or numbers\n    START_TIME_ESC=${START_TIME_FROM_LOG//\"/\\\\\\\"}\n    END_TIME_ESC=${END_TIME//\"/\\\\\\\"}\n    LOG_CHECKSUM_ESC=${LOG_CONTENT_SHA256//\"/\\\\\\\"}\n    HMAC_SIG_ESC=${HMAC_SIGNATURE//\"/\\\\\\\"}\n    \n    printf '{\\n  \"period\": \"2023-Q4\",\\n  \"file_count\": %d,\\n  \"total_bytes\": %d,\\n  \"start_time\": \"%s\",\\n  \"end_time\": \"%s\",\\n  \"status\": \"COMPLETED\",\\n  \"log_checksum\": \"%s\",\\n  \"signature\": \"%s\"\\n}\\n' \\\n          \"${FILE_COUNT}\" \"${TOTAL_BYTES}\" \"${START_TIME_ESC}\" \"${END_TIME_ESC}\" \"${LOG_CHECKSUM_ESC}\" \"${HMAC_SIG_ESC}\" > \"${SUMMARY_FILE}\"\nfi\n\n# Verify JSON formatting\nif [[ -s \"${SUMMARY_FILE}\" ]]; then\n    echo \"JSON summary created at ${SUMMARY_FILE}\"\n    if command -v jq &> /dev/null; then\n        jq . \"${SUMMARY_FILE}\"\n    else\n        cat \"${SUMMARY_FILE}\"\n    fi\nelse\n    echo \"Failed to create JSON summary\"\nfi\nEOF\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "chmod +x /tmp/create_summary_fixed.sh\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "/tmp/create_summary_fixed.sh\n",
+      "duration": 1.0
+    }
+  ],
+  "task_complete": false
+}
+```

@@ -1,0 +1,140 @@
+[?2004hroot@e950990b-5af1-429e-bab5-3037ffa432db:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@e950990b-5af1-429e-bab5-3037ffa432db:~# clear
+[?2004l[H[J[?2004hroot@e950990b-5af1-429e-bab5-3037ffa432db:~# mkdir -p /home/user/.venvs /home/user/db_queries
+[?2004l[?2004hroot@e950990b-5af1-429e-bab5-3037ffa432db:~# cd /home/user
+[?2004l[?2004hroot@e950990b-5af1-429e-bab5-3037ffa432db:/home/user# python3 -m venv .venvs/opt_queries
+[?2004l.venvs/opt_queries/bin/pip install sqlparse==0.4.4
+[?2004hroot@e950990b-5af1-429e-bab5-3037ffa432db:/home/user# .venvs/opt_queries/bin/pip install sqlparse==0.4.4
+[?2004lCollecting sqlparse==0.4.4
+  Downloading sqlparse-0.4.4-py3-none-any.whl (41 kB)
+[?25l     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/41.2 KB[0m [31m?[0m eta [36m-:--:--[0m[2K     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m41.2/41.2 KB[0m [31m6.6 MB/s[0m eta [36m0:00:00[0m
+[?25hInstalling collected packages: sqlparse
+Successfully installed sqlparse-0.4.4
+[?2004hroot@e950990b-5af1-429e-bab5-3037ffa432db:/home/user# echo "sqlparse==0.4.4" > .venvs/opt_queries/requirements.txt
+[?2004l[?2004hroot@e950990b-5af1-429e-bab5-3037ffa432db:/home/user# cat > db_queries/process_batch.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> 
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import sqlparse
+[?2004l[?2004h> import json
+[?2004l[?2004h> from typing import List, Dict, Any
+[?2004l[?2004h> 
+[?2004l[?2004h> def process_query(query_str: str) -> str:
+[?2004l[?2004h>     """Process a single query: hash, format, and add comment."""
+[?2004l[?2004h>     # Calculate MD5 hash of original stripped query
+[?2004l[?2004h>     original_query = query_str.strip()
+[?2004l[?2004h>     query_hash = hashlib.md5(original_query.encode('utf-8')).hexdigest()
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Parse and format with sqlparse
+[?2004l[?2004h>     parsed = sqlparse.parse(original_query)[0]  # Single statement only
+[?2004l[?2004h>     formatted = sqlparse.format(parsed, 
+[?2004l[?2004h>                                keyword_case='upper', 
+[?2004l[?2004h>                                indent_columns=True,
+[?2004l[?2004h>                                use_space_around_operators=True)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Convert to single line and add comment
+[?2004l[?2004h>     single_line = ' '.join(formatted.splitlines())
+[?2004l[?2004h>     return f"{single_line} -- id={query_hash};"
+[?2004l[?2004h> 
+[?2004l[?2004h> def main():
+[?2004l[?2004h>     # Get batch ID from environment
+[?2004l[?2004h>     batch_id = os.getenv('DB_BATCH_ID')
+[?2004l[?2004h>     if not batch_id:
+[?2004l[?2004h>         print("Error: DB_BATCH_ID environment variable not set", file=sys.stderr)
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     
+[?2004l[?2004h>     input_filename = f"raw_batch_{batch_id}.sql"
+[?2004l[?2004h>     input_path = os.path.join('/home/user/db_queries', input_filename)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create backup
+[?2004l[?2004h>     backup_path = input_path + '_backup.sql'
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(input_path, 'r') as f_in, open(backup_path, 'w') as f_out:
+[?2004l[?2004h>             f_out.write(f_in.read())
+[?2004l[?2004h>     except FileNotFoundError:
+[?2004l[?2004h>         print(f"Error: Input file {input_path} not found", file=sys.stderr)
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Initialize output
+[?2004l[?2004h>     read_queries: List[str] = []
+[?2004l[?2004h>     write_queries: List[str] = []
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Process queries
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(input_path, 'r') as f:
+[?2004l[?2004h>             for line in f:
+[?2004l[?2004h>                 line = line.strip()
+[?2004l[?2004h>                 if not line or line.startswith('--') or line.startswith('/*'):
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 try:
+[?2004l[?2004h>                     # Try to parse as single statement
+[?2004l[?2004h>                     parsed = sqlparse.parse(line)[0]
+[?2004l[?2004h>                 except IndexError:
+[?2004l[?2004h>                     print(f"Warning: Could not parse query: {line}", file=sys.stderr)
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # Classify query
+[?2004l[?2004h>                 first_token = parsed.tokens[0]
+[?2004l[?2004h>                 if first_token.value.upper().startswith('SELECT '):
+[?2004l[?2004h>                     read_queries.append(process_query(line))
+[?2004l[?2004h>                 elif first_token.value.upper() in ['INSERT', 'UPDATE', 'DELETE']: 
+[?2004l[?2004h>                     write_queries.append(process_query(line))
+[?2004l[?2004h>                 else:
+[?2004l[?2004h>                     print(f"Warning: Unhandled query type: {line}", file=sys.stderr)
+[?2004l[?2004h>                     read_queries.append(process_query(line))  # Default to read
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Error processing queries: {e}", file=sys.stderr)
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write output files
+[?2004l[?2004h>     output_base = f"batch_{batch_id}_optimized"
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(f"/home/user/db_queries/{output_base}_read.sql", 'w') as f_read:
+[?2004l[?2004h>         f_read.write('\n'.join(read_queries) + '\n')
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(f"/home/user/db_queries/{output_base}_write.sql", 'w') as f_write:
+[?2004l[?2004h>         f_write.write('\n'.join(write_queries) + '\n')
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create manifest
+[?2004l[?2004h>     manifest = {
+[?2004l[?2004h>         "batch_id": batch_id,
+[?2004l[?2004h>         "read_count": len(read_queries),
+[?2004l[?2004h>         "write_count": len(write_queries)
+[?2004l[?2004h>     }
+[?2004l[?2004h>     with open(f"/home/user/db_queries/batch_{batch_id}_manifest.json", 'w') as f_manifest:
+[?2004l[?2004h>         json.dump(manifest, f_manifest, indent=4)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create log file
+[?2004l[?2004h>     total_queries = len(read_queries) + len(write_queries)
+[?2004l[?2004h>     log_content = f"""PIPELINE START
+[?2004l[?2004h> Batch ID: {batch_id}
+[?2004l[?2004h> Input: {input_filename}
+[?2004l[?2004h> Processed: {total_queries}
+[?2004l[?2004h> PIPELINE END
+[?2004l[?2004h> """
+[?2004l[?2004h>     with open(f"/home/user/db_queries/batch_{batch_id}_pipeline.log", 'w') as f_log:
+[?2004l[?2004h>         f_log.write(log_content)
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     main()
+[?2004l[?2004h> EOFchmod +x db_queries/process_batch.py
+[?2004l[?2004h> cat > db_queries/raw_batch_42.sql << 'EOF'
+[?2004l[?2004h> select * from employees;
+[?2004l[?2004h> 
+[?2004l[?2004h> UPDATE salaries SET bonus = bonus * 1.1;
+[?2004l[?2004h> 
+[?2004l[?2004h> -- Comment line
+[?2004l[?2004h> INSERT INTO departments (name) VALUES ('New Dept');
+[?2004l[?2004h> DELETE FROM old_data WHERE expired = true;
+[?2004l[?2004h> 
+[?2004l[?2004h> SELECT name, salary FROM employees WHERE salary > 50000;
+[?2004l[?2004h> EOFDB_BATCH_ID=42 .venvs/opt_queries/bin/python db_queries/process_batch.py
+[?2004l[?2004h> head -n 2 .venvs/opt_queries/requirements.txt
+[?2004l[?2004h> cat db_queries/batch_42_manifest.json
+[?2004l[?2004h> cat db_queries/batch_42_pipeline.log
+[?2004l[?2004h> 

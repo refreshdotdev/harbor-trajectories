@@ -1,0 +1,172 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Project Handover: Legacy Sales Data Pipeline
+
+You are taking over a data pipeline task from a previous engineer who left abruptly. We need to automate the processing of some messy sales data using a GNU Makefile. 
+
+**Directory Layout (Existing):**
+
+    /home/user/data_science_project/
+    ├── config/
+    │   ├── params.json
+    │   └── legacy_settings.yaml   <-- (IGNORE THIS, DEPRECATED)
+    ├── raw_data/
+    │   ├── batch_a.csv
+    │   ├── batch_b.csv
+    │   └── .temp_cache            <-- (DO NOT TOUCH)
+    └── scripts/
+        └── cleanup.py             <-- (EMPTY, YOU MUST WRITE YOUR OWN)
+
+## Core Requirements
+
+Create a `Makefile` at `/home/user/data_science_project/Makefile` that orchestrates the entire ETL process. The pipeline must be robust and handle the specific oddities of our data sources.
+
+### 1. Data Cleaning (`clean` target)
+
+We need to process the CSV files in `raw_data/`. 
+
+*   **Input Handling:** 
+    *   `batch_a.csv` comes from our old mainframe. It is encoded in **ISO-8859-1** (Latin-1).
+    *   `batch_b.csv` comes from a Windows export. It is encoded in **UTF-16LE** and has a Byte Order Mark (BOM).
+    *   You must normalize both to UTF-8 before processing.
+
+*   **Filtering Logic:**
+    *   Drop any row where the `status` column (4th column) is "Cancelled" (case-insensitive).
+    *   Drop any row where the `amount` column (3rd column) is strictly less than the **Minimum Threshold**.
+    *   **Threshold Discovery:** Check if the environment variable `MIN_LIMIT` is set. If it is, use that value. If not, read the value from `config/params.json` (path: `policy.limits.min_amount`).
+
+*   **Output Formatting:**
+    *   The output files must be placed in a directory named `cleaned/`.
+    *   The output filename must correspond to the input (e.g., `batch_a.csv` → `batch_a.tsv`).
+    *   **CRITICAL:** The output format must be **Tab-Separated Values (TSV)**, not CSV.
+    *   **CRITICAL:** The line endings for the output files must be **CRLF** (Windows style), as these will be opened in Excel.
+    *   Preserve the header row.
+
+### 2. Analysis (`analyze` target)
+
+For each cleaned TSV file, generate a corresponding JSON summary in a directory named `analysis/`.
+
+*   File naming: `batch_a.tsv` → `batch_a.json`
+*   Content format (minified JSON):
+    ```json
+    {"source": "batch_a.tsv", "valid_rows": 150, "total_amount": 1234.50}
+    ```
+    *   `valid_rows`: Number of data rows (excluding header).
+    *   `total_amount`: Sum of the `amount` column, formatted to exactly 2 decimal places.
+
+### 3. Packaging (`package` target)
+
+Create a distribution archive named `delivery.tar.gz` in the project root.
+
+*   It must contain the `cleaned/` and `analysis/` directories.
+*   It must also contain a file named `manifest.md5` at the root of the archive. This file should list the MD5 checksums of all TSV files in the `cleaned/` directory. Format: standard `md5sum` output.
+
+### 4. Workflow Management
+
+*   **Targets:** The Makefile must declare `.PHONY` targets: `clean`, `analyze`, `package`, `all`.
+*   **Dependencies:** `all` triggers `package`. `package` needs `analyze`. `analyze` needs `clean`.
+*   **Logging:** 
+    *   Every time a target recipe runs (clean, analyze, package), append a line to the file defined by the environment variable `PROJECT_LOG`. 
+    *   If `PROJECT_LOG` is not set, default to `pipeline.log`.
+    *   Format: `[UNIX_TIMESTAMP_SECONDS] <TARGET_NAME>` (e.g., `[1678886000] clean`).
+
+## Important Constraints
+
+*   You may use Python 3, `awk`, `sed`, `iconv`, and standard utils.
+*   Do not modify the files in `raw_data/`.
+*   The Makefile must be idempotent.
+*   Be careful with the `amount` column; it may contain whitespace in the raw data.
+
+Good luck. The last guy couldn't figure out the encoding issues and got fired.
+
+Current terminal state:
+Current Terminal Screen:
+root@f4c90a6e-8663-49b2-8a14-1779432a3257:~/data_science_project#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

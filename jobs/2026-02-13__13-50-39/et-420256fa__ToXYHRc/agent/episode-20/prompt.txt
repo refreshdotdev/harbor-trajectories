@@ -1,0 +1,46 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@5484fab7-e488-4c17-888e-b2dd89e50778:/var/lib/ci_logs# cat > /tmp/final_processing.sh << 'EOF'
+> #!/bin/bash
+> DB_FILE="/home/user/mobile_pipelines/builds.db"
+> BUILD_ID=1
+> jq -c '.[]' fixed_processed_builds.json | while IFS= read -r build_json; do
+>   commit_hash=$(echo "$build_json" | jq -r '.commit_hash')
+>   status=$(echo "$build_json" | jq -r '.status')
+>   duration_sec=$(echo "$build_json" | jq -r '.duration_sec')
+>   timestamp=$(echo "$build_json" | jq -r '.timestamp')
+>   total_artifact_size=0
+>   artifacts_count=$(echo "$build_json" | jq -r '.artifacts | length')
+>   if [ "$artifacts_count" -gt 0 ]; then
+>     total_artifact_size=$(echo "$build_json" | jq -r '.artifacts[] | .size_bytes' | paste -sd+ - | bc)
+>   fi
+>   if [ "$duration_sec" -eq 0 ]; then
+>     efficiency_score="0.00"
+>   else
+>     efficiency=$(echo "scale=4; $total_artifact_size / $duration_sec" | bc)
+>     efficiency_score=$(printf "%.2f" "$efficiency")
+>   fi
+>   data_to_hash="${commit_hash}${status}"
+>   verification_code=$(echo -n "$data_to_hash" | sha256sum | cut -c1-8)
+>   timestamp_iso=$(date -u -d @"$timestamp" +"%Y-%m-%dT%H:%M:%SZ")
+>   sqlite3 "$DB_FILE" "INSERT INTO builds (commit_hash, status, duration_sec, timestamp, efficiency_score, verification_code) VALUES ('$commit_hash', '$status'
+, $duration_sec, '$timestamp_iso', '$efficiency_score', '$verification_code');"
+>   echo "$build_json" | jq -c '.artifacts[]' | while IFS= read -r artifact_json; do
+>     artifact_name=$(echo "$artifact_json" | jq -r '.name')
+>     size_bytes=$(echo "$artifact_json" | jq -r '.size_bytes')
+>     size_kb=$((size_bytes / 1024))
+>     sqlite3 "$DB_FILE" "INSERT INTO artifacts (build_id, artifact_name, size_kb) VALUES ($BUILD_ID, '$artifact_name', $size_kb);"
+>   done
+>   BUILD_ID=$((BUILD_ID + 1))
+> done
+> EOF
+root@5484fab7-e488-4c17-888e-b2dd89e50778:/var/lib/ci_logs# chmod +x /tmp/final_processing.sh
+root@5484fab7-e488-4c17-888e-b2dd89e50778:/var/lib/ci_logs# /tmp/final_processing.sh
+root@5484fab7-e488-4c17-888e-b2dd89e50778:/var/lib/ci_logs# sqlite3 /home/user/mobile_pipelines/builds.db "SELECT * FROM builds;"
+1|a1b2c3d4e5f6|SUCCESS|5|2023-09-04T04:26:40Z|3400000.0|5d2e1eb0
+2|b1c2d3e4f5a6|FAILED|3|2023-09-04T04:28:20Z|6000000.0|477f73da
+root@5484fab7-e488-4c17-888e-b2dd89e50778:/var/lib/ci_logs#

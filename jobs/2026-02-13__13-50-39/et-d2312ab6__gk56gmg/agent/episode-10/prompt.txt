@@ -1,0 +1,37 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@842ba843-7827-4f43-8c25-0f1808fb21e6:/home/user/workspace# find /etc/opt/keys/ -type f -not -name '*.bak' -not -name '*.example' -name 'release_signing.key
+'
+/etc/opt/keys/release_signing.key
+root@842ba843-7827-4f43-8c25-0f1808fb21e6:/home/user/workspace# SIGNING_KEY=$(find /etc/opt/keys/ -type f -not -name '*.bak' -not -name '*.example' -name 'relea
+se_signing.key' | head -1)
+root@842ba843-7827-4f43-8c25-0f1808fb21e6:/home/user/workspace# python3 -c "
+> import sys, hmac, hashlib
+>
+> # Read key and clean whitespace
+> key_file = '${SIGNING_KEY}'
+> try:
+>     with open(key_file, 'r') as f:
+>         key = f.read().strip()
+>     if not key:
+>         print('ERROR: Signing key is empty', file=sys.stderr)
+>         sys.exit(1)
+>
+>     # Read metadata
+>     version = 'v2.4.1-beta'
+>     timestamp = '1698400800'
+>
+>     # Create payload and compute HMAC
+>     payload = version + timestamp
+>     hmac_result = hmac.new(key.encode('utf-8'), payload.encode('utf-8'), hashlib.sha256).hexdigest()
+>     print(f'SIGNATURE={hmac_result}')
+>
+> except Exception as e:
+>     print(f'SIGNATURE_ERROR: {e}', file=sys.stderr)
+>     sys.exit(1)
+> " > /tmp/signature.txt 2> /tmp/signature_error.log
+root@842ba843-7827-4f43-8c25-0f1808fb21e6:/home/user/workspace#

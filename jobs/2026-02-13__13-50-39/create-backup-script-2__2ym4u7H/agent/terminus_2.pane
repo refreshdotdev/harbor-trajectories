@@ -1,0 +1,79 @@
+[?2004hroot@ce601f82-7746-4839-81ca-34136a84ecde:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@ce601f82-7746-4839-81ca-34136a84ecde:~# clear
+[?2004l[H[J[?2004hroot@ce601f82-7746-4839-81ca-34136a84ecde:~# cd /home/user/hardening_test
+[?2004l[?2004hroot@ce601f82-7746-4839-81ca-34136a84ecde:/home/user/hardening_test# cat > apply_hardening.sh << 'EOF'
+[?2004l[?2004h> #!/bin/sh
+[?2004l[?2004h> 
+[?2004l[?2004h> # POSIX-compliant hardening automation script
+[?2004l[?2004h> # Ensure we're in the correct directory
+[?2004l[?2004h> if [ "$(basename "$PWD")" != "hardening_test" ]; then
+[?2004l[?2004h>     echo "Error: Script must be run from /home/user/hardening_test/" >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> set -e
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize empty log file
+[?2004l[?2004h> log_file="hardening.log"
+[?2004l[?2004h> echo -n > "$log_file"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process each rule from rules.txt
+[?2004l[?2004h> while IFS='|' read -r filename search_pattern enforced_line; do
+[?2004l[?2004h>     # Skip empty or comment lines
+[?2004l[?2004h>     if [ -z "$filename" ] || [ "${filename:0:1}" = "#" ]; then
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Safety backup: only create if doesn't exist
+[?2004l[?2004h>     if [ ! -f "${filename}.bak" ]; then
+[?2004l[?2004h>         if [ -f "$filename" ]; then
+[?2004l[?2004h>             cp "$filename" "${filename}.bak"
+[?2004l[?2004h>         else
+[?2004l[?2004h>             echo "$filename: File not found, skipping backup" >> "$log_file"
+[?2004l[?2004h>             continue
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Trim enforced_line to avoid trailing newline issues
+[?2004l[?2004h>     enforced_line="${enforced_line%\n}"
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Check if enforced_line already exists exactly
+[?2004l[?2004h>     if grep -Fxq "$enforced_line" "$filename" 2>/dev/null; then
+[?2004l[?2004h>         echo "$filename:SKIPPED" >> "$log_file"
+[?2004l[?2004h>         chmod 0600 "$filename"
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Try to repair by replacing matching pattern line
+[?2004l[?2004h>     if grep -qE "^$search_pattern" "$filename" 2>/dev/null; then
+[?2004l[?2004h>         # Create temp file for atomic replacement
+[?2004l[?2004h>         temp_file="$(mktemp)"
+[?2004l[?2004h>         # Use sed to replace the matching line
+[?2004l[?2004h>         sed -E "s/^\($search_pattern\)/$enforced_line/" "$filename" > "$temp_file"
+[?2004l[?2004h>         # Atomic replacement
+[?2004l[?2004h>         mv "$temp_file" "$filename"
+[?2004l[?2004h>         echo "$filename:REPAIRED" >> "$log_file"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         # Append the enforced line
+[?2004l[?2004h>         echo "$enforced_line" >> "$filename"
+[?2004l[?2004h>         echo "$filename:APPENDED" >> "$log_file"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Set strict permissions
+[?2004l[?2004h>     case "$filename" in
+[?2004l[?2004h>         "sshd_config") chmod 0600 "$filename" ;;
+[?2004l[?2004h>         *) chmod 0644 "$filename" ;;
+[?2004l[?2004h>     esac
+[?2004l[?2004h> 
+[?2004l[?2004h> done < "rules.txt"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort the log file alphabetically by filename
+[?2004l[?2004h> sort "$log_file" -o "$log_file"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Final user feedback
+[?2004l[?2004h> echo "Hardening completed"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@ce601f82-7746-4839-81ca-34136a84ecde:/home/user/hardening_test# chmod +x apply_hardening.sh
+[?2004l[?2004hroot@ce601f82-7746-4839-81ca-34136a84ecde:/home/user/hardening_test# 

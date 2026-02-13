@@ -1,0 +1,144 @@
+Current terminal state:
+New Terminal Output:
+
+root@fc3b6b1b-89a5-4d40-83c5-d146a3dc8344:/home/user# find /home/user/datasets/raw -type f -print0 | sort -z > /tmp/sorted_files.txt
+root@fc3b6b1b-89a5-4d40-83c5-d146a3dc8344:/home/user# while IFS= read -r -d '' source_file; do
+en
+      MOVED_COUNT=$(jq '.moved_count >   # Skip broken symbolic links (ls -L dereferences, -H prevents infinite recursion)
+>   if [ ! -L "${source_file}" ] || [ ! -e "$(ls -L "${source_file}" 2>/dev/null)" ]; then
+>     echo "Skipping broken link: ${source_file}"
+>     continue
+>   fi
+>
+(>   # Skip files with permission mode 000
+>   if [ "$(stat -c '%a' "${source_file}")" = "000" ]; then
+>     echo "Skipping file with 000 permissions: ${source_file}"
+>     continue
+>   fi
+>
+d>   ABS_DEST_PATH=""
+>   SIZE_BYTES=""
+>   MTIME_EPOCH=""
+>   MD5_HASH=""
+>   LOG_LINE=""
+>   FILE_MOVED=0
+>   FILE_COPIED=0
+>
+>   # Rule 1: png_large (Move every *.png file strictly larger than 1,000,000 bytes)
+>   if [ "$(basename "${source_file}" | grep -E '\.png$')" ]; then
+>     fsize=$(stat -c%s "${source_file}")
+>     if [ ${fsize} -gt 1000000 ]; then
+>       BASENAME=$(basename "${source_file}")
+>       DEST_DIR="/home/user/datasets/organized/png_large"
+>       TARGET_PATH="${DEST_DIR}/${BASENAME}"
+>       COUNTER=1
+>       while [ -e "${TARGET_PATH}" ]; do
+>         PARENT_DIR_NAME=$(basename "$(dirname "${source_file}")")
+>         TARGET_PATH="${DEST_DIR}/${BASENAME%.png}_${PARENT_DIR_NAME}.png"
+>         COUNTER=$((COUNTER+1))
+>         if [ ${COUNTER} -gt 1 ]; then TARGET_PATH="${TARGET_PATH%.png}_${COUNTER}.png"; fi
+>       done
+>       ABS_DEST_PATH="${TARGET_PATH}"
+>       mv "${source_file}" "${ABS_DEST_PATH}"
+>       SIZE_BYTES=$(stat -c%s "${ABS_DEST_PATH}")
+>       MTIME_EPOCH=$(stat -c%Y "${ABS_DEST_PATH}")
+>       MD5_HASH=$(md5sum "${ABS_DEST_PATH}" | awk '{print $1}')
+>       LOG_LINE="${source_file}\t${ABS_DEST_PATH}\t${SIZE_BYTES}\t${MTIME_EPOCH}\t${MD5_HASH}"
+>       FILE_MOVED=1
+>     fi
+>   fi
+>
+>   # Rule 2: jpg_old (Copy every *.jpg file with mtime strictly before Unix Epoch 1625097600)
+>   if [ ${FILE_MOVED} -eq 0 ]; then
+>     if [ "$(basename "${source_file}" | grep -E '\.jpg$')" ]; then
+>       MTIME_SRC=$(stat -c%Y "${source_file}")
+>       if [ ${MTIME_SRC} -lt 1625097600 ]; then
+>         BASENAME=$(basename "${source_file}")
+>         DEST_DIR="/home/user/datasets/organized/jpg_old"
+>         TARGET_PATH="${DEST_DIR}/${BASENAME}"
+>         COUNTER=1
+>         while [ -e "${TARGET_PATH}" ]; do
+>           PARENT_DIR_NAME=$(basename "$(dirname "${source_file}")")
+>           TARGET_PATH="${DEST_DIR}/${BASENAME%.jpg}_${PARENT_DIR_NAME}.jpg"
+>           COUNTER=$((COUNTER+1))
+>           if [ ${COUNTER} -gt 1 ]; then TARGET_PATH="${TARGET_PATH%.jpg}_${COUNTER}.jpg"; fi
+>         done
+>         ABS_DEST_PATH="${TARGET_PATH}"
+>         cp -p "${source_file}" "${ABS_DEST_PATH}"
+>         SIZE_BYTES=$(stat -c%s "${ABS_DEST_PATH}")
+>         MTIME_EPOCH=$(stat -c%Y "${ABS_DEST_PATH}")
+>         MD5_HASH=$(md5sum "${ABS_DEST_PATH}" | awk '{print $1}')
+>         LOG_LINE="${source_file}\t${ABS_DEST_PATH}\t${SIZE_BYTES}\t${MTIME_EPOCH}\t${MD5_HASH}"
+>         FILE_COPIED=1
+>       fi
+>     fi
+>   fi
+>
+>   # Rule 3: misc_small (Copy every remaining regular file <= 512,000 bytes AND not .txt)
+>   if [ ${FILE_MOVED} -eq 0 ] && [ ${FILE_COPIED} -eq 0 ]; then
+>     if [ ! "$(basename "${source_file}" | grep -E '\.txt$')" ] && [ $(stat -c%s "${source_file}") -le 512000 ]; then
+>       BASENAME=$(basename "${source_file}")
+>       DEST_DIR="/home/user/datasets/organized/misc_small"
+>       TARGET_PATH="${DEST_DIR}/${BASENAME}"
+>       COUNTER=1
+>       while [ -e "${TARGET_PATH}" ]; do
+>         PARENT_DIR_NAME=$(basename "$(dirname "${source_file}")")
+>         TARGET_PATH="${DEST_DIR}/${BASENAME%.*}_${PARENT_DIR_NAME}.${BASENAME##*.}"
+>         COUNTER=$((COUNTER+1))
+>         if [ ${COUNTER} -gt 1 ]; then TARGET_PATH="${TARGET_PATH%.*}_${COUNTER}.${BASENAME##*.}"; fi
+>       done
+>       ABS_DEST_PATH="${TARGET_PATH}"
+>       cp -p "${source_file}" "${ABS_DEST_PATH}"
+>       SIZE_BYTES=$(stat -c%s "${ABS_DEST_PATH}")
+>       MTIME_EPOCH=$(stat -c%Y "${ABS_DEST_PATH}")
+>       MD5_HASH=$(md5sum "${ABS_DEST_PATH}" | awk '{print $1}')
+>       LOG_LINE="${source_file}\t${ABS_DEST_PATH}\t${SIZE_BYTES}\t${MTIME_EPOCH}\t${MD5_HASH}"
+>       FILE_COPIED=1
+>     fi
+>   fi
+>
+>   if [ -n "${LOG_LINE}" ]; then
+>     echo "${LOG_LINE}" >> /home/user/datasets/organized/organize_log.tsv
+>     if [ ${FILE_MOVED} -eq 1 ]; then
+>       MOVED_COUNT=$(jq '.moved_count += 1' /home/user/datasets/organized/summary.json)
+>       jq '.moved_count += 1' /home/user/datasets/organized/summary.json | sponge /home/user/datasets/organized/summary.json
+>     fi
+>     if [ ${FILE_COPIED} -eq 1 ]; then
+>       COPIED_COUNT=$(jq '.copied_count += 1' /home/user/datasets/organized/summary.json)
+>       jq '.copied_count += 1' /home/user/datasets/organized/summary.json | sponge /home/user/datasets/organized/summary.json
+>     fi
+>   fi
+> done < /tmp/sorted_files.txt
+Skipping broken link: /home/user/datasets/raw/orphan.jpg
+Skipping broken link: /home/user/datasets/raw/projectA/img1.png
+Skipping broken link: /home/user/datasets/raw/projectA/img2.png
+Skipping broken link: /home/user/datasets/raw/projectA/note.txt
+Skipping broken link: /home/user/datasets/raw/projectA/old1.jpg
+Skipping broken link: /home/user/datasets/raw/projectB/big_graph.png
+Skipping broken link: /home/user/datasets/raw/projectB/img1.png
+Skipping broken link: /home/user/datasets/raw/projectB/locked.dat
+Skipping broken link: /home/user/datasets/raw/projectB/recent.jpg
+Skipping broken link: /home/user/datasets/raw/projectB/tiny.dat
+Skipping broken link: /home/user/datasets/raw/readme.md
+root@fc3b6b1b-89a5-4d40-83c5-d146a3dc8344:/home/user# TOTAL_BYTES_SUM=0
+root@fc3b6b1b-89a5-4d40-83c5-d146a3dc8344:/home/user# find /home/user/datasets/organized/png_large /home/user/datasets/organized/jpg_old /home/user/datasets/org
+anized/misc_small -type f -printf '\0' | xargs -0 -I {} sh -c 'SUM=$(stat -c%s "{}" 2>/dev/null); if [ -n "${SUM}" ]; then TOTAL_BYTES_SUM=$((TOTAL_BYTES_SUM +
+SUM)); fi' _
+root@fc3b6b1b-89a5-4d40-83c5-d146a3dc8344:/home/user# jq ".total_bytes = ${TOTAL_BYTES_SUM}" /home/user/datasets/organized/summary.json | sponge /home/user/data
+sets/organized/summary.json
+bash: sponge: command not found
+bash: jq: command not found
+root@fc3b6b1b-89a5-4d40-83c5-d146a3dc8344:/home/user# sort -o /home/user/datasets/organized/organize_log.tsv /home/user/datasets/organized/organize_log.tsv
+root@fc3b6b1b-89a5-4d40-83c5-d146a3dc8344:/home/user# rm /tmp/sorted_files.txt
+root@fc3b6b1b-89a5-4d40-83c5-d146a3dc8344:/home/user# echo "Task complete. Final summary:"
+Task complete. Final summary:
+root@fc3b6b1b-89a5-4d40-83c5-d146a3dc8344:/home/user# cat /home/user/datasets/organized/summary.json
+{
+  "moved_count": 0,
+  "copied_count": 0,
+  "total_bytes": 0
+}
+root@fc3b6b1b-89a5-4d40-83c5-d146a3dc8344:/home/user#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

@@ -1,0 +1,138 @@
+[?2004hroot@e598ec01-fe1c-47f0-9521-36f9c576285a:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@e598ec01-fe1c-47f0-9521-36f9c576285a:/home/user# clear
+[?2004l[H[J[?2004hroot@e598ec01-fe1c-47f0-9521-36f9c576285a:/home/user# mkdir -p /home/user/scripts
+[?2004l[?2004hroot@e598ec01-fe1c-47f0-9521-36f9c576285a:/home/user# cat > /home/user/scripts/filter_errors.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # POSIX-compliant mode
+[?2004l[?2004h> set -o posix
+[?2004l[?2004h> 
+[?2004l[?2004h> # Strict error checking
+[?2004l[?2004h> set -euo pipefail
+[?2004l[?2004h> 
+[?2004l[?2004h> # Input validation
+[?2004l[?2004h> if [ $# -ne 2 ]; then
+[?2004l[?2004h>     echo "Usage: $0 <input_log> <output_dir>" >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> input_log="$1"
+[?2004l[?2004h> output_dir="$2"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create output directory
+[?2004l[?2004h> mkdir -p "$output_dir"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get absolute paths
+[?2004l[?2004h> input_log_abs="$(realpath -s -- "${input_log}")"
+[?2004l[?2004h> output_dir_abs="$(realpath -s -- "${output_dir}")"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Define output files
+[?2004l[?2004h> filtered_log="${output_dir_abs}/critical_errors.log"
+[?2004l[?2004h> csv_summary="${output_dir_abs}/error_summary.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- AWK script for multi-line processing ---
+[?2004l[?2004h> awk -v input_log_abs="${input_log_abs}" '
+[?2004l[?2004h> BEGIN {
+[?2004l[?2004h>     FS = ""
+[?2004l[?2004h>     OFS = ""
+[?2004l[?2004h>     print "# Source: " input_log_abs > "'${filtered_log}'"
+[?2004l[?2004h>     print "error_category,count" > "'${csv_summary}'"
+[?2004l[?2004h>     
+[?2004l[?2004h>     error_regex = "ERROR|FATAL|HTTP\/1\.1 5[0-9]{2}"
+[?2004l[?2004h>     email_regex = "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+[?2004l[?2004h>     payment_regex = "Payment failed"
+[?2004l[?2004h>     http5_regex = "HTTP\/1\.1 5[0-9]{2}"
+[?2004l[?2004h>     fatal_regex = "FATAL"
+[?2004l[?2004h>     
+[?2004l[?2004h>     stats["PAYMENT_FAILURE"] = 0
+[?2004l[?2004h>     stats["HTTP_5XX"] = 0  
+[?2004l[?2004h>     stats["FATAL"] = 0
+[?2004l[?2004h>     
+[?2004l[?2004h>     state = 1
+[?2004l[?2004h>     in_entry = 0
+[?2004l[?2004h>     block_buffer = ""
+[?2004l[?2004h>     current_category = ""
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> {
+[?2004l[?2004h>     if (substr($0, 1, 1) == "[") {
+[?2004l[?2004h>         if (in_entry) {
+[?2004l[?2004h>             process_block()
+[?2004l[?2004h>         }
+[?2004l[?2004h>         
+[?2004l[?2004h>         block_buffer = $0 "\n"
+[?2004l[?2004h>         in_entry = 1
+[?2004l[?2004h>         
+[?2004l[?2004h>         if ($0 ~ payment_regex) {
+[?2004l[?2004h>             current_category = "PAYMENT_FAILURE"
+[?2004l[?2004h>         } else if ($0 ~ http5_regex) {
+[?2004l[?2004h>             current_category = "HTTP_5XX"
+[?2004l[?2004h>         } else if ($0 ~ fatal_regex) {
+[?2004l[?2004h>             current_category = "FATAL"
+[?2004l[?2004h>         } else {
+[?2004l[?2004h>             current_category = "UNKNOWN"
+[?2004l[?2004h>         }
+[?2004l[?2004h>     } else {
+[?2004l[?2004h>         if (in_entry) {
+[?2004l[?2004h>             block_buffer = block_buffer $0 "\n"
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> END {
+[?2004l[?2004h>     if (in_entry) {
+[?2004l[?2004h>         process_block()
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sort CSV: count descending, then category ascending
+[?2004l[?2004h>     "sort -t, -k2,2nr -k1,1" < "'${csv_summary}'" > "'${csv_summary}.tmp'"
+[?2004l[?2004h>     mv "'${csv_summary}.tmp'" "'${csv_summary}'"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> function process_block() {
+[?2004l[?2004h>     if (block_buffer ~ error_regex) {
+[?2004l[?2004h>         gsub(email_regex, "<REDACTED>", block_buffer)
+[?2004l[?2004h>         printf "%s", block_buffer >> "'${filtered_log}'"
+[?2004l[?2004h>         
+[?2004l[?2004h>         if (current_category != "UNKNOWN") {
+[?2004l[?2004h>             stats[current_category]++
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     in_entry = 0
+[?2004l[?2004h>     block_buffer = ""
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> function add_stats() {
+[?2004l[?2004h>     for (cat in stats) {
+[?2004l[?2004h>         if (stats[cat] > 0) {
+[?2004l[?2004h>             print cat "," stats[cat] >> "'${csv_summary}'"
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h> }
+[?2004l[?2004h> ' EOF
+[?2004l[?2004h> chmod +x /home/user/scripts/filter_errors.sh
+[?2004l[?2004h> ls -la /home/user/scripts/
+[?2004l[?2004h> cat > /tmp/test.log << 'EOF'
+[?2004l[?2004h> [2023-08-15 10:00:00] INFO: System startup
+[?2004l[?2004h> [2023-08-15 10:00:05] ERROR: Payment failed for user@test.com
+[?2004l[?2004h> Stack trace: com.payment.PaymentException
+[?2004l[?2004h> [2023-08-15 10:00:10] DEBUG: Routine check
+[?2004l[?2004h> [2023-08-15 10:00:15] FATAL: Critical system failure
+[?2004l[?2004h> [2023-08-15 10:00:20] INFO: User login successful
+[?2004l[?2004h> [2023-08-15 10:00:25] ERROR: HTTP/1.1 500 Internal Server Error
+[?2004l[?2004h> [2023-08-15 10:00:30] INFO: Data processing complete
+[?2004l[?2004h> [2023-08-15 10:00:35] ERROR: Payment failed for admin@company.com
+[?2004l[?2004h> HTTP/1.1 503 Service Unavailable
+[?2004l[?2004h> [2023-08-15 10:00:40] WARN: Disk space low
+[?2004l[?2004h> [2023-08-15 10:00:45] FATAL: Database connection lost
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@e598ec01-fe1c-47f0-9521-36f9c576285a:/home/user# /home/user/scripts/filter_errors.sh /tmp/test.log /tmp/output
+[?2004lbash: /home/user/scripts/filter_errors.sh: Permission denied
+[?2004hroot@e598ec01-fe1c-47f0-9521-36f9c576285a:/home/user# cat /tmp/output/critical_errors.log
+[?2004lcat: /tmp/output/critical_errors.log: No such file or directory
+[?2004hroot@e598ec01-fe1c-47f0-9521-36f9c576285a:/home/user# cat /tmp/output/error_summary.csv
+[?2004lcat: /tmp/output/error_summary.csv: No such file or directory
+[?2004hroot@e598ec01-fe1c-47f0-9521-36f9c576285a:/home/user# 

@@ -1,0 +1,170 @@
+[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# clear
+[?2004l[H[J[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# echo "BACKUP_DEST: '${BACKUP_DEST}'"; echo "LOG_FILE: '${LOG_FILE}'"
+[?2004lBACKUP_DEST: '/home/user/secure_backups'
+LOG_FILE: '/home/user/audit/backup_audit.log'
+[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# cat > /tmp/backup_script.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration & Setup
+[?2004l[?2004h> BACKUP_DEST="${BACKUP_DEST:-/home/user/archives}"
+[?2004l[?2004h> LOG_FILE="${LOG_FILE:-/home/user/backup_logs/backup.log}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create directories if they don't exist
+[?2004l[?2004h> mkdir -p "${BACKUP_DEST}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Backup directory is under BACKUP_DEST, ensure it exists
+[?2004l[?2004h> backup_dir="${BACKUP_DEST}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Data source directory
+[?2004l[?2004h> DATA_DIR="/home/user/data"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get current date for filenames
+[?2004l[?2004h> datestamp=$(date +"%Y%m%d")
+[?2004l[?2004h> timestamp=$(date +"%F %T")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Archive and checksum filenames
+[?2004l[?2004h> archive_name="daily_${datestamp}.tar.gz"
+[?2004l[?2004h> archive_path="${backup_dir}/${archive_name}"
+[?2004l[?2004h> checksum_file="${backup_dir}/daily_${datestamp}.sha256"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Rotation - rename existing files if they exist
+[?2004l[?2004h> if [ -f "${archive_path}" ]; then
+[?2004l[?2004h>     mv "${archive_path}" "${archive_path}.bak-$(date +"%s")"
+[?2004l[?2004h> fi
+[?2004l[?2004h> if [ -f "${checksum_file}" ]; then
+[?2004l[?2004h>     mv "${checksum_file}" "${checksum_file}.bak-$(date +"%s")"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create compressed tar archive with filtering and normalization
+[?2004l[?2004h> # -C /home/user/data: change to data directory first
+[?2004l[?2004h> # --exclude '*.tmp': exclude temporary files
+[?2004l[?2004h> # -h: dereference symbolic links (to avoid including broken ones)
+[?2004l[?2004h> # --owner=0:root: set owner to root
+[?2004l[?2004h> # --group=0:root: set group to root
+[?2004l[?2004h> # --mode='go-rwx': remove all permissions for others
+[?2004l[?2004h> # -czf: create gzipped tar archive
+[?2004l[?2004h> # . : archive contents of current directory (which is /home/user/data)
+[?2004l[?2004h> 
+[?2004l[?2004h> tar -C /home/user/data \
+[?2004l[?2004h>     --exclude='*.tmp' \
+[?2004l[?2004h>     -h \
+[?2004l[?2004h>     --owner=0:root \
+[?2004l[?2004h>     --group=0:root \
+[?2004l[?2004h>     --mode='go-rwx' \
+[?2004l[?2004h>     -czf "${archive_path}" .
+[?2004l[?2004h> 
+[?2004l[?2004h> # Check if tar command succeeded
+[?2004l[?2004h> if [ $? -ne 0 ]; then
+[?2004l[?2004h>     echo "Backup failed: tar command returned error" >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate SHA-256 checksum
+[?2004l[?2004h> sha256sum "${archive_path}" > "${checksum_file}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Format checksum file to match required format
+[?2004l[?2004h> sed -i "s/${archive_name}$/(${archive_name}) = /" "${checksum_file}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Logging with header requirement
+[?2004l[?2004h> if [ ! -f "${LOG_FILE}" ]; then
+[?2004l[?2004h>     # Create log file with header if it doesn't exist
+[?2004l[?2004h>     echo "TIMESTAMP | ARCHIVE | STATUS" > "${LOG_FILE}"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Append log entry
+[?2004l[?2004h> log_entry="${timestamp} - ${archive_name} - OK"
+[?2004l[?2004h> echo "${log_entry}" >> "${LOG_FILE}"
+[?2004l[?2004h> 
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# chmod +x /tmp/backup_script.sh
+[?2004l[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# /tmp/backup_script.sh
+[?2004ltar: root: Invalid owner or group ID
+tar: Error is not recoverable: exiting now
+Backup failed: tar command returned error
+[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# echo "Backup script execution completed."
+[?2004lBackup script execution completed.
+[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# cat > /tmp/backup_script_fixed.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration & Setup
+[?2004l[?2004h> BACKUP_DEST="${BACKUP_DEST:-/home/user/archives}"
+[?2004l[?2004h> LOG_FILE="${LOG_FILE:-/home/user/backup_logs/backup.log}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create directories if they don't exist
+[?2004l[?2004h> mkdir -p "${BACKUP_DEST}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Backup directory is under BACKUP_DEST, ensure it exists
+[?2004l[?2004h> backup_dir="${BACKUP_DEST}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Data source directory
+[?2004l[?2004h> DATA_DIR="/home/user/data"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get current date for filenames
+[?2004l[?2004h> datestamp=$(date +"%Y%m%d")
+[?2004l[?2004h> timestamp=$(date +"%F %T")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Archive and checksum filenames
+[?2004l[?2004h> archive_name="daily_${datestamp}.tar.gz"
+[?2004l[?2004h> archive_path="${backup_dir}/${archive_name}"
+[?2004l[?2004h> checksum_file="${backup_dir}/daily_${datestamp}.sha256"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Rotation - rename existing files if they exist
+[?2004l[?2004h> if [ -f "${archive_path}" ]; then
+[?2004l[?2004h>     mv "${archive_path}" "${archive_path}.bak-$(date +"%s")"
+[?2004l[?2004h> fi
+[?2004l[?2004h> if [ -f "${checksum_file}" ]; then
+[?2004l[?2004h>     mv "${checksum_file}" "${checksum_file}.bak-$(date +"%s")"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create compressed tar archive with filtering and normalization
+[?2004l[?2004h> # Using numeric UID/GID (0:0) instead of string "root:root"
+[?2004l[?2004h> # -C /home/user/data: change to data directory first
+[?2004l[?2004h> # --exclude '*.tmp': exclude temporary files
+[?2004l[?2004h> # -h: dereference symbolic links (to avoid including broken ones)
+[?2004l[?2004h> # --owner=0: set owner to root (UID 0)
+[?2004l[?2004h> # --group=0: set group to root (GID 0)
+[?2004l[?2004h> # --mode='go-rwx': remove all permissions for others
+[?2004l[?2004h> # -czf: create gzipped tar archive
+[?2004l[?2004h> # . : archive contents of current directory (which is /home/user/data)
+[?2004l[?2004h> 
+[?2004l[?2004h> tar -C /home/user/data \
+[?2004l[?2004h>     --exclude='*.tmp' \
+[?2004l[?2004h>     -h \
+[?2004l[?2004h>     --owner=0 \
+[?2004l[?2004h>     --group=0 \
+[?2004l[?2004h>     --mode='go-rwx' \
+[?2004l[?2004h>     -czf "${archive_path}" .
+[?2004l[?2004h> 
+[?2004l[?2004h> # Check if tar command succeeded
+[?2004l[?2004h> if [ $? -ne 0 ]; then
+[?2004l[?2004h>     echo "Backup failed: tar command returned error" >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate SHA-256 checksum
+[?2004l[?2004h> sha256sum "${archive_path}" > "${checksum_file}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Format checksum file to match required format
+[?2004l[?2004h> sed -i "s/${archive_name}$/(${archive_name}) = /" "${checksum_file}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Logging with header requirement
+[?2004l[?2004h> if [ ! -f "${LOG_FILE}" ]; then
+[?2004l[?2004h>     # Create log file with header if it doesn't exist
+[?2004l[?2004h>     echo "TIMESTAMP | ARCHIVE | STATUS" > "${LOG_FILE}"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Append log entry
+[?2004l[?2004h> log_entry="${timestamp} - ${archive_name} - OK"
+[?2004l[?2004h> echo "${log_entry}" >> "${LOG_FILE}"
+[?2004l[?2004h> 
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# chmod +x /tmp/backup_script_fixed.sh
+[?2004l[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# /tmp/backup_script_fixed.sh
+[?2004ltar: ./projects/broken_link: File removed before we read it
+Backup failed: tar command returned error
+[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# echo "Fixed backup script execution completed."
+[?2004lFixed backup script execution completed.
+[?2004hroot@77531d2d-5827-41b9-b904-f03805bd82ed:~# 

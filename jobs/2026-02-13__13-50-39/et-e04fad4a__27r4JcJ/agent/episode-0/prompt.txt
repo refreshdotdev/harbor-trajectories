@@ -1,0 +1,156 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+Context:
+    You are a security-operations log analyst who has just received a batch of certificate “drop-ins”.  
+    The certificates are scattered across various subdirectories. Each certificate is accompanied 
+    by a one-line metadata file that contains its essential fields and a checksum.
+    Your job is to triage the batch, identify valid certificates, detect errors/corruption, and 
+    produce three artefacts for downstream monitoring.
+
+    Starting state of the machine:
+    1. Directory /home/user/certs_incoming/ exists and contains a nested hierarchy of subdirectories.
+       Inside these directories are pairs of files:
+       - *.crt (The certificate content)
+       - *.meta (Metadata)
+
+       Every *.meta file is a single line, pipe-delimited, with the following fixed field order:
+       subject|issuer|not_before|not_after|sha256_checksum
+       
+       - The date fields are in ISO-8601 calendar form: YYYY-MM-DD.
+       - The checksum is the SHA256 hash of the content of the corresponding *.crt file.
+
+       Example line:
+       CN=api.example.com|CN=Example-CA|2023-06-01|2024-12-31|a1b2c3d4...
+
+    2. No other files or directories are present in /home/user/cert_analysis/ (you must create it).
+
+    Required end state:
+    After you finish, the system must contain the following three new artefacts inside 
+    /home/user/cert_analysis/ :
+
+    A.  /home/user/cert_analysis/expiring_certs.csv  
+        • Include ONLY certificates that pass all validation checks (see below).
+        • CSV header must be exactly:  
+          filename,subject,issuer,not_before,not_after,days_until_expiry,status
+        • days_until_expiry is calculated as (not_after – today) in integer days.
+        • status logic:
+          – “OK”              when days_until_expiry > 30
+          – “EXPIRING_SOON”   when 0 <= days_until_expiry <= 30
+          – “EXPIRED”         when days_until_expiry < 0
+        • SORTING REQUIREMENT: The rows must be sorted by days_until_expiry in ASCENDING order 
+          (lowest/negative numbers first).
+
+    B.  /home/user/cert_analysis/analysis.log  
+        • One log line per VALID processed certificate.
+        • Format: YYYY-MM-DD HH:MM:SS Processed <filename> - <status>
+
+    C.  /home/user/cert_analysis/errors.json
+        • A JSON file containing a list of objects representing files that failed validation.
+        • Each object must have keys: "filename" (the .meta filename) and "reason".
+        • Validation logic (check in this strict order):
+          1. MISSING_CRT: The corresponding *.crt file does not exist.
+          2. INVALID_DATE: The not_before or not_after fields are not valid YYYY-MM-DD dates.
+          3. CHECKSUM_MISMATCH: The SHA256 hash of the *.crt file does not match the metadata checksum.
+        • If a file fails validation, do NOT include it in the CSV or log file. Add it only to errors.json.
+        • Example JSON content:
+          [
+            {"filename": "server_bad.meta", "reason": "CHECKSUM_MISMATCH"},
+            {"filename": "server_ghost.meta", "reason": "MISSING_CRT"}
+          ]
+
+    Deliverables:
+    1. /home/user/cert_analysis/expiring_certs.csv
+    2. /home/user/cert_analysis/analysis.log
+    3. /home/user/cert_analysis/errors.json
+
+Current terminal state:
+Current Terminal Screen:
+root@291289b1-48f3-4fe5-8785-032bb0293e75:/home/user#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

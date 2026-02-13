@@ -1,0 +1,73 @@
+Current terminal state:
+New Terminal Output:
+
+> cat >> process_logs.sh << 'EOF'
+>
+> # Analysis function
+> parse_logs() {
+>     local port_threshold="$1"
+>     echo "# Phase 2: Analysis - parsing cleaned_combined.log for SSH failed password attempts" >> "$OUTPUT_DIR/process_log.txt"
+>
+>     # Extract relevant log entries
+>     grep "Failed password" "$OUTPUT_DIR/cleaned_combined.log" | while read -r line; do
+>         # Extract IP address and port
+>         ip=$(echo "$line" | grep -o -E "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | head -1)
+>         port=$(echo "$line" | grep -o -E "port [0-9]+" | awk '{print $2}' | head -1)
+>
+>         # Only process high ports
+>         if [ -n "$port" ] && [ "$port" -ge "$port_threshold" ]; then
+>             # Extract timestamp (format: MMM DD HH:MM:SS)
+>             timestamp=$(echo "$line" | awk '{print $1, $2, $3}' | tr -d '[]')
+>
+>             # Convert to UTC (EST is UTC-5, assume 2023 year)
+>             utc_timestamp="2023-$(date -d "$timestamp" +"%Y-%m-%dT%H:%M:%SZ")"
+>
+>             # Store for report generation
+>             echo "$ip|$utc_timestamp" >> "$OUTPUT_DIR/attacks.tmp"
+>         fi
+>     done
+> }
+>
+> # Generate report
+> generate_report() {
+>     echo "# Phase 3: Generating report.csv" >> "$OUTPUT_DIR/process_log.txt"
+>
+>     # Create header with comma delimiter
+>     echo "IP,First_Seen_UTC,Attempt_Count" > "$OUTPUT_DIR/report.csv"
+>
+>     # Process attacks and sort by attempt count (descending)
+>     if [ -f "$OUTPUT_DIR/attacks.tmp" ]; then
+>         awk -F"|" '{count[$1]++} END {for (ip in count) {print ip, count[ip]}}' "$OUTPUT_DIR/attacks.tmp" | \
+>         sort -t" " -k2 -nr -k1 -r | \
+>         while read -r ip count; do
+>             # Find earliest timestamp for this IP
+>             first_seen=$(grep "^$ip|" "$OUTPUT_DIR/attacks.tmp" | sort | head -1 | cut -d"|" -f2)
+>             # Use semicolon delimiter for data rows
+>             echo "$ip;$first_seen;$count" >> "$OUTPUT_DIR/report.csv"
+>         done
+>     fi
+> }
+>
+> # Main processing logic
+> if [ -s "$OUTPUT_DIR/cleaned_combined.log" ]; then
+>     parse_logs "$PORT_THRESHOLD"
+>     generate_report
+>
+>     # Clean up temporary files
+>     rm -f "$OUTPUT_DIR/attacks.tmp"
+>
+>     echo "Processing complete. Report generated." >> "$OUTPUT_DIR/process_log.txt"
+> else
+>     echo "No valid log data available for analysis." >> "$OUTPUT_DIR/process_log.txt"
+> fi
+>
+> echo "# Phase 4: Generating checksum" >> "$OUTPUT_DIR/process_log.txt"
+> sha1sum "$OUTPUT_DIR/report.csv" > "$OUTPUT_DIR/report.csv.sha1"
+> sed -i 's/ .*//' "$OUTPUT_DIR/report.csv.sha1"  # Remove filename from checksum file
+> EOFchmod +x process_logs.sh
+> ./process_logs.sh
+> ls -la /home/user/out/
+>
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

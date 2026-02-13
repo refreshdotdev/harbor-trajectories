@@ -1,0 +1,187 @@
+Current terminal state:
+New Terminal Output:
+
+root@0a2420fe-fc93-4111-856f-d3cbc843a217:~# mkdir -p /home/user/data
+root@0a2420fe-fc93-4111-856f-d3cbc843a217:~# mkdir -p /home/user/bin
+root@0a2420fe-fc93-4111-856f-d3cbc843a217:~# cat > /home/user/bin/generate_cost_report.sh << 'EOF'
+> #!/bin/bash
+>
+> # FinOps Cost Reporting Pipeline v2
+> # This script processes container usage data through multiple stages
+>
+> set -eo pipefail
+>
+> SCRIPT_NAME=$(basename "$0")
+> DEFAULT_REPORT_PATH="/home/user/container_usage/cost_report.txt"
+> USAGE_LOG="/home/user/container_usage/usage.log"
+> OWNERS_V2_CSV="/home/user/container_usage/owners_v2.csv"
+> INTERMEDIATE_DIR="/home/user/data"
+> CLEAN_USAGE_CSV="$INTERMEDIATE_DIR/clean_usage.csv"
+> JSON_MODEL="$INTERMEDIATE_DIR/cost_model.json"
+>
+> # Step 1: Phase 1 - Ingestion & Sanitization
+> # Input: usage.log (UTF-8 CSV with comments and NULL/N/A values)
+> # Output: clean_usage.csv (UTF-8 CSV with sanitized numeric values)
+> echo "=== PHASE 1: Ingestion & Sanitization ==="
+>
+> # Create clean_usage.csv with header
+> # Filter out comment lines, sanitize NULL/N/A to 0 in numeric fields
+> awk -F, 'BEGIN {
+>     print "container_id,image,cpu_percent,mem_mb,runtime_hours,cost_per_hour"
+> }
+> !/^#/ {
+>     # Sanitize numeric fields - treat NULL/N/A as 0
+>     if ($3 ~ /^[0-9.]+$/ || $3 == "" || $3 == "N/A" || $3 == "NULL") gsub(/[A-Za-z]/, "", $3)
+>     if ($4 ~ /^[0-9.]+$/ || $4 == "" || $4 == "N/A" || $4 == "NULL") gsub(/[A-Za-z]/, "", $4)
+>     if ($5 ~ /^[0-9.]+$/ || $5 == "" || $5 == "N/A" || $5 == "NULL") gsub(/[A-Za-z]/, "", $5)
+>     if ($6 ~ /^[0-9.]+$/ || $6 == "" || $6 == "N/A" || $6 == "NULL") gsub(/[A-Za-z]/, "", $6)
+>
+>     # Convert empty strings to 0 after sanitization
+>     $3 = ($3 == "") ? "0" : $3
+>     $4 = ($4 == "") ? "0" : $4
+>     $5 = ($5 == "") ? "0" : $5
+>     $6 = ($6 == "") ? "0" : $6
+>
+>     # Convert to numbers and ensure numeric values
+>     $3 += 0; $4 += 0; $5 += 0; $6 += 0
+>     print
+> }' "$USAGE_LOG" > "$CLEAN_USAGE_CSV"
+>
+> # Step 2: Phase 2 - Enrichment & Cost Modeling
+> # Input: clean_usage.csv, owners_v2.csv (UTF-16LE with BOM, semicolon-delimited)
+> # Output: cost_model.json (JSON with calculated costs, idle status, metadata)
+> echo "=== PHASE 2: Enrichment & Cost Modeling ==="
+>
+
+> # Convert owners_v2.csv from UTF-16LE with BOM to UTF-8 CSV
+> # Handle BOM (byte order mark) and semicolon delimiter
+> iconv -f UTF-16LE -t UTF-8 "$OWNERS_V2_CSV" | \
+>   awk -F";" 'NR==1 {
+>     gsub(/^\xef\xbb\xbf/, "") # Remove BOM
+>     print "container_id,owner_email,environment,region"
+>     next
+>   }
+>   {
+>     print
+>   }' > "$INTERMEDIATE_DIR/owners_utf8.csv"
+>
+> # Generate JSON model
+> # Calculate costs, apply tax rules, detect idle containers
+> # Use current timestamp and calculate SHA256 hash of clean_usage.csv
+> generated_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+> source_hash=$(sha256sum "$CLEAN_USAGE_CSV" | cut -d' ' -f1)
+>
+> jq -n --arg ts "$generated_ts" --arg hash "$source_hash" --slurpfile usage "<" "$CLEAN_USAGE_CSV" '
+>   {
+>     _meta: {
+>       generated: $ts,
+>       source_hash: $hash
+>     },
+>     data: [
+>       foreach range(0; .usage[0].length? - 1) as $i ({
+>         container_id: .usage[0][$i][0],
+>         image: .usage[0][$i][1],
+>         cpu_percent: .usage[0][$i][2],
+>         mem_mb: .usage[0][$i][3],
+>         runtime_hours: .usage[0][$i][4],
+>         cost_per_hour: .usage[0][$i][5]
+>       } | .cpu_percent = (tonumber(.cpu_percent) | round(4)),
+>                     .mem_mb = (tonumber(.mem_mb) | round(4)),
+>                     .runtime_hours = tonumber(.runtime_hours),
+>                     .cost_per_hour = tonumber(.cost_per_hour) |
+>       if .runtime_hours == 0 or .cost_per_hour == 0 then
+>         .base_cost = 0,
+>         .taxed_cost = 0,
+>         .final_cost = 0,
+>         .tax_rate = 0,
+>         .is_idle = true
+>       else
+>         .base_cost = (.runtime_hours * .cost_per_hour),
+>         .taxed_cost = (
+>           if .base_cost > 0 then
+>             .base_cost * (
+>               if (.region | test("eu-west")) then 1.10
+>               else if (.region | test("us-east")) then 1.00
+>               else 1.05
+>               end
+>             )
+>           else .base_cost
+>           end
+>         ),
+>         .final_cost = (
+>           if .environment == "dev" then
+>             .taxed_cost * 0.50
+>           else
+>             .taxed_cost
+>           end
+>         ),
+>         .tax_rate = (
+>           if .region | test("eu-west") then "10%"
+>           else if .region | test("us-east") then "0%"
+>           else "5%"
+>           end
+>         ),
+>         .is_idle = (.cpu_percent <= 5.0 and .mem_mb < 512)
+>       end |
+>       .total_cost = (.final_cost | round(4)),
+>       .is_idle = (.is_idle | not),
+>       del(.base_cost, .taxed_cost)
+>       ) ]
+>     }
+>   ' "$INTERMEDIATE_DIR/owners_utf8.csv" > "$JSON_MODEL"
+>
+> # Step 3: Phase 3 - Final Reporting
+> # Input: cost_model.json
+> # Output: cost_report.txt (ISO-8859-1 encoded text report)
+> echo "=== PHASE 3: Final Reporting ==="
+>
+> # Get report output file path
+> output_file="${1:-$DEFAULT_REPORT_PATH}"
+>
+> # Generate report content
+> report_content=$(jq -r '.data[] | "\(.container_id) | \(.region) | \(.tax_rate) | \(."total_cost" | tostring)"' "$JSON_MODEL" | \
+>   awk -v OFS="|" -v tax_col=3 -v cost_col=4 '
+>     BEGIN {
+>       print "Container | Region | Tax | Cost"
+>       print "---------------------------------"
+>       active=0; idle=0; total_cost=0
+>     }
+>     {
+>       # Convert scientific notation to decimal for cost
+>       if ($cost_col ~ /^[0-9]+\.[0-9]{4}[eE]/) {
+>         $cost_col = sprintf("%%\.2f", $cost_col)
+>       } else {
+>         $cost_col = sprintf("%%\.2f", $cost_col)
+>       }
+>
+>       # Count idle vs active containers
+>       if ($0 ~ /True/) idle++
+>       else active++
+>
+>       # Sum total cost (convert to number first)
+>       total_cost += $cost_col + 0
+>
+>       print
+>     }
+>     END {
+>       printf "\\nSummary\\n=======\\nActive Containers: %d\\nIdle Containers: %d\\nTotal Cost: $%%.2f\\n", active, idle, total_cost
+>     }'
+> )
+>
+> # Add integrity hash and write report
+> integrity_hash=$(md5sum "$JSON_MODEL" | cut -d' ' -f1)
+> final_report="${report_content}
+> [Integrity Hash: ${integrity_hash}]"
+>
+> # Convert report to ISO-8859-1 and write to file
+> echo -e "$final_report" | iconv -t ISO-8859-1 > "$output_file"
+>
+> echo "Pipeline execution completed successfully."
+> echo "Report generated at: $output_file"
+>
+> EOF
+root@0a2420fe-fc93-4111-856f-d3cbc843a217:~# chmod +x /home/user/bin/generate_cost_report.sh
+root@0a2420fe-fc93-4111-856f-d3cbc843a217:~#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

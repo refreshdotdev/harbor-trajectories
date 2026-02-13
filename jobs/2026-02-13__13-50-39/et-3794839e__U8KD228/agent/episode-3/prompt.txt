@@ -1,0 +1,83 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+- Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+> cat > mlops/create_test_data.py << 'EOF'
+> #!/usr/bin/env python3
+> import os
+> import codecs
+> import hashlib
+> from datetime import datetime
+>
+> def create_test_data(base_path):
+>     """Create comprehensive test dataset"""
+>     experiments_dir = os.path.join(base_path, 'mlops', 'experiments')
+>     deprecated_dir = os.path.join(base_path, 'mlops', 'deprecated')
+>
+>     # Create sample experiments
+>     experiments = [
+>         ('exp_alpha', 'READY', 'model_alpha.pt'),
+>         ('exp_beta', 'READY', 'model_beta.pt'),
+>         ('exp_gamma', 'READY', 'model_gamma.pt'),
+>         ('exp_delta', 'READY', 'model_delta.pt'),
+>         ('exp_epsilon', 'READY', 'model_epsilon.pt')
+>     ]
+>
+>     # Create status override
+>     override_dir = os.path.join(experiments_dir, 'exp_override')
+>     os.makedirs(override_dir, exist_ok=True)
+>     with open(os.path.join(override_dir, 'status_override.map'), 'w') as f:
+>         f.write("model_gamma.pt=PROCESSED\n")
+>         f.write("model_delta.pt=ERROR\n")
+>
+>     # Create deprecated files
+>     deprecated_files = ['LEGACY_MODEL.OLD', 'OLD_ASSET.TXT', 'deprecated_file.bin']
+>     for f in deprecated_files:
+>         open(os.path.join(deprecated_dir, f), 'w').close()
+>
+>     # Create test files with different encodings and content
+>     for i, (exp_name, default_status, artifact) in enumerate(experiments):
+>         exp_dir = os.path.join(experiments_dir, exp_name)
+>         os.makedirs(exp_dir, exist_ok=True)
+>
+>         # Create UTF-8 file
+>         with open(os.path.join(exp_dir, 'artifacts.txt'), 'w', encoding='utf-8') as f:
+>             f.write(f"{artifact} | {default_status} | metadata1\n")
+>             f.write(f"  even_spaces.txt | READY | metadata2    \n")  # 4 trailing spaces - valid
+>             f.write(f"odd_spaces.log | READY | metadata3   \n")   # 3 trailing spaces - corrupted
+>             f.write(f"empty_line.log | READY |          \n")    # Empty line - valid
+>             f.write(f"corrupted_line.txt | READY | metadata4\n") # No trailing spaces - valid
+>             f.write(f"  indented_line.log | READY | metadata5   \n") # 2 trailing spaces - valid
+>
+>             # Add additional artifacts for testing
+>             f.write(f"{artifact.replace('.pt', '_v2.pt')} | READY | metadata6\n")
+>             f.write(f"{artifact.replace('.pt', '_v3.pt')} | READY | metadata7\n")
+>
+>             # Add deprecated artifact
+>             deprecated_artifact = "LEGACY_MODEL.OLD"
+>             f.write(f"{deprecated_artifact} | READY | deprecated_meta\n")
+>
+>             # Add artifact that should be overridden
+>             if exp_name == 'exp_override':
+>                 f.write(f"model_gamma.pt | READY | should_be_overridden\n")
+>                 f.write(f"model_delta.pt | READY | should_be_overridden\n")
+>
+>         # Create UTF-16LE file
+>         utf16le_content = f"utf16le_artifact.txt | READY | utf16le_meta\n".encode('utf-16-le')
+>         with open(os.path.join(exp_dir, 'artifacts.log'), 'wb') as f:
+>             f.write(utf16le_content)
+>
+>         # Create Latin-1 file
+>         latin1_content = f"latin1_artifact.bin | READY | latin1_meta\n".encode('latin-1')
+>         with open(os.path.join(exp_dir, 'artifacts.bin'), 'wb') as f:
+>             f.write(latin1_content)
+>
+>     print("Test data created successfully")
+>
+> if __name__ == '__main__':
+>     create_test_data('/home/user')
+> EOFpython3 mlops/create_test_data.py
+>

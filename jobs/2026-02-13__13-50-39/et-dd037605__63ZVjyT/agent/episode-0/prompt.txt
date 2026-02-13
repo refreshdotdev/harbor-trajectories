@@ -1,0 +1,147 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Network Diagnostic & Serialization Task
+
+You are taking over a legacy monitoring node integration task. The previous engineer left midway through the migration from a local configuration system to a centralized one. Your goal is to generate a structured diagnostic dataset and a human-readable summary report for the host located at `/home/user`.
+
+## Configuration Context
+
+This host is part of the "Gamma" cluster. Unlike the alpha nodes which still use `/home/user/diag_config.conf`, all Gamma nodes have been migrated to the centralized configuration path at `/opt/monitoring/config/diagnostics.ini`. You must ignore any configuration files found in the user's home directory as they are stale decoys. 
+
+**Warning:** The centralized configuration management system is legacy software (circa 1999) and saves files using the **ISO-8859-1 (Latin-1)** character set. Attempting to parse this file as UTF-8 will result in errors due to legacy copyright symbols in the header comments.
+
+## Task Requirements
+
+You must produce two distinct output files based on live system data. The generation order matters because one file references the other.
+
+### 1. The Machine-Readable Data
+
+**Path:** `/home/user/network_data.json`
+**Encoding:** UTF-16LE with Byte Order Mark (BOM)
+
+This file must be a valid JSON object containing the following keys:
+
+*   `"timestamp_utc"`: Current UTC time in ISO-8601 format (e.g., `2023-10-27T10:00:00Z`).
+*   `"interface_config"`: An object containing:
+    *   `"name"`: The interface name specified in the configuration file variable `NET_IFACE`.
+    *   `"primary_ip"`: The first IPv4 address assigned to that interface (do not include CIDR prefix).
+    *   `"mtu"`: The integer MTU value of the interface.
+*   `"connectivity"`: An object containing:
+    *   `"gateway_ip"`: The default gateway address. If multiple exist, choose the one with the lowest metric. If none, `null`.
+    *   `"active_tcp_flows"`: Integer count of TCP sockets in the **ESTABLISHED** state only (ignore LISTEN, TIME-WAIT, etc.). Use `ss`.
+    *   `"ping_jitter_ms"`: The standard deviation (`mdev`) from a 5-count ping to the target specified in `PING_HOST` (from config). This must be a float rounded to exactly 3 decimal places.
+
+### 2. The Human-Readable Report
+
+**Path:** `/home/user/network_summary.txt`
+**Encoding:** UTF-8 (Standard)
+
+This file serves as a verification sidecar. It must contain exactly these lines:
+
+Line 1: `GAMMA NODE DIAGNOSTIC SUMMARY`
+Line 2: `Generated: <timestamp_utc>` (Must match the JSON timestamp exactly)
+Line 3: `Target Host: <PING_HOST>` (From config)
+Line 4: `Link Status: <UP or DOWN>` (Based on the operstate of `NET_IFACE`)
+Line 5: `Data Hash: <SHA-1 hash>`
+
+**Crucial:** The `Data Hash` in Line 5 must be the **SHA-1** hash of the binary content of the `network_data.json` file you generated. This ensures the integrity of the binary-encoded JSON file.
+
+## Constraints
+
+*   **Permissions:** Both output files must be mode `644`.
+*   **Environment:** Do not hardcode values. The script must dynamically read `/opt/monitoring/config/diagnostics.ini`.
+*   **Robustness:** The JSON file must be strictly valid. A trailing comma will cause ingestion failure. The encoding (UTF-16LE) is mandatory for the Windows-based ingestion service.
+
+When both files are present, valid, and consistent (hash matches, timestamps match), the task is complete.
+
+Current terminal state:
+Current Terminal Screen:
+root@05337c35-c522-47ca-ac05-5f66601ac207:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

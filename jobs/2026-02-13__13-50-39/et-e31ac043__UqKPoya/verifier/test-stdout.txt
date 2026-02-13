@@ -1,0 +1,99 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 5 items
+
+../../tests/test_final_state.py::test_environment_isolation PASSED       [ 20%]
+../../tests/test_final_state.py::test_secure_keyring_has_key PASSED      [ 40%]
+../../tests/test_final_state.py::test_audit_log_format_and_content FAILED [ 60%]
+../../tests/test_final_state.py::test_encrypted_payload_decrypts FAILED  [ 80%]
+../../tests/test_final_state.py::test_manifest_integrity PASSED          [100%]
+
+=================================== FAILURES ===================================
+______________________ test_audit_log_format_and_content _______________________
+
+    def test_audit_log_format_and_content():
+        """verification_audit.json must be valid JSON with specific keys."""
+        _require_file(AUDIT_LOG)
+    
+        try:
+>           data = json.loads(AUDIT_LOG.read_text())
+
+/tests/test_final_state.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.10/json/__init__.py:346: in loads
+    return _default_decoder.decode(s)
+/usr/lib/python3.10/json/decoder.py:337: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <json.decoder.JSONDecoder object at 0x796861aa7ac0>
+s = '{\\n  "status": "valid",\\n  "signer_fingerprint": "A971E5ED0E9B791510E03A050EC25A81416512CC",\\n  "signature_timestamp_iso": "2026-02-13T18:51:00Z"\\n}\n'
+idx = 0
+
+    def raw_decode(self, s, idx=0):
+        """Decode a JSON document from ``s`` (a ``str`` beginning with
+        a JSON document) and return a 2-tuple of the Python
+        representation and the index in ``s`` where the document ended.
+    
+        This can be used to decode a JSON document from a string that may
+        have extraneous data at the end.
+    
+        """
+        try:
+>           obj, end = self.scan_once(s, idx)
+E           json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+/usr/lib/python3.10/json/decoder.py:353: JSONDecodeError
+
+During handling of the above exception, another exception occurred:
+
+    def test_audit_log_format_and_content():
+        """verification_audit.json must be valid JSON with specific keys."""
+        _require_file(AUDIT_LOG)
+    
+        try:
+            data = json.loads(AUDIT_LOG.read_text())
+        except json.JSONDecodeError:
+>           pytest.fail("verification_audit.json is not valid JSON")
+E           Failed: verification_audit.json is not valid JSON
+
+/tests/test_final_state.py:97: Failed
+_______________________ test_encrypted_payload_decrypts ________________________
+
+    def test_encrypted_payload_decrypts():
+        """payload.encrypted must decrypt using the derived passphrase."""
+        _require_file(ENCRYPTED_PAYLOAD)
+    
+        passphrase = _calculate_expected_passphrase(MESSAGE_TXT)
+    
+        # Attempt decryption
+        proc = subprocess.run(
+            [
+                "gpg", "--batch", "--yes", "--pinentry-mode", "loopback",
+                "--passphrase", passphrase,
+                "--decrypt", str(ENCRYPTED_PAYLOAD)
+            ],
+            capture_output=True,
+            text=False
+        )
+    
+>       assert proc.returncode == 0, (
+            f"Decryption failed with passphrase '{passphrase}'. stderr:\n{proc.stderr.decode('utf-8', errors='replace')}"
+        )
+E       AssertionError: Decryption failed with passphrase '445566778899-7331-efac-feeb-11225588-4650'. stderr:
+E         gpg: directory '/root/.gnupg' created
+E         gpg: keybox '/root/.gnupg/pubring.kbx' created
+E         gpg: AES256.CFB encrypted data
+E         gpg: encrypted with 1 passphrase
+E         gpg: decryption failed: Bad session key
+E         
+E       assert 2 == 0
+E        +  where 2 = CompletedProcess(args=['gpg', '--batch', '--yes', '--pinentry-mode', 'loopback', '--passphrase', '445566778899-7331-efac-feeb-11225588-4650', '--decrypt', '/home/user/work/integration/payload.encrypted'], returncode=2, stdout=b'', stderr=b"gpg: directory '/root/.gnupg' created\ngpg: keybox '/root/.gnupg/pubring.kbx' created\ngpg: AES256.CFB encrypted data\ngpg: encrypted with 1 passphrase\ngpg: decryption failed: Bad session key\n").returncode
+
+/tests/test_final_state.py:124: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_audit_log_format_and_content - F...
+FAILED ../../tests/test_final_state.py::test_encrypted_payload_decrypts - Ass...
+========================= 2 failed, 3 passed in 0.13s ==========================

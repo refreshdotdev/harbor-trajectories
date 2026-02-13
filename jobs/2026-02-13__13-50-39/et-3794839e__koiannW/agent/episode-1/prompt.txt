@@ -1,0 +1,207 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@9e3cc863-0a05-4e43-8389-146320425362:~# mkdir -p /home/user/mlops/experiments
+root@9e3cc863-0a05-4e43-8389-146320425362:~# mkdir -p /home/user/mlops/deprecated
+root@9e3cc863-0a05-4e43-8389-146320425362:~# mkdir -p /home/user/mlops/summary
+root@9e3cc863-0a05-4e43-8389-146320425362:~# cd /home/user/mlops
+root@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat > process_artifacts.py << 'EOF'
+> #!/usr/bin/env python3
+> """
+> MLOps Legacy Migration & Consolidation Script
+> """
+> import os
+> import sys
+> import glob
+> import hashlib
+> import re
+> import yaml
+> from collections import defaultdict
+> from datetime import datetime
+>
+> def detect_encoding(file_path):
+>     """Detect file encoding with priority: UTF-16LE with BOM, Latin-1, UTF-8"""
+>     with open(file_path, 'rb') as f:
+>         raw_data = f.read(4096)  # Read initial chunk
+>
+>     # Check for UTF-16LE BOM
+>     if raw_data.startswith(b'\xff\xfe'):
+>         return 'utf-16le'
+>
+>     # Check if valid Latin-1 (always valid)
+>     try:
+>         raw_data.decode('latin-1')
+>         return 'latin-1'
+>     except UnicodeDecodeError:
+>         pass
+>
+>     # Check if valid UTF-8
+>     try:
+>         raw_data.decode('utf-8')
+>         return 'utf-8'
+>     except UnicodeDecodeError:
+>         pass
+>
+>     return None
+>
+> def read_artifact_file(file_path):
+>     """Read artifact file with proper encoding handling"""
+>     encoding = detect_encoding(file_path)
+>     with open(file_path, 'r', encoding=encoding, errors='replace') as f:
+>         return f.readlines()
+>
+> def is_line_corrupted(line):
+>     """Check if line has odd number of trailing spaces"""
+>     stripped_line = line.rstrip()
+>     if stripped_line != line.rstrip(' '):
+>         # Calculate trailing spaces
+>         trailing_spaces = len(line) - len(stripped_line) - 1  # -1 for newline
+>         return trailing_spaces % 2 != 0
+>     return False
+>
+> def parse_line(line):
+>     """Parse a valid log line"""
+>     parts = line.rstrip().split('|')
+>     if len(parts) >= 2:
+>         artifact_name = parts[0].strip()
+>         status = parts[1].strip()
+>         return artifact_name, status, '|'.join(parts[2:]) if len(parts) > 2 else None
+>     return None, None, None
+>
+> def load_status_overrides(override_file):
+>     """Load status override mappings"""
+>     overrides = {}
+>     if os.path.exists(override_file):
+>         with open(override_file, 'r') as f:
+>             for line in f:
+>                 line = line.strip()
+>                 if line and not line.startswith('#'):
+>                     if '=' in line:
+>                         key, value = line.split('=', 1)
+>                         overrides[key.strip()] = value.strip()
+>     return overrides
+>
+> def get_deprecated_names(deprecated_dir):
+>     """Get set of deprecated root names (case-insensitive)"""
+>     deprecated = set()
+>     if os.path.exists(deprecated_dir):
+>         for filename in os.listdir(deprecated_dir):
+>             if filename:
+>                 name, _ = os.path.splitext(filename)
+>                 if name:
+>                     deprecated.add(name.lower())
+>     return deprecated
+>
+> def main():
+>     # Configuration
+>     experiments_dir = 'experiments'
+>     deprecated_dir = 'deprecated'
+>     summary_dir = 'summary'
+>
+>     corruption_report_path = os.path.join(summary_dir, 'corruption_report.txt')
+>     inventory_path = os.path.join(summary_dir, 'inventory.csv')
+>     manifest_path = os.path.join(summary_dir, 'manifest.yaml')
+>
+>     # Create summary directory
+>     os.makedirs(summary_dir, exist_ok=True)
+>
+>     # Initialize data structures
+>     corrupted_lines = []
+>     artifact_locations = defaultdict(list)
+>
+>     # Get deprecated names (case-insensitive)
+>     deprecated_names = get_deprecated_names(deprecated_dir)
+>
+>     # Scan experiment directories
+>     for exp_dir in os.listdir(experiments_dir):
+>         exp_path = os.path.join(experiments_dir, exp_dir)
+>         if os.path.isdir(exp_path):
+>             artifact_files = glob.glob(os.path.join(exp_path, 'artifacts.*'))
+>
+>             for artifact_file in artifact_files:
+>                 # Load status overrides if available
+>                 override_file = os.path.join(exp_path, 'status_override.map')
+>                 status_overrides = load_status_overrides(override_file)
+>
+>                 # Read artifact file with proper encoding
+>                 lines = read_artifact_file(artifact_file)
+>
+>                 for line in lines:
+>                     # Skip empty lines
+>                     if not line.strip():
+>                         continue
+>
+>                     # Handle corrupted lines
+>                     if is_line_corrupted(line):
+>                         corrupted_lines.append(f"{exp_dir}: {line.strip()}")
+>                         continue
+>
+>                     # Parse valid lines
+>                     artifact_name, log_status, _ = parse_line(line)
+>                     if artifact_name and log_status:
+>                         # Apply status override if exists
+>                         resolved_status = status_overrides.get(artifact_name, log_status)
+>
+>                         # Check exclusion policy
+>                         root_name = os.path.splitext(artifact_name)[0].lower()
+>                         if root_name in deprecated_names:
+>                             continue
+>
+>                         # Filter for READY status
+>                         if resolved_status == 'READY':
+>                             # Record location
+>                             rel_path = os.path.relpath(exp_path, '.').replace('\\', '/')
+>                             artifact_locations[artifact_name].append(rel_path)
+>
+>     # Write corruption report
+>     with open(corruption_report_path, 'w', encoding='utf-8') as f:
+>         f.write("\n".join(corrupted_lines))
+>
+>     # Prepare inventory data
+>     inventory_items = []
+>     for artifact, locations in artifact_locations.items():
+>         # Sort locations and remove duplicates while preserving order
+>         sorted_locations = sorted(set(locations))
+>         location_str = ';'.join(sorted_locations)
+>
+>         # Calculate name hash
+>         name_hash = hashlib.md5(artifact.strip().encode('utf-8')).hexdigest()
+>
+>         inventory_items.append((artifact.strip(), name_hash, location_str))
+>
+>     # Sort inventory alphabetically by artifact name (case-sensitive)
+>     inventory_items.sort(key=lambda x: x[0])
+>
+>     # Write inventory CSV
+>     with open(inventory_path, 'w', encoding='utf-8') as f:
+>         f.write("Artifact|NameHash|Locations\n")
+>         for item in inventory_items:
+>             f.write(f"{item[0]}|{item[1]}|{item[2]}\n")
+>
+>     # Prepare manifest data
+>     manifest_data = {
+>         'total_artifacts': len(inventory_items),
+>         'generated_at': datetime.utcnow().strftime('%Y-%m-%d')
+>     }
+>
+>     # Calculate inventory hash
+>     with open(inventory_path, 'rb') as f:
+>         manifest_data['inventory_hash'] = hashlib.sha256(f.read()).hexdigest()
+>
+>     # Write manifest YAML
+>     with open(manifest_path, 'w', encoding='utf-8') as f:
+>         yaml.safe_dump(manifest_data, f, default_flow_style=False)
+>
+>     print(f"Processing complete. Found {len(inventory_items)} artifacts.")
+>     print(f"Corruption report: {corruption_report_path}")
+>     print(f"Inventory report: {inventory_path}")
+>     print(f"Manifest report: {manifest_path}")
+>
+> if __name__ == '__main__':
+>     main()
+> EOF
+root@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# chmod +x process_artifacts.py
+root@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops#

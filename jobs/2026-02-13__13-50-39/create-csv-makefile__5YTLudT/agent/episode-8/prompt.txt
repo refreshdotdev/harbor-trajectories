@@ -1,0 +1,36 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+- Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# cat > Makefile << 'EOF'
+> .PHONY: clean analyze package all
+>
+> PROJECT_ROOT = $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+> LOG_FILE ?= pipeline.log
+>
+> all: package
+>
+> # Clean target - processes raw CSV files
+> clean:
+> @mkdir -p cleaned
+> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_a.csv $(PROJECT_ROOT)/cleaned/batch_a.tsv
+> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_b.csv $(PROJECT_ROOT)/cleaned/batch_b.tsv
+>
+> # Analyze target - generates JSON summaries
+> analyze: clean
+> @mkdir -p analysis
+> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_a.tsv $(PROJECT_ROOT)/analysis/batch_a.json
+> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_b.tsv $(PROJECT_ROOT)/analysis/batch_b.json
+>
+> # Package target - creates distribution archive
+> package: analyze
+> @mkdir -p temp_package
+> @cp -r cleaned analysis temp_package/
+> @(cd temp_package && find cleaned -name '*.tsv' -exec md5sum {} \; > manifest.md5)
+> @tar -czf delivery.tar.gz -C temp_package cleaned analysis manifest.md5
+> @rm -rf temp_package
+> EOFmake clean
+>

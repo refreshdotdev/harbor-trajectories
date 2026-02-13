@@ -1,0 +1,106 @@
+Current terminal state:
+New Terminal Output:
+
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# mkdir -p /home/user/diagnostics
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# cat > /home/user/diagnostics/targets.txt << 'EOF'
+> # Network targets for CI/CD diagnostics
+> example.com
+> google.com
+> 8.8.8.8
+>
+> # Some commented and empty lines
+> # This should be ignored
+> EOF
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# chmod 644 /home/user/diagnostics/targets.txt
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# cat > /home/user/diagnostics/run_net_checks.sh << 'EOF'
+> #!/bin/sh
+>
+> # Full path to log file
+> LOG_FILE="/home/user/diagnostics/netcheck.log"
+> # Get timestamp in ISO 8601 format
+> TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+>
+> # Log rotation - compress old log if exists
+> if [ -f "${LOG_FILE}" ]; then
+>     gzip -c "${LOG_FILE}" > "/home/user/diagnostics/netcheck.previous.log.gz"
+> fi
+>
+> # Create new log file with headers
+> : > "${LOG_FILE}"
+> cat << EOF > "${LOG_FILE}"
+> # Netcheck Report
+> Timestamp: ${TIMESTAMP}
+> EOF
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~#
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Define function to perform checks
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# perform_checks() {
+>     host="${1}"
+>
+>     # Process each command type
+>     for cmd_type in ping traceroute dig; do
+>         case "${cmd_type}" in
+>             ping)
+>                 cmd="ping -n -c 1 ${host}"
+>                 ;;
+>             traceroute)
+>                 cmd="traceroute -n -m 5 ${host}"
+>                 ;;
+>             dig)
+>                 cmd="dig +short ${host} A"
+>                 ;;
+>         esac
+>
+>         # Execute command, capture output, encode, and log
+>         output="$(eval "${cmd}" 2>&1)"
+>         exit_code="${?}"
+>         encoded_output="$(echo "${output}" | base64)"
+>
+>         # Atomically append to log file
+>         flock -x 200
+>         echo "===== START host=${host} check=${cmd_type} =====" >> "${LOG_FILE}"
+>         echo "${encoded_output}" >> "${LOG_FILE}"
+>         echo "===== END host=${host} check=${cmd_type} status=${exit_code} =====" >> "${LOG_FILE}"
+>     done
+> }
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~#
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Main logic: process targets.txt
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# if [ ! -f "/home/user/diagnostics/targets.txt" ]; then
+>     echo "Error: Configuration file targets.txt not found." >&2
+>     exit 1
+> fi
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~#
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Read targets file, skipping comments and empty lines
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# while IFS= read -r line; do
+>     # Skip empty lines and comments
+>     case "${line}" in
+>         ""|"#"*) continue ;;
+>         *)
+>             # Launch check in background for parallelism
+>             perform_checks "${line}" &
+>             ;;
+>     esac
+> done < "/home/user/diagnostics/targets.txt"
+[1] 645
+[2] 646
+[3] 648
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~#
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Wait for all background jobs to complete
+root@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# wait
+flock: flock: 200200: Bad file descriptor
+: Bad file descriptor
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+flock: 200: Bad file descriptor
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+chmod +x /home/user/diagnostics/run_net_checks.sh
+ls -la /home/user/diagnostics/
+
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

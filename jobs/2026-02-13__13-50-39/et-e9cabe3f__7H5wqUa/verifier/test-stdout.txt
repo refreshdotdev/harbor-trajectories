@@ -1,0 +1,101 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 3 items
+
+../../tests/test_final_state.py::test_required_files_exist PASSED        [ 33%]
+../../tests/test_final_state.py::test_optimized_rules_content FAILED     [ 66%]
+../../tests/test_final_state.py::test_audit_manifest_encoding_and_structure FAILED [100%]
+
+=================================== FAILURES ===================================
+_________________________ test_optimized_rules_content _________________________
+
+    def test_optimized_rules_content():
+        # Read binary to check for CRLF contamination
+        content_bytes = OPTIMIZED_RULES.read_bytes()
+        assert b"\r\n" not in content_bytes, "optimized_rules.v4 must use Unix LF line endings, not Windows CRLF."
+    
+        content = content_bytes.decode('utf-8')
+        lines = [l.strip() for l in content.split('\n') if l.strip()]
+    
+        # Check Policies
+        assert ":INPUT DROP" in content
+        assert ":FORWARD DROP" in content
+        assert ":OUTPUT ACCEPT" in content
+    
+        # Check Rule Ordering
+        rules = [l for l in lines if l.startswith("-A")]
+        assert "RELATED,ESTABLISHED" in rules[0], "The first rule must be the preserved state rule."
+    
+        # Check for trap IP (Zero width space)
+        assert "\u200b" not in content, "Configuration values were not sanitized; found zero-width space."
+    
+        # Validate Expansion and Sorting
+        # Expected allows: 22, 80, 443, 9000, 9001, 9002
+        # Expected blocks: 23, 3306
+        # The requirement is that all rules are sorted by port.
+        # This test extracts them separately to verify content and internal order.
+    
+        # Extract ports from ACCEPT rules
+        accept_ports = []
+        for r in rules:
+            if "-j ACCEPT" in r and "dport" in r:
+                m = re.search(r"--dport (\d+)", r)
+                if m:
+                    accept_ports.append(int(m.group(1)))
+    
+        expected_accepts = [22, 80, 443, 9000, 9001, 9002]
+>       assert accept_ports == expected_accepts, f"ACCEPT rules are incorrect or unsorted. Found: {accept_ports}"
+E       AssertionError: ACCEPT rules are incorrect or unsorted. Found: [22, 80, 443]
+E       assert [22, 80, 443] == [22, 80, 443,...0, 9001, 9002]
+E         
+E         Right contains 3 more items, first extra item: 9000
+E         
+E         Full diff:
+E           [
+E               22,
+E               80,...
+E         
+E         ...Full output truncated (5 lines hidden), use '-vv' to show
+
+/tests/test_final_state.py:58: AssertionError
+__________________ test_audit_manifest_encoding_and_structure __________________
+
+    def test_audit_manifest_encoding_and_structure():
+        # 1. Check Encoding (Must be ISO-8859-1)
+        # We test this by reading as Latin-1 and looking for the Section Sign (\xa7)
+        try:
+            with open(AUDIT_MANIFEST, "r", encoding="iso-8859-1") as f:
+                lines = [l.strip() for l in f.readlines()]
+        except UnicodeDecodeError:
+            pytest.fail("audit_manifest.csv could not be read as ISO-8859-1.")
+    
+        # 2. Check Header and Delimiter
+        assert lines[0] == "timestamp|action|detail", "Header must use pipe delimiter: timestamp|action|detail"
+    
+        # 3. Check for Section Sign in details
+        # We look for at least one line with the section sign
+        found_section_sign = False
+        for line in lines:
+            parts = line.split("|")
+            if len(parts) >= 3:
+                if "\u00a7" in parts[2]: # \u00a7 is the unicode representation of §
+                    found_section_sign = True
+        assert found_section_sign, "Did not find the required section sign (§) in the 'detail' column for policy changes."
+    
+        # 4. Check Footers
+        check_line = lines[-2]
+        bytes_line = lines[-1]
+    
+>       assert check_line.startswith("Check: "), "Second to last line must start with 'Check: '"
+E       AssertionError: Second to last line must start with 'Check: '
+E       assert False
+E        +  where False = <built-in method startswith of str object at 0x7f6c0b0c3a50>('Check: ')
+E        +    where <built-in method startswith of str object at 0x7f6c0b0c3a50> = 'Check:e374d938cd60838f7855a887245dc3f4'.startswith
+
+/tests/test_final_state.py:97: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_optimized_rules_content - Assert...
+FAILED ../../tests/test_final_state.py::test_audit_manifest_encoding_and_structure
+========================= 2 failed, 1 passed in 0.03s ==========================

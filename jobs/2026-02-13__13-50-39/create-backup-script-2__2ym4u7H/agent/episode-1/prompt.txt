@@ -1,0 +1,81 @@
+Current terminal state:
+New Terminal Output:
+
+root@ce601f82-7746-4839-81ca-34136a84ecde:~# cd /home/user/hardening_test
+root@ce601f82-7746-4839-81ca-34136a84ecde:/home/user/hardening_test# cat > apply_hardening.sh << 'EOF'
+> #!/bin/sh
+>
+> # POSIX-compliant hardening automation script
+> # Ensure we're in the correct directory
+> if [ "$(basename "$PWD")" != "hardening_test" ]; then
+>     echo "Error: Script must be run from /home/user/hardening_test/" >&2
+>     exit 1
+> fi
+>
+> set -e
+>
+> # Initialize empty log file
+> log_file="hardening.log"
+> echo -n > "$log_file"
+>
+> # Process each rule from rules.txt
+> while IFS='|' read -r filename search_pattern enforced_line; do
+>     # Skip empty or comment lines
+>     if [ -z "$filename" ] || [ "${filename:0:1}" = "#" ]; then
+>         continue
+>     fi
+>
+>     # Safety backup: only create if doesn't exist
+>     if [ ! -f "${filename}.bak" ]; then
+>         if [ -f "$filename" ]; then
+>             cp "$filename" "${filename}.bak"
+>         else
+>             echo "$filename: File not found, skipping backup" >> "$log_file"
+>             continue
+>         fi
+>     fi
+>
+>     # Trim enforced_line to avoid trailing newline issues
+>     enforced_line="${enforced_line%\n}"
+>
+>     # Check if enforced_line already exists exactly
+>     if grep -Fxq "$enforced_line" "$filename" 2>/dev/null; then
+>         echo "$filename:SKIPPED" >> "$log_file"
+>         chmod 0600 "$filename"
+>         continue
+>     fi
+>
+>     # Try to repair by replacing matching pattern line
+>     if grep -qE "^$search_pattern" "$filename" 2>/dev/null; then
+>         # Create temp file for atomic replacement
+>         temp_file="$(mktemp)"
+>         # Use sed to replace the matching line
+>         sed -E "s/^\($search_pattern\)/$enforced_line/" "$filename" > "$temp_file"
+>         # Atomic replacement
+>         mv "$temp_file" "$filename"
+>         echo "$filename:REPAIRED" >> "$log_file"
+>     else
+>         # Append the enforced line
+>         echo "$enforced_line" >> "$filename"
+>         echo "$filename:APPENDED" >> "$log_file"
+>     fi
+>
+>     # Set strict permissions
+>     case "$filename" in
+>         "sshd_config") chmod 0600 "$filename" ;;
+>         *) chmod 0644 "$filename" ;;
+>     esac
+>
+> done < "rules.txt"
+>
+> # Sort the log file alphabetically by filename
+> sort "$log_file" -o "$log_file"
+>
+> # Final user feedback
+> echo "Hardening completed"
+> EOF
+root@ce601f82-7746-4839-81ca-34136a84ecde:/home/user/hardening_test# chmod +x apply_hardening.sh
+root@ce601f82-7746-4839-81ca-34136a84ecde:/home/user/hardening_test#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

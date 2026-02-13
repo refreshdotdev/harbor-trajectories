@@ -1,0 +1,37 @@
+[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# clear
+[?2004l[H[J[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# ls -la /home/user/datasets/log_archive.tar.gz /home/user/config/settings.json
+[?2004l-rwxrwxrwx 1 root root  96 Feb 13 18:48 [0m[01;32m/home/user/config/settings.json[0m
+-rwxrwxrwx 1 root root 450 Feb 13 18:48 [01;32m/home/user/datasets/log_archive.tar.gz[0m
+[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# export REDACTION_LABEL=$(jq -r '.redaction_label' /home/user/config/settings.json)
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# export TARGET_ENCODING=$(jq -r '.target_encoding' /home/user/config/settings.json)
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# mkdir -p /home/user/clean_data
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# echo "Redaction Label: '${REDACTION_LABEL}'"
+[?2004lRedaction Label: '[CONFIDENTIAL_P2]'
+[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# echo "Target Encoding: '${TARGET_ENCODING}'"
+[?2004lTarget Encoding: 'ISO-8859-1'
+[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# mkdir -p /tmp/log_extract
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# tar -xzf /home/user/datasets/log_archive.tar.gz -C /tmp/log_extract
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# find /tmp/log_extract -path "*/logs/prod-*" -type f -name "prod-*.log" -print
+[?2004l/tmp/log_extract/logs/prod-app1.log
+/tmp/log_extract/logs/prod-app2.log
+[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# cat /tmp/log_extract/logs/prod-app1.log /tmp/log_extract/logs/prod-app2.log | awk -F '\t' -v redact_label="${REDACTION_LABEL}" '/ERROR\tDataCleaner\t/ { gsub(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]+/, redact_label, $5); print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5 }' | sort -k1,2 > /home/user/clean_data/mainframe_errors.log
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# awk -F '\t' ' { "date -d \"$1\" +\"%d-%b-%Y\" | tr [a-z] [A-Z]" | getline formatted_date; timestamp=strftime("%H:%M:%S",mktime($1" 00 00 00")); date_errors[formatted_date]++; if (!earliest[formatted_date] || timestamp < earliest[formatted_date]) earliest[formatted_date]=timestamp } END { for (date in date_errors) print formatted_date=formatted_date, date_errors[date], earliest[formatted_date] > "/tmp/temp_summary.csv" }' /home/user/clean_data/mainframe_errors.log
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# sed -i '1iDate,Error_Count,Earliest_Error' /tmp/temp_summary.csv
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# iconv -f UTF-8 -t ${TARGET_ENCODING} /tmp/temp_summary.csv > /home/user/clean_data/daily_summary.csv
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# sed -i 's/$/\r/' /home/user/clean_data/daily_summary.csv
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# rm /tmp/temp_summary.csv
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# (cd /home/user/clean_data && md5sum mainframe_errors.log | awk '{print $1 "  " $2}' > checksum.md5)
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# ls -la /home/user/clean_data/
+[?2004ltotal 12
+drwxr-xr-x 2 root root  79 Feb 13 19:03 [0m[01;34m.[0m
+drwxrwxrwx 1 root root  32 Feb 13 19:02 [34;42m..[0m
+-rw-r--r-- 1 root root  55 Feb 13 19:03 checksum.md5
+-rw-r--r-- 1 root root  57 Feb 13 19:03 daily_summary.csv
+-rw-r--r-- 1 root root 260 Feb 13 19:02 mainframe_errors.log
+[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# rm -rf /tmp/log_extract
+[?2004l[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# echo "Processing complete. Output files created in /home/user/clean_data/"
+[?2004lProcessing complete. Output files created in /home/user/clean_data/
+[?2004hroot@2d9f5cec-42ab-453f-8940-48e35f9c58c6:/home/user# 

@@ -1,0 +1,89 @@
+Current terminal state:
+New Terminal Output:
+
+root@291289b1-48f3-4fe5-8785-032bb0293e75:/home/user/certs_incoming# cat > /tmp/process_certs.sh << 'EOF'
+> #!/bin/bash
+>
+> # Initialize output files
+> CSV_HEADER="filename,subject,issuer,not_before,not_after,days_until_expiry,status"
+> echo "$CSV_HEADER" > /home/user/cert_analysis/expiring_certs.csv
+> touch /home/user/cert_analysis/analysis.log
+> touch /home/user/cert_analysis/errors.json
+>
+> # Function to validate date format (YYYY-MM-DD)
+> validate_date() {
+>     if [[ ! $1 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+>         return 1
+>     fi
+>     return 0
+> }
+>
+> # Get current date for calculating days until expiry
+> today=$(date +%Y-%m-%d)
+>
+> # Process each .meta file
+> for meta_file in $(find . -name "*.meta"); do
+>     # Extract base filename without extension
+>     base_name=$(basename "$meta_file" .meta)
+>     crt_file="${meta_file%.meta}.crt"
+>
+>     # Check if corresponding .crt file exists
+>     if [ ! -f "$crt_file" ]; then
+>         echo "{\"filename\": \"$meta_file\", \"reason\": \"MISSING_CRT\"}" >> /home/user/cert_analysis/errors.json
+>         # Ensure proper JSON array formatting by removing last comma later
+>         continue
+>     fi
+>
+>     # Read metadata from .meta file
+>     if [ ! -f "$meta_file" ]; then
+>         echo "{\"filename\": \"$meta_file\", \"reason\": \"MISSING_META_FILE\"}" >> /home/user/cert_analysis/errors.json
+>         continue
+>     fi
+>
+>     # Read and parse the metadata line
+>     IFS='|' read -r subject issuer not_before not_after checksum < "$meta_file"
+>
+>     # Validate date formats
+>     if ! validate_date "$not_before" || ! validate_date "$not_after"; then
+>         echo "{\"filename\": \"$meta_file\", \"reason\": \"INVALID_DATE\"}" >> /home/user/cert_analysis/errors.json
+>         continue
+>     fi
+>
+>     # Calculate checksum of .crt file and compare
+>     crt_checksum=$(sha256sum "$crt_file" | awk '{print $1}')
+>     if [ "$crt_checksum" != "$checksum" ]; then
+>         echo "{\"filename\": \"$meta_file\", \"reason\": \"CHECKSUM_MISMATCH\"}" >> /home/user/cert_analysis/errors.json
+>         continue
+>     fi
+>
+>     # Calculate days until expiry
+>     days_until_expiry=$(date -d "$not_after" +%s -d "$today" +%s | awk '{print ($1 - $2)/86400}')
+>
+>     # Determine status based on days remaining
+>     if [ "$days_until_expiry" -gt 30 ]; then
+>         status="OK"
+>     elif [ "$days_until_expiry" -ge 0 ]; then
+>         status="EXPIRING_SOON"
+>     else
+>         status="EXPIRED"
+>     fi
+>
+>     # Append valid certificate to CSV
+>     echo "$base_name,$subject,$issuer,$not_before,$not_after,$days_until_expiry,$status" >> /home/user/cert_analysis/expiring_certs.csv
+>
+>     # Log the processed certificate
+>     timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+>     echo "$timestamp Processed $base_name - $status" >> /home/user/cert_analysis/analysis.log
+> done
+>
+> # Clean up JSON file by removing trailing comma and adding proper array formatting
+> sed -i '1s/^/[/;$s/,$/]/' /home/user/cert_analysis/errors.json
+>
+> # Sort CSV by days_until_expiry ascending
+> sort -t, -k5n /home/user/cert_analysis/expiring_certs.csv -o /home/user/cert_analysis/expiring_certs.csv
+> EOFchmod +x /tmp/process_certs.sh
+> /tmp/process_certs.sh
+>
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

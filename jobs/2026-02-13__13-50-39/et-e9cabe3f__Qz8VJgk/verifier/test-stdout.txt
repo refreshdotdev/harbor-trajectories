@@ -1,0 +1,65 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 3 items
+
+../../tests/test_final_state.py::test_required_files_exist PASSED        [ 33%]
+../../tests/test_final_state.py::test_optimized_rules_content FAILED     [ 66%]
+../../tests/test_final_state.py::test_audit_manifest_encoding_and_structure PASSED [100%]
+
+=================================== FAILURES ===================================
+_________________________ test_optimized_rules_content _________________________
+
+    def test_optimized_rules_content():
+        # Read binary to check for CRLF contamination
+        content_bytes = OPTIMIZED_RULES.read_bytes()
+        assert b"\r\n" not in content_bytes, "optimized_rules.v4 must use Unix LF line endings, not Windows CRLF."
+    
+        content = content_bytes.decode('utf-8')
+        lines = [l.strip() for l in content.split('\n') if l.strip()]
+    
+        # Check Policies
+        assert ":INPUT DROP" in content
+        assert ":FORWARD DROP" in content
+        assert ":OUTPUT ACCEPT" in content
+    
+        # Check Rule Ordering
+        rules = [l for l in lines if l.startswith("-A")]
+        assert "RELATED,ESTABLISHED" in rules[0], "The first rule must be the preserved state rule."
+    
+        # Check for trap IP (Zero width space)
+        assert "\u200b" not in content, "Configuration values were not sanitized; found zero-width space."
+    
+        # Validate Expansion and Sorting
+        # Expected allows: 22, 80, 443, 9000, 9001, 9002
+        # Expected blocks: 23, 3306
+        # The requirement is that all rules are sorted by port.
+        # This test extracts them separately to verify content and internal order.
+    
+        # Extract ports from ACCEPT rules
+        accept_ports = []
+        for r in rules:
+            if "-j ACCEPT" in r and "dport" in r:
+                m = re.search(r"--dport (\d+)", r)
+                if m:
+                    accept_ports.append(int(m.group(1)))
+    
+        expected_accepts = [22, 80, 443, 9000, 9001, 9002]
+>       assert accept_ports == expected_accepts, f"ACCEPT rules are incorrect or unsorted. Found: {accept_ports}"
+E       AssertionError: ACCEPT rules are incorrect or unsorted. Found: [80, 443, 9000, 9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 22, 80, 443, 8080, 3306]
+E       assert [80, 443, 900...02, 9003, ...] == [22, 80, 443,...0, 9001, 9002]
+E         
+E         At index 0 diff: 80 != 22
+E         Left contains 12 more items, first extra item: 9004
+E         
+E         Full diff:
+E           [
+E         -     22,...
+E         
+E         ...Full output truncated (19 lines hidden), use '-vv' to show
+
+/tests/test_final_state.py:58: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_optimized_rules_content - Assert...
+========================= 1 failed, 2 passed in 0.02s ==========================

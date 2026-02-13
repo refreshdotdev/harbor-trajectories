@@ -1,0 +1,197 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+- Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+- Command 2 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# cat > Makefile << 'EOF'
+> .PHONY: clean analyze package all
+>
+> PROJECT_ROOT = $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+> LOG_FILE ?= pipeline.log
+>
+> # Default target
+> all: package
+>
+> # Clean target - processes raw CSV files
+> # Input: raw_data/batch_*.csv
+> # Output: cleaned/batch_*.tsv
+> # Encoding: ISO-8859-1 for batch_a.csv, UTF-16LE for batch_b.csv
+> # Filtering: Drop rows where status is "Cancelled" (case-insensitive) or amount is below MIN_LIMIT
+> # Threshold: Use MIN_LIMIT environment variable or config/params.json policy.limits.min_amount
+> # Format: Convert to TSV with CRLF line endings
+>
+> clean:
+> @mkdir -p cleaned
+> @echo "Starting data cleaning..."
+> # Process batch_a.csv (ISO-8859-1 encoded)
+> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_a.csv $(PROJECT_ROOT)/cleaned/batch_a.tsv
+> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_b.csv $(PROJECT_ROOT)/cleaned/batch_b.tsv
+> @echo "[Data cleaning complete]"
+>
+> # Analyze target - generates JSON summaries from cleaned TSV files
+> # Input: cleaned/batch_*.tsv
+> # Output: analysis/batch_*.json
+> # Format: {"source": "filename", "valid_rows": count, "total_amount": sum}
+>
+> analyze: clean
+> @mkdir -p analysis
+> @echo "Starting data analysis..."
+> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_a.tsv $(PROJECT_ROOT)/analysis/batch_a.json
+> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_b.tsv $(PROJECT_ROOT)/analysis/batch_b.json
+> @echo "[Data analysis complete]"
+>
+> # Package target - creates distribution archive
+> # Output: delivery.tar.gz
+> # Contents: cleaned/ and analysis/ directories, manifest.md5 file
+>
+> package: analyze
+> @echo "Starting package creation..."
+> @mkdir -p temp_package
+> @cp -r cleaned analysis temp_package/
+> @(cd temp_package && find cleaned -name '*.tsv' -exec md5sum {} \; > manifest.md5)
+> @tar -czf delivery.tar.gz -C temp_package cleaned analysis manifest.md5
+> @rm -rf temp_package
+> @echo "[Package creation complete]"
+>
+> # Logging function - appends timestamp and target name to log file
+> define log
+>   @echo "[$$(date +%s)] $1" >> $(LOG_FILE)
+> endef
+>
+> # Add logging to each target
+> clean:
+> $(call log,clean)
+> @mkdir -p cleaned
+> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_a.csv $(PROJECT_ROOT)/cleaned/batch_a.tsv
+> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_b.csv $(PROJECT_ROOT)/cleaned/batch_b.tsv
+>
+> analyze: clean
+> $(call log,analyze)
+> @mkdir -p analysis
+> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_a.tsv $(PROJECT_ROOT)/analysis/batch_a.json
+> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_b.tsv $(PROJECT_ROOT)/analysis/batch_b.json
+>
+> package: analyze
+> $(call log,package)
+> @echo "Starting package creation..."
+> @mkdir -p temp_package
+> @cp -r cleaned analysis temp_package/
+> @(cd temp_package && find cleaned -name '*.tsv' -exec md5sum {} \; > manifest.md5)
+> @tar -czf delivery.tar.gz -C temp_package cleaned analysis manifest.md5
+> @rm -rf temp_package
+> EOFcat > scripts/cleanup.py << 'EOF'
+> #!/usr/bin/env python3
+> import sys
+> import json
+> import csv
+> import io
+> import os
+> from decimal import Decimal
+>
+> def get_min_threshold():
+>     """Get minimum threshold from environment or config file"""
+>     if 'MIN_LIMIT' in os.environ:
+>         return float(os.environ['MIN_LIMIT'])
+>     try:
+>         import json
+>         with open('config/params.json', 'r', encoding='utf-8') as f:
+>             data = json.load(f)
+>             return float(data.get('policy', {}).get('limits', {}).get('min_amount', 0))
+>     except Exception:
+>         return 0.0
+>
+> def clean_csv(input_file, output_file, source_encoding, target_encoding='utf-8'):
+>     """
+>     Clean CSV data:
+>     - Convert encoding
+>     - Filter rows
+>     - Convert to TSV with CRLF line endings
+>     """
+>     min_threshold = get_min_threshold()
+>
+>     try:
+>         with open(input_file, 'r', encoding=source_encoding, errors='replace') as infile:
+>             # Read CSV and remove BOM if present (for UTF-16LE)
+>             content = infile.read()
+>             if source_encoding == 'utf-16-le' and len(content) > 0 and content[0] == '﻿':
+>                 content = content[1:]
+>
+>             reader = csv.reader(io.StringIO(content))
+>             header = next(reader)
+>
+>             with open(output_file, 'w', encoding=target_encoding, newline='') as outfile:
+>                 writer = csv.writer(outfile, delimiter='\t')
+>                 writer.writerow(header)
+>
+>                 for row in reader:
+>                     try:
+>                         # Skip if status is Cancelled (case-insensitive)
+>                         if len(row) >= 4 and str(row[3]).lower().strip() == 'cancelled':
+>                             continue
+>
+>                         # Skip if amount is less than min_threshold
+>                         if len(row) >= 3 and row[2].strip():
+>                             amount = Decimal(row[2].replace(',', '').replace('$', '').strip())
+>                             if amount < Decimal(str(min_threshold)):
+>                                 continue
+>
+>                         writer.writerow(row)
+>                     except Exception:
+>                         continue
+>     except Exception as e:
+>         print(f"Error processing {input_file}: {e}")
+>         raise
+>
+> def analyze_tsv(input_file, output_file):
+>     """Generate JSON summary from TSV file"""
+>     try:
+>         valid_rows = 0
+>         total_amount = Decimal('0.0')
+>
+>         with open(input_file, 'r', encoding='utf-8') as f:
+>             # Skip header
+>             next(f)
+>             reader = csv.reader(f, delimiter='\t')
+>
+>             for row in reader:
+>                 if len(row) >= 3 and row[2].strip():
+>                     amount = Decimal(row[2].replace(',', '').replace('$', '').strip())
+>                     total_amount += amount
+>                     valid_rows += 1
+>
+>         summary = {
+>             'source': os.path.basename(input_file),
+>             'valid_rows': valid_rows,
+>             'total_amount': round(total_amount, 2)
+>         }
+>
+>         with open(output_file, 'w', encoding='utf-8') as f:
+>             json.dump(summary, f)
+>
+>     except Exception as e:
+>         print(f"Error analyzing {input_file}: {e}")
+>         raise
+>
+> if __name__ == '__main__':
+>     if len(sys.argv) < 3:
+>         print("Usage: python3 cleanup.py input_file output_file [--analyze]")
+>         sys.exit(1)
+>
+>     input_file = sys.argv[1]
+>     output_file = sys.argv[2]
+>
+>     if '--analyze' in sys.argv:
+>         analyze_tsv(input_file, output_file)
+>     else:
+>         if 'batch_a.csv' in input_file:
+>             clean_csv(input_file, output_file, 'iso-8859-1')
+>         elif 'batch_b.csv' in input_file:
+>             clean_csv(input_file, output_file, 'utf-16-le')
+>         else:
+>             print("Unsupported input file")
+>             sys.exit(1)
+> EOFchmod +x scripts/cleanup.py
+>

@@ -1,0 +1,263 @@
+[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# clear
+[?2004l[H[J[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# mkdir -p configs db logs reports
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat > configs/ssh.cfg << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # SSH Config File - Original
+[?2004l[?2004h> 
+[?2004l[?2004h> Host localhost
+[?2004l[?2004h> 
+[?2004l[?2004h>   User root
+[?2004l[?2004h> 
+[?2004l[?2004h>   Port 22
+[?2004l[?2004h> 
+[?2004l[?2004h>   IdentityFile ~/.ssh/id_rsa
+[?2004l[?2004h> 
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat > configs/nginx.conf << 'EOF'
+[?2004l[?2004h> # Nginx Configuration
+[?2004l[?2004h> # Copyright © 2023 Company Ltd.
+[?2004l[?2004h> # UTF-8 encoded file
+[?2004l[?2004h> user nginx;
+[?2004l[?2004h> worker_processes auto;
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat > configs/app.ini << 'EOF'
+[?2004l[?2004h> [General]
+[?2004l[?2004h>   debug = false
+[?2004l[?2004h>   port = 8080
+[?2004l[?2004h>   timeout = 30
+[?2004l[?2004h> 
+[?2004l[?2004h> [Database]
+[?2004l[?2004h>   host = localhost
+[?2004l[?2004h>   dbname = appdb
+[?2004l[?2004h>   user = appuser
+[?2004l[?2004h>   password = secret
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# touch configs/.hidden_file
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cp configs/ssh.cfg configs/ssh.cfg.bak
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# echo 'v2.0-RC1' > /home/user/version.txt
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# dos2unix configs/ssh.cfg
+[?2004lbash: dos2unix: command not found
+[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# sed -i 's/[ \t]*$//' configs/app.ini
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# rm configs/.hidden_file configs/ssh.cfg.bak
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# file configs/*
+[?2004lbash: file: command not found
+[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# sed -i 's/\r$//' configs/ssh.cfg
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat configs/ssh.cfg
+[?2004l
+# SSH Config File - Original
+
+Host localhost
+
+  User root
+
+  Port 22
+
+  IdentityFile ~/.ssh/id_rsa
+
+[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat configs/nginx.conf
+[?2004l# Nginx Configuration
+# Copyright © 2023 Company Ltd.
+# UTF-8 encoded file
+user nginx;
+worker_processes auto;
+[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# sqlite3 db/audit.db "
+[?2004l[?2004h> CREATE TABLE tracked_files (
+[?2004l[?2004h>     id INTEGER PRIMARY KEY AUTOINCREMENT,
+[?2004l[?2004h>     rel_path TEXT NOT NULL UNIQUE,
+[?2004l[?2004h>     file_hash TEXT NOT NULL,
+[?2004l[?2004h>     magic_hex TEXT NOT NULL,
+[?2004l[?2004h>     size_bytes INTEGER NOT NULL
+[?2004l[?2004h> );
+[?2004l[?2004h> " > logs/sql_history.log 2>&1
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# sqlite3 db/audit.db "
+[?2004l[?2004h> CREATE TABLE audit_events (
+[?2004l[?2004h>     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+[?2004l[?2004h>     file_id INTEGER NOT NULL,
+[?2004l[?2004h>     event_type TEXT NOT NULL CHECK(event_type IN ('INIT', 'MODIFY', 'PERM')),
+[?2004l[?2004h>     event_ts TEXT NOT NULL,
+[?2004l[?2004h>     FOREIGN KEY(file_id) REFERENCES tracked_files(id)
+[?2004l[?2004h> );
+[?2004l[?2004h> " >> logs/sql_history.log 2>&1
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat > load_initial.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> DB="db/audit.db"
+[?2004l[?2004h> CONFIG_DIR="configs"
+[?2004l[?2004h> SQL_LOG="logs/sql_history.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Insert initial file records
+[?2004l[?2004h> for file_path in "$CONFIG_DIR"/*; do
+[?2004l[?2004h>     rel_path="$(basename "$file_path")"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Calculate SHA-256 hash
+[?2004l[?2004h>     file_hash="$(sha256sum "$file_path" | cut -d' ' -f1)"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get first 4 bytes as lowercase hex
+[?2004l[?2004h>     magic_hex="$(od -An -tx1 -j0 -N4 "$file_path" | tr -d ' \n' | awk '{print tolower($0)}')"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get file size in bytes
+[?2004l[?2004h>     size_bytes="$(stat -c%s "$file_path")"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get modification timestamp (ISO-8601 format)
+[?2004l[?2004h>     mtime_utc="$(date -u -d "$(stat -c%y "$file_path" | cut -d'.' -f1)" +'%Y-%m-%dT%H:%M:%SZ')"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Insert into tracked_files
+[?2004l[?2004h>     sqlite3 "$DB" "INSERT INTO tracked_files (rel_path, file_hash, magic_hex, size_bytes) VALUES('$rel_path', '$file_hash', '$magic_hex', $size_bytes);" >> "$SQL_LOG" 2>&1
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get the file_id
+[?2004l[?2004h>     file_id="$(sqlite3 "$DB" "SELECT id FROM tracked_files WHERE rel_path = '$rel_path';" | grep -v id)"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Insert INIT event
+[?2004l[?2004h>     sqlite3 "$DB" "INSERT INTO audit_events (file_id, event_type, event_ts) VALUES($file_id, 'INIT', '$mtime_utc');" >> "$SQL_LOG" 2>&1
+[?2004l[?2004h>     
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "-- Initial load completed" >> "$SQL_LOG"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# 
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x load_initial.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x load_initial.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# ./load_initial.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# sqlite3 db/audit.db "SELECT rel_path, file_hash, magic_hex, size_bytes FROM tracked_files;" >> logs/sql_history.log 2>&1
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# sqlite3 db/audit.db "SELECT file_id, event_type, event_ts FROM audit_events;" >> logs/sql_history.log 2>&1
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# sed -i '1s/^/# URGENT SECURITY PATCH\
+[?2004l[?2004h> /' configs/ssh.cfg
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat configs/ssh.cfg
+[?2004l# URGENT SECURITY PATCH
+
+# SSH Config File - Original
+
+Host localhost
+
+  User root
+
+  Port 22
+
+  IdentityFile ~/.ssh/id_rsa
+
+[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat > update_sshcfg.sh << 'EOF'
+[?2004lALUES($file_id, 'MODIFY', '$new_mtime_utc');" >> "$SQL_LOG" 2>&1
+
+echo "-- ssh.cfg updated and event logged" >> "$SQL_LOG"
+EOF
+
+chmod +x update_sshcfg.sh
+[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> DB="db/audit.db"
+[?2004l[?2004h> SQL_LOG="logs/sql_history.log"
+[?2004l[?2004h> FILE_PATH="configs/ssh.cfg"
+[?2004l[?2004h> 
+[?2004l[?2004h> rel_path="$(basename "$FILE_PATH")"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Calculate new SHA-256 hash
+[?2004l[?2004h> new_file_hash="$(sha256sum "$FILE_PATH" | cut -d' ' -f1)"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get new first 4 bytes as lowercase hex
+[?2004l[?2004h> new_magic_hex="$(od -An -tx1 -j0 -N4 "$FILE_PATH" | tr -d ' \n' | awk '{print tolower($0)}')"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get new file size in bytes
+[?2004l[?2004h> new_size_bytes="$(stat -c%s "$FILE_PATH")"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get new modification timestamp (ISO-8601 format)
+[?2004l[?2004h> new_mtime_utc="$(date -u -d "$(stat -c%y "$FILE_PATH" | cut -d'.' -f1)" +'%Y-%m-%dT%H:%M:%SZ')"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get the file_id for ssh.cfg
+[?2004l[?2004h> file_id="$(sqlite3 "$DB" "SELECT id FROM tracked_files WHERE rel_path = '$rel_path';" | grep -v id)"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Update tracked_files record
+[?2004l[?2004h> sqlite3 "$DB" "UPDATE tracked_files SET file_hash='$new_file_hash', magic_hex='$new_magic_hex', size_bytes=$new_size_bytes WHERE id=$file_id;" >> "$SQL_LOG" 2>&1
+[?2004l[?2004h> 
+[?2004l[?2004h> # Insert MODIFY event
+[?2004l[?2004h> sqlite3 "$DB" "INSERT INTO audit_events (file_id, event_type, event_ts) VALUES($file_id, 'MODIFY', '$new_mtime_utc');" >> "$SQL_LOG" 2>&1
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "-- ssh.cfg updated and event logged" >> "$SQL_LOG"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# 
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x update_sshcfg.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x update_sshcfg.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# ./update_sshcfg.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# sleep 1
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod 400 configs/nginx.conf
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat > log_nginx_perm.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> DB="db/audit.db"
+[?2004l[?2004h> SQL_LOG="logs/sql_history.log"
+[?2004l[?2004h> FILE_PATH="configs/nginx.conf"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "-- Changing permissions for $FILE_PATH to 400" >> "$SQL_LOG"
+[?2004l[?2004h> 
+[?2004l[?2004h> rel_path="$(basename "$FILE_PATH")"
+[?2004l[?2004h> file_id="$(sqlite3 "$DB" "SELECT id FROM tracked_files WHERE rel_path = '$rel_path';" | grep -v id)"
+[?2004l[?2004h> 
+[?2004l[?2004h> event_ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+[?2004l[?2004h> 
+[?2004l[?2004h> sqlite3 "$DB" "INSERT INTO audit_events (file_id, event_type, event_ts) VALUES($file_id, 'PERM', '$event_ts');" >> "$SQL_LOG" 2>&1
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "-- PERM event logged for $rel_path" >> "$SQL_LOG"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# 
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x log_nginx_perm.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x log_nginx_perm.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# ./log_nginx_perm.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat > generate_report.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> DB="db/audit.db"
+[?2004l[?2004h> REPORT_FILE="reports/audit_summary.csv"
+[?2004l[?2004h> VERSION_FILE="/home/user/version.txt"
+[?2004l[?2004h> SQL_LOG="logs/sql_history.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get version string
+[?2004l[?2004h> version="$(cat "$VERSION_FILE")"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create report header
+[?2004l[?2004h> header="PATH;EVENT;HASH;VERSION=$version"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Query data and format into CSV
+[?2004l[?2004h> query="SELECT tf.rel_path, ae.event_type, tf.file_hash 
+[?2004l[?2004h>        FROM audit_events ae 
+[?2004l[?2004h>        JOIN tracked_files tf ON ae.file_id = tf.id 
+[?2004l[?2004h>        ORDER BY ae.event_type, tf.rel_path;"
+[?2004l[?2004h> 
+[?2004l[?2004h> sqlite3 -separator ';' "$DB" "$query" | 
+[?2004l[?2004h> awk 'BEGIN {print "$header"} NR>1 && $0 !~ /^$/ {print}' > "$REPORT_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Log the report generation
+[?2004l[?2004h> echo "-- Generated audit report: $REPORT_FILE" >> "$SQL_LOG"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# 
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x generate_report.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x generate_report.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# ./generate_report.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat > final_integrity_check.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> DB_FILE="db/audit.db"
+[?2004l[?2004h> SQL_LOG="logs/sql_history.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Calculate SHA-256 checksum of the database file
+[?2004l[?2004h> db_checksum="$(sha256sum "$DB_FILE" | cut -d' ' -f1)"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Append the checksum comment to the SQL log
+[?2004l[?2004h> echo "-- DB_CHECKSUM: $db_checksum" >> "$SQL_LOG"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Integrity check completed and logged to $SQL_LOG"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# 
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x final_integrity_check.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x final_integrity_check.sh
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# ./final_integrity_check.sh
+[?2004lIntegrity check completed and logged to logs/sql_history.log
+[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# echo "Verification:" >> logs/sql_history.log
+[?2004l[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# tail -3 logs/sql_history.log
+[?2004l-- Generated audit report: reports/audit_summary.csv
+-- DB_CHECKSUM: 68a6d7ad1a94309e45f3f55b0ca03f038202e98948bf90a7bdc969dec363dc4b
+Verification:
+[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# head -1 reports/audit_summary.csv
+[?2004l$header
+[?2004hroot@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# 

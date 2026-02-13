@@ -1,0 +1,257 @@
+[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:~# clear
+[?2004l[H[J[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:~# cd /home/user/firewall
+[?2004l[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# ls -la
+[?2004ltotal 4
+drwxr-xr-x 1 root root  54 Feb 12 22:36 [0m[01;34m.[0m
+drwxr-xr-x 1 root root  30 Feb 12 22:36 [01;34m..[0m
+-rwxr-xr-x 1 root root 335 Feb 12 22:36 [01;32mbase_rules.v4[0m
+drwxr-xr-x 1 root root   6 Feb 12 22:36 [01;34mconfigs[0m
+[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# ls -la configs/
+[?2004ltotal 0
+drwxr-xr-x 1 root root  6 Feb 12 22:36 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 54 Feb 12 22:36 [01;34m..[0m
+[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# find configs/ -name "*.json" -type f
+[?2004l[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# cat > configs/config.json << 'EOF'
+[?2004l[?2004h> {
+[?2004l[?2004h>   "trusted_ip": "192.168.1.100",
+[?2004l[?2004h>   "allow_ports": ["80", "443", "22"],
+[?2004l[?2004h>   "block_ports": ["23", "3306"]
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# cat base_rules.v4
+[?2004l*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -p tcp --dport 22 -j ACCEPT
+-A INPUT -p tcp --dport 80 -j ACCEPT
+-A INPUT -p tcp --dport 443 -j ACCEPT
+-A INPUT -p tcp --dport 8080 -j ACCEPT
+-A INPUT -p tcp --dport 3306 -j ACCEPT
+COMMIT
+[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# python3 -c "
+[?2004l[?2004h> import json
+[?2004l[?2004h> from datetime import datetime
+[?2004l[?2004h> 
+[?2004l[?2004h> # Load configuration
+[?2004l[?2004h> config = json.load(open('configs/config.json'))
+[?2004l[?2004h> trusted_ip = config['trusted_ip']
+[?2004l[?2004h> allow_ports = config['allow_ports']
+[?2004l[?2004h> block_ports = config['block_ports']
+[?2004l[?2004h> 
+[?2004l[?2004h> # Extract state rule from base_rules.v4
+[?2004l[?2004h> state_rule = None
+[?2004l[?2004h> with open('base_rules.v4', 'r') as f:
+[?2004l[?2004h>     for line in f:
+[?2004l[?2004h>         line = line.strip()
+[?2004l[?2004h>         if '-m state --state RELATED,ESTABLISHED' in line:
+[?2004l[?2004h>             state_rule = line
+[?2004l[?2004h>             break
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create rule objects
+[?2004l[?2004h> rules = []
+[?2004l[?2004h> if state_rule:
+[?2004l[?2004h>     rules.append({'type': 'state', 'rule': state_rule})
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add allow rules
+[?2004l[?2004h> for port in allow_ports:
+[?2004l[?2004h>     rules.append({'type': 'allow', 'port': int(port), 'rule': f'-A INPUT -p tcp --dport {port} -s {trusted_ip} -j ACCEPT'})
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add block rules
+[?2004l[?2004h> for port in block_ports:
+[?2004l[?2004h>     rules.append({'type': 'block', 'port': int(port), 'rule': f'-A INPUT -p tcp --dport {port} -j DROP'})
+[?2004l[?2004h> 
+[?2004l[?2004h> # Save intermediate state
+[?2004l[?2004h> with open('intermediate.json', 'w') as f:
+[?2004l[?2004h>     json.dump(rules, f, indent=2)
+[?2004l[?2004h> " 2>/dev/null || echo 'Error: Python not available, using fallback method'
+[?2004l[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# if [ ! -f intermediate.json ]; then
+[?2004l[?2004h>     echo 'Creating intermediate.json using alternative method...'
+[?2004l[?2004h>     # Fallback method using grep, sed, and jq
+[?2004l[?2004h>     echo '[' > intermediate.json
+[?2004l[?2004h>     grep -E "-m state --state RELATED,ESTABLISHED" base_rules.v4 | while read -r line; do
+[?2004l[?2004h>         echo "\{\"type\": \"state\", \"rule\": \"$line\"\"\"" >> intermediate.json
+[?2004l[?2004h>     done
+[?2004l[?2004h>     cat configs/config.json | jq -r '.allow_ports[]' | while read -r port; do
+[?2004l[?2004h>         echo "\{\"type\": \"allow\", \"port\": $port, \"rule\": \"-A INPUT -p tcp --dport $port -s 192.168.1.100 -j ACCEPT\"\"\"" >> intermediate.json
+[?2004l[?2004h>     done
+[?2004l[?2004h>     cat configs/config.json | jq -r '.block_ports[]' | while read -r port; do
+[?2004l[?2004h>         echo "\{\"type\": \"block\", \"port\": $port, \"rule\": \"-A INPUT -p tcp --dport $port -j DROP\"\"\"" >> intermediate.json
+[?2004l[?2004h>     done
+[?2004l[?2004h>     sed -i '$ s/\]$//' intermediate.json
+[?2004l[?2004h>     echo ']' >> intermediate.json
+[?2004l[?2004h> fi
+[?2004l[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# cat intermediate.json
+[?2004l[
+  {
+    "type": "state",
+    "rule": "-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT"
+  },
+  {
+    "type": "allow",
+    "port": 80,
+    "rule": "-A INPUT -p tcp --dport 80 -s 192.168.1.100 -j ACCEPT"
+  },
+  {
+    "type": "allow",
+    "port": 443,
+    "rule": "-A INPUT -p tcp --dport 443 -s 192.168.1.100 -j ACCEPT"
+  },
+  {
+    "type": "allow",
+    "port": 22,
+    "rule": "-A INPUT -p tcp --dport 22 -s 192.168.1.100 -j ACCEPT"
+  },
+  {
+    "type": "block",
+    "port": 23,
+    "rule": "-A INPUT -p tcp --dport 23 -j DROP"
+  },
+  {
+    "type": "block",
+    "port": 3306,
+    "rule": "-A INPUT -p tcp --dport 3306 -j DROP"
+  }
+][?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# python3 -c "
+[?2004l[?2004h> import json
+[?2004l[?2004h> 
+[?2004l[?2004h> # Load intermediate rules
+[?2004l[?2004h> with open('intermediate.json') as f:
+[?2004l[?2004h>     rules = json.load(f)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Start with policy definitions
+[?2004l[?2004h> content = '*filter\n:INPUT DROP [0:0]\n:FORWARD DROP [0:0]\n:OUTPUT ACCEPT [0:0]\n'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add state rule first
+[?2004l[?2004h> state_rule = next((r for r in rules if r['type'] == 'state'), None)
+[?2004l[?2004h> if state_rule:
+[?2004l[?2004h>     content += state_rule['rule'] + '\n'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Separate allow and block rules
+[?2004l[?2004h> allow_rules = [r for r in rules if r['type'] == 'allow']
+[?2004l[?2004h> block_rules = [r for r in rules if r['type'] == 'block']
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort rules by port number (allow first, then block for same port)
+[?2004l[?2004h> all_rules = sorted(allow_rules + block_rules, key=lambda x: x['port'])
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add sorted rules
+[?2004l[?2004h> for rule in all_rules:
+[?2004l[?2004h>     content += rule['rule'] + '\n'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add COMMIT
+[?2004l[?2004h> content += 'COMMIT'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write to file with Unix line endings
+[?2004l[?2004h> with open('optimized_rules.v4', 'w') as f:
+[?2004l[?2004h>     f.write(content)
+[?2004l[?2004h> " 2>/dev/null || echo 'Error: Python not available, using shell fallback'
+[?2004l[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# if [ ! -f optimized_rules.v4 ]; then
+[?2004l[?2004h>     echo 'Creating optimized_rules.v4 using shell method...'
+[?2004l[?2004h>     # Start with policy definitions
+[?2004l[?2004h>     echo '*filter' > optimized_rules.v4
+[?2004l[?2004h>     echo ':INPUT DROP [0:0]' >> optimized_rules.v4
+[?2004l[?2004h>     echo ':FORWARD DROP [0:0]' >> optimized_rules.v4
+[?2004l[?2004h>     echo ':OUTPUT ACCEPT [0:0]' >> optimized_rules.v4
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Add state rule
+[?2004l[?2004h>     grep -q "-m state --state RELATED,ESTABLISHED" intermediate.json || true
+[?2004l[?2004h>     # Extract state rule if exists
+[?2004l[?2004h>     state_rule=$(jq -r '.[] | select(.type == "state") | .rule' intermediate.json 2>/dev/null)
+[?2004l[?2004h>     if [ -n "${state_rule}" ]; then
+[?2004l[?2004h>         echo "${state_rule}" >> optimized_rules.v4
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Process allow rules
+[?2004l[?2004h>     jq -r '.[] | select(.type == "allow") | .rule' intermediate.json | sort -k 4 -t '-' >> tmp_rules.txt || true
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Process block rules
+[?2004l[?2004h>     jq -r '.[] | select(.type == "block") | .rule' intermediate.json | sort -k 4 -t '-' >> tmp_rules.txt || true
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Add sorted rules
+[?2004l[?2004h>     while read -r rule; do
+[?2004l[?2004h>         echo "${rule}" >> optimized_rules.v4
+[?2004l[?2004h>     done < tmp_rules.txt
+[?2004l[?2004h>     rm -f tmp_rules.txt
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Add COMMIT
+[?2004l[?2004h>     echo 'COMMIT' >> optimized_rules.v4
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Convert to Unix line endings
+[?2004l[?2004h>     sed -i 's/\r$//' optimized_rules.v4
+[?2004l[?2004h> fi
+[?2004l[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# cat optimized_rules.v4
+[?2004l*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -p tcp --dport 22 -s 192.168.1.100 -j ACCEPT
+-A INPUT -p tcp --dport 23 -j DROP
+-A INPUT -p tcp --dport 80 -s 192.168.1.100 -j ACCEPT
+-A INPUT -p tcp --dport 443 -s 192.168.1.100 -j ACCEPT
+-A INPUT -p tcp --dport 3306 -j DROP
+COMMIT[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# python3 -c "
+[?2004l[?2004h> import json, datetime, hashlib
+[?2004l[?2004h> from pathlib import Path
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get current timestamp
+[?2004l[?2004h> timestamp = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get intermediate.json MD5
+[?2004l[?2004h> intermediate_path = Path('intermediate.json')
+[?2004l[?2004h> intermediate_md5 = hashlib.md5(intermediate_path.read_bytes()).hexdigest()
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get optimized_rules.v4 byte count
+[?2004l[?2004h> optimized_path = Path('optimized_rules.v4')
+[?2004l[?2004h> optimized_bytes = optimized_path.stat().st_size
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create audit manifest content
+[?2004l[?2004h> content = f'timestamp|action|detail\n{timestamp}|changed|§INPUT policy set to DROP\n{timestamp}|changed|§FORWARD policy set to DROP\n{timestamp}|changed|§OUTPUT policy set to ACCEPT\n{timestamp}|added|State preservation rule\n{timestamp}|added|Allow rules for trusted IP\n{timestamp}|added|Block rules\nCheck:{intermediate_md5}\nBytes:{optimized_bytes}'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write to file with ISO-8859-1 encoding
+[?2004l[?2004h> with open('audit_manifest.csv', 'w', encoding='iso-8859-1') as f:
+[?2004l[?2004h>     f.write(content)
+[?2004l[?2004h> " 2>/dev/null || echo 'Error: Python not available, using shell fallback'
+[?2004l[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# if [ ! -f audit_manifest.csv ]; then
+[?2004l[?2004h>     echo 'Creating audit_manifest.csv using shell method...'
+[?2004l[?2004h>     TIMESTAMP=$(date +'%Y-%m-%dT%H:%M:%S')
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Calculate MD5 of intermediate.json
+[?2004l[?2004h>     INTERMEDIATE_MD5=$(md5sum intermediate.json | awk '{print $1}')
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get byte count of optimized_rules.v4
+[?2004l[?2004h>     OPTIMIZED_BYTES=$(wc -c < optimized_rules.v4)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create manifest content
+[?2004l[?2004h>     echo "timestamp|action|detail" > audit_manifest.csv
+[?2004l[?2004h>     echo "${TIMESTAMP}|changed|§INPUT policy set to DROP" >> audit_manifest.csv
+[?2004l[?2004h>     echo "${TIMESTAMP}|changed|§FORWARD policy set to DROP" >> audit_manifest.csv
+[?2004l[?2004h>     echo "${TIMESTAMP}|changed|§OUTPUT policy set to ACCEPT" >> audit_manifest.csv
+[?2004l[?2004h>     echo "${TIMESTAMP}|added|State preservation rule" >> audit_manifest.csv
+[?2004l[?2004h>     echo "${TIMESTAMP}|added|Allow rules for trusted IP" >> audit_manifest.csv
+[?2004l[?2004h>     echo "${TIMESTAMP}|added|Block rules" >> audit_manifest.csv
+[?2004l[?2004h>     echo "Check:${INTERMEDIATE_MD5}" >> audit_manifest.csv
+[?2004l[?2004h>     echo "Bytes:${OPTIMIZED_BYTES}" >> audit_manifest.csv
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Convert to ISO-8859-1 encoding (requires iconv)
+[?2004l[?2004h>     if command -v iconv &> /dev/null; then
+[?2004l[?2004h>         iconv -f UTF-8 -t ISO-8859-1 audit_manifest.csv -o temp.csv && mv temp.csv audit_manifest.csv
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo 'Warning: iconv not available, using UTF-8 as fallback'
+[?2004l[?2004h>     fi
+[?2004l[?2004h> fi
+[?2004l[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# ls -la *.csv
+[?2004l-rw-r--r-- 1 root root 380 Feb 13 18:58 audit_manifest.csv
+[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# file audit_manifest.csv
+[?2004lbash: file: command not found
+[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# head -5 audit_manifest.csv
+[?2004ltimestamp|action|detail
+2026-02-13T18:58:21|changed|�INPUT policy set to DROP
+2026-02-13T18:58:21|changed|�FORWARD policy set to DROP
+2026-02-13T18:58:21|changed|�OUTPUT policy set to ACCEPT
+2026-02-13T18:58:21|added|State preservation rule
+[?2004hroot@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# 

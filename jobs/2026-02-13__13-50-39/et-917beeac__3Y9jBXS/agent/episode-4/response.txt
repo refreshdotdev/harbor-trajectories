@@ -1,0 +1,11 @@
+{
+  "analysis": "The solve.sh script has been created successfully and made executable. The script sets up default configuration values and creates the necessary directories. Now I need to implement the file processing logic.",
+  "plan": "I will append to the solve.sh script to implement the file validation logic. This includes checking each CSV file for the UTF-8 BOM and moving corrupt files to quarantine.",
+  "commands": [
+    {
+      "keystrokes": "cat >> solve.sh << 'EOF'\n\n# Initialize variables\ntotal_records=0\nprocessed_files=()\ndeclare -A file_hashes\n\n# Function to check for UTF-8 BOM\ncheck_bom() {\n    local file=\"\\$1\"\n    # Check if file starts with EF BB BF (UTF-8 BOM)\n    if [ \"\\$(head -c 3 \"\\$file\" | od -tx1 | tr -d ' \\n' | cut -c4-18)\" = \"efbbbf\" ]; then\n        return 0  # File has BOM (corrupt)\n    else\n        return 1  # File is clean\n    fi\n}\n\n# Process incoming files\necho \"Processing files in $INCOMING_DIR...\"\nfor csvfile in \"$INCOMING_DIR\"/*.csv; do\n    [ -e \"\\$csvfile\" ] || continue  # Skip if no CSV files found\n    filename=\"\\$(basename -- \"\\$csvfile\")\"\n    echo \"Processing \\$filename...\"\n    \n    if check_bom \"\\$csvfile\"; then\n        echo \"Corrupt BOM found in \\$filename - moving to quarantine\"\n        mv \"\\$csvfile\" \"$QUARANTINE_DIR/\"\n    else\n        echo \"\\$filename is clean - processing...\"\n        processed_files+=(\"\\$filename\")\n        \n        # Calculate MD5 hash\n        file_hashes[\"\\$filename\"]=\"\\$(md5sum \"\\$csvfile\" | awk '{print \\$1}')\"\n        \n        # Count data rows (excluding header)\n        row_count=\"\\$(tail -n +2 \"\\$csvfile\" | wc -l)\"\n        total_records=\"\\$((total_records + row_count))\"\n        echo \"\\$filename has \\$row_count data rows\"\n        \n        # Move to raw backup\n        mv \"\\$csvfile\" \"$RAW_BACKUP_DIR/\"\n    fi\ndone\n\necho \"File processing complete. Total records: \\$total_records\"\nEOF",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}

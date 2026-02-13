@@ -1,0 +1,73 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# cat > parse_logs.sh << 'EOF'
+> #!/bin/bash
+>
+> # Configuration
+> cleaned_log="/home/user/out/cleaned_combined.log"
+> min_port=45000
+> output_csv="/home/user/out/report.csv"
+>
+> # Read min_port from config file
+> if [ -f "/home/user/.config/ir_settings.ini" ]; then
+>     min_port=$(grep "^min_port =" /home/user/.config/ir_settings.ini | cut -d'=' -f2 | tr -d ' ')
+> fi
+>
+> echo "Analyzing logs for failed password attempts..."
+> echo "Minimum port threshold: $min_port"
+>
+> # Temporary files
+> tmp_attacks="/tmp/attacks_$$"
+> tmp_ips="/tmp/ips_$$"
+>
+> # Extract relevant attack lines
+> grep "Failed password" "$cleaned_log" > "$tmp_attacks"
+>
+> # Initialize CSV header
+> header="IP,First_Seen_UTC,Attempt_Count"
+> echo "$header" > "$output_csv"
+>
+> # Process each attack line
+> cat "$tmp_attacks" | while read -r line; do
+>     # Extract IP and port
+>     ip=$(echo "$line" | grep -o -P "(?<=from )[^ ]+" | head -1)
+>     port=$(echo "$line" | grep -o -P "port [0-9]+" | grep -o -P "[0-9]+")
+>
+>     # Extract timestamp (first 15 characters)
+>     timestamp=$(echo "$line" | cut -c1-15)
+>
+>     # Skip if below port threshold or no IP/port found
+>     if [ -z "$ip" ] || [ -z "$port" ] || [ "$port" -lt "$min_port" ]; then
+>         continue
+>     fi
+>
+>     # Convert to UTC (EST to UTC is +5 hours)
+>     year="2023"
+>     utc_timestamp="${year}-${timestamp:0:2}-${timestamp:3:2}T${timestamp:6:2}:${timestamp:9:2}:00Z"
+>
+>     # Store for aggregation
+>     echo "$ip|$utc_timestamp" >> "$tmp_ips"
+> done
+>
+> # Aggregate by IP
+> echo "Aggregating attack data by IP..."
+> cat "$tmp_ips" | sort | uniq -c | sort -nr | while read -r count ip_timestamp; do
+>     ip=$(echo "$ip_timestamp" | cut -d'|' -f1)
+>     first_seen=$(echo "$ip_timestamp" | cut -d'|' -f2- | sort -u | head -1)
+>
+>     # Format for CSV (semicolon delimited for data rows)
+>     echo "$ip;$first_seen;$count" >> "$output_csv"
+> done
+>
+> # Sort final report
+> # Note: Final sorting will be done later as per requirements
+> echo "Report generated: $output_csv"
+> echo "Cleaning up temporary files..."
+> rm "$tmp_attacks" "$tmp_ips"
+> EOF
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user# chmod +x parse_logs.sh
+root@e1f59613-b6d2-4259-a1f4-9cbc37a4ad3d:/home/user#

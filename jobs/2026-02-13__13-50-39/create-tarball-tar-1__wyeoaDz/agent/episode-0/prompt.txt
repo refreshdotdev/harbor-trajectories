@@ -1,0 +1,160 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+A configuration-manager wants to keep version-stamped backups of application configuration files living under `/home/user/configs`.
+
+**Environment Setup**
+
+*   The directory `/home/user/configs` contains various configuration files in a nested structure.
+*   A file `/home/user/backup_id` contains a string identifier for the current backup (e.g., `v1.2-2023`).
+
+**Goal**
+
+Create a bash script that performs the following tasks. Your solution must ensure the directories `/home/user/backups` and `/home/user/backup_logs` exist.
+
+### 1. Identify and Filter Files
+
+Scan `/home/user/configs` recursively for files to backup. You must **only** process files that meet **all** of the following criteria:
+*   The file extension is either `.conf` or `.yml`.
+*   The file size is **512 bytes or less**.
+*   The file is NOT named `test.conf` (in any directory).
+
+(Note: Some filenames may contain spaces.)
+
+### 2. Create Individual Archives (Parallel)
+
+For each valid file found, create a separate compressed archive in `/home/user/backups`. These jobs must run in **parallel** (background jobs).
+
+*   **Naming Convention**: `<basename>_<BACKUP_ID>.tar.<ext>`
+    *   `<basename>` is the filename without the extension (e.g., `my config.yml` → `my config`).
+    *   `<BACKUP_ID>` is the content read from `/home/user/backup_id` (trim any whitespace).
+    *   You may assume all valid files have unique basenames.
+*   **Compression Rules**:
+    *   If the source file is `.conf`, use **gzip** compression. Result extension: `.tar.gz`.
+    *   If the source file is `.yml`, use **bzip2** compression. Result extension: `.tar.bz2`.
+*   **Pathing**: Each archive must store the file keeping its path **relative** to `/home/user/configs`. For example, if backing up `/home/user/configs/subdir/app.conf`, the archive should contain `subdir/app.conf` (no leading `./` or `/`).
+
+### 3. Create Full Archive
+
+After all individual backups are finished, create one top-level archive:
+*   Path: `/home/user/backups/configs_full_<BACKUP_ID>.tar.xz`
+*   Content: The entire `/home/user/configs` directory tree (preserving relative paths).
+*   Compression: **XZ** (use `tar -J` or similar).
+
+### 4. Generate Log File
+
+Generate a machine-verifiable log file at `/home/user/backup_logs/backup_<BACKUP_ID>.log`.
+
+*   **Header**: The first line must be exactly: `REL_PATH|ARCHIVE_NAME|SHA256|SIZE`
+*   **Content**: One line per valid file backed up.
+*   **Format**: Pipe-delimited columns:
+    1.  `REL_PATH`: Path of the file relative to `/home/user/configs`.
+    2.  `ARCHIVE_NAME`: The filename of the created archive (e.g., `app_v1.2.tar.gz`).
+    3.  `SHA256`: The SHA-256 checksum of the original source file.
+    4.  `SIZE`: The size of the original source file in bytes.
+*   **Sorting**: The lines (excluding the header) must be sorted by the **SHA256 column** (ascending).
+
+**Example Log Content**:
+```text
+REL_PATH|ARCHIVE_NAME|SHA256|SIZE
+subdir/my config.yml|my config_v1.0.tar.bz2|3e1d44...|420
+app.conf|app_v1.0.tar.gz|7b4639...|120
+```
+
+**Requirements**:
+*   The script must return exit code 0.
+*   Handle spaces in filenames correctly.
+*   Do not hardcode filenames; discover them dynamically.
+*   Ensure correct compression algorithms are applied.
+
+
+Current terminal state:
+Current Terminal Screen:
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

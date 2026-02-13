@@ -1,0 +1,646 @@
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:~# clear
+[?2004l[H[J[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:~# cd /home/user/projects/api-test
+[?2004l[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# cat > test_harness.py << 'EOF'
+[?2004l BOM if present"""
+        if re.match(cls.BOM_PATTERN, data):
+            return data[3:], True
+        return data, False
+
+    @classmethod
+    def load_json_file(cls, file_path: Path) -> tuple:
+        """Load JSON file with BOM handling and error reporting"""
+        try:
+            with open(file_path, 'rb') as f:
+                raw_data = f.read()
+            
+            # Handle BOM
+            processed_data, bom_stripped = cls.detect_and_strip_bom(raw_data)
+            return json.loads(processed_data.decode('utf-8')), bom_stripped, None
+        except json.JSONDecodeError as e:
+            return None, False, f"JSON syntax error: {str(e)}"
+        except Exception as e:
+            return None, False, f"Unexpected error: {str(e)}"
+
+
+class ValidationLogger:
+    """Handles validation logging with ISO-8859-1 encoding and prefixing"""
+
+    @staticmethod
+    def log_event(file_name: str, status: str, reason: Optional[str] = None) -> None:
+        """Log validation event with proper formatting"""
+        log_entry = f"{LOG_PREFIX}{[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> """
+[?2004l[?2004h> Legacy API Regression Test Suite Refactor
+[?2004l[?2004h> """
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import json
+[?2004l[?2004h> import re
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import logging
+[?2004l[?2004h> from pathlib import Path
+[?2004l[?2004h> from typing import Dict, Any, List, Optional
+[?2004l[?2004h> 
+[?2004l[?2004h> # Constants
+[?2004l[?2004h> SCHEMA_PATH = Path("schema/user.schema.json")
+[?2004l[?2004h> VALID_USERS_PATH = Path("output/valid_users.json")
+[?2004l[?2004h> VALIDATION_LOG_PATH = Path("output/validation.log") 
+[?2004l[?2004h> SUMMARY_PATH = Path("output/summary.txt")
+[?2004l[?2004h> INPUT_DIR = Path("input")
+[?2004l[?2004h> LOG_PREFIX = os.getenv('LOG_PREFIX', 'DEFAULT_PREFIX:')
+[?2004l[?2004h> 
+[?2004l[?2004h> class SchemaGenerator:
+[?2004l[?2004h>     """Generates the complex JSON schema based on role-specific requirements"""
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def generate_user_schema() -> Dict[str, Any]:
+[?2004l[?2004h>         """Create the nested JSON schema structure"""
+[?2004l[?2004h>         return {
+[?2004l[?2004h>             "type": "object",
+[?2004l[?2004h>             "properties": {
+[?2004l[?2004h>                 "id": {"type": "integer"},
+[?2004l[?2004h>                 "name": {"type": "string"},
+[?2004l[?2004h>                 "email": {"type": "string", "format": "email"},
+[?2004l[?2004h>                 "isActive": {"type": "boolean"},
+[?2004l[?2004h>                 "role": {"type": "string", "enum": ["admin", "user", "manager"]}
+[?2004l[?2004h>             },
+[?2004l[?2004h>             "required": ["id", "name", "email", "isActive", "role"],
+[?2004l[?2004h>             "oneOf": [
+[?2004l[?2004h>                 {
+[?2004l[?2004h>                     "if": {"properties": {"role": {"const": "admin"}}},
+[?2004l[?2004h>                     "then": {"required": ["department"]}
+[?2004l[?2004h>                 },
+[?2004l[?2004h>                 {
+[?2004l[?2004h>                     "if": {"properties": {"role": {"const": "user"}}},
+[?2004l[?2004h>                     "then": {"not": {"required": ["department"]}}
+[?2004l[?2004h>                 },
+[?2004l[?2004h>                 {
+[?2004l[?2004h>                     "if": {
+[?2004l[?2004h>                         "allOf": [
+[?2004l[?2004h>                             {"properties": {"role": {"const": "manager"}}},
+[?2004l[?2004h>                             {"properties": {"isActive": {"const": True}}}
+[?2004l[?2004h>                         ]
+[?2004l[?2004h>                     },
+[?2004l[?2004h>                     "then": {"required": ["department"]}
+[?2004l[?2004h>                 },
+[?2004l[?2004h>                 {
+[?2004l[?2004h>                     "if": {
+[?2004l[?2004h>                         "allOf": [
+[?2004l[?2004h>                             {"properties": {"role": {"const": "manager"}}},
+[?2004l[?2004h>                             {"properties": {"isActive": {"const": False}}}
+[?2004l[?2004h>                         ]
+[?2004l[?2004h>                     },
+[?2004l[?2004h>                     "then": {"not": {"required": ["department"], "description": "Inactive managers must not have department"}}
+[?2004l[?2004h>                 }
+[?2004l[?2004h>             ],
+[?2004l[?2004h>             "additionalProperties": False
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def save_schema(schema: Dict[str, Any]) -> None:
+[?2004l[?2004h>         """Save schema to file with proper formatting"""
+[?2004l[?2004h>         with open(SCHEMA_PATH, 'w') as f:
+[?2004l[?2004h>             json.dump(schema, f, indent=2, sort_keys=True)
+[?2004l[?2004h>         print(f"Schema saved to {SCHEMA_PATH}")
+[?2004l[?2004h> 
+[?2004l[?2004h> class FileProcessor:
+[?2004l[?2004h>     """Handles file processing with BOM detection and symlink skipping"""
+[?2004l[?2004h> 
+[?2004l[?2004h>     BOM_PATTERN = b'^\xef\xbb\xbf'
+[?2004l[?2004h>     
+[?2004l[?2004h>     @classmethod
+[?2004l[?2004h>     def is_symlink(cls, path: Path) -> bool:
+[?2004l[?2004h>         """Check if path is a symbolic link"""
+[?2004l[?2004h>         return path.is_symlink()
+[?2004l[?2004h> 
+[?2004l[?2004h>     @classmethod
+[?2004l[?2004h>     def detect_and_strip_bom(cls, data: bytes) -> tuple:
+[?2004l[?2004h>         """Detect and strip BOM if present"""
+[?2004l[?2004h>         if re.match(cls.BOM_PATTERN, data):
+[?2004l[?2004h>             return data[3:], True
+[?2004l[?2004h>         return data, False
+[?2004l[?2004h> 
+[?2004l[?2004h>     @classmethod
+[?2004l[?2004h>     def load_json_file(cls, file_path: Path) -> tuple:
+[?2004l[?2004h>         """Load JSON file with BOM handling and error reporting"""
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(file_path, 'rb') as f:
+[?2004l[?2004h>                 raw_data = f.read()
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Handle BOM
+[?2004l[?2004h>             processed_data, bom_stripped = cls.detect_and_strip_bom(raw_data)
+[?2004l[?2004h>             return json.loads(processed_data.decode('utf-8')), bom_stripped, None
+[?2004l[?2004h>         except json.JSONDecodeError as e:
+[?2004l[?2004h>             return None, False, f"JSON syntax error: {str(e)}"
+[?2004l[?2004h>         except Exception as e:
+[?2004l[?2004h>             return None, False, f"Unexpected error: {str(e)}"
+[?2004l[?2004h> 
+[?2004l[?2004h> 
+[?2004l[?2004h> class ValidationLogger:
+[?2004l[?2004h>     """Handles validation logging with ISO-8859-1 encoding and prefixing"""
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def log_event(file_name: str, status: str, reason: Optional[str] = None) -> None:
+[?2004l[?2004h>         """Log validation event with proper formatting"""
+[?2004l[?2004h>         log_entry = f"{LOG_PREFIX}{file_name} - {status}"
+[?2004l[?2004h>         if reason:
+[?2004l[?2004h>             log_entry += f" {reason}"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Write with ISO-8859-1 encoding
+[?2004l[?2004h>         with open(VALIDATION_LOG_PATH, 'ab') as f:
+[?2004l[?2004h>             f.write(log_entry.encode('iso-8859-1') + b'\n')
+[?2004l[?2004h> 
+[?2004l[?2004h> class Validator:
+[?2004l[?2004h>     """Validates user objects against the schema"""
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def validate_user(user_data: Dict[str, Any]) -> bool:
+[?2004l[?2004h>         """Validate user against business rules"""
+[?2004l[?2004h>         role = user_data.get('role')
+[?2004l[?2004h>         is_active = user_data.get('isActive', False)
+[?2004l[?2004h>         has_department = 'department' in user_data
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Admin validation
+[?2004l[?2004h>         if role == 'admin' and not has_department:
+[?2004l[?2004h>             return False
+[?2004l[?2004h>         
+[?2004l[?2004h>         # User validation  
+[?2004l[?2004h>         if role == 'user' and has_department:
+[?2004l[?2004h>             return False
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Manager validation
+[?2004l[?2004h>         if role == 'manager':
+[?2004l[?2004h>             if is_active and not has_department:
+[?2004l[?2004h>                 return False
+[?2004l[?2004h>             if not is_active and has_department:
+[?2004l[?2004h>                 return False
+[?2004l[?2004h>         
+[?2004l[?2004h>         return True
+[?2004l[?2004h> 
+[?2004l[?2004h> class OutputGenerator:
+[?2004l[?2004h>     """Generates required output files"""
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def generate_valid_users(valid_users: List[Dict[str, Any]]) -> None:
+[?2004l[?2004h>         """Generate valid users JSON with specific formatting"""
+[?2004l[?2004h>         # Transform data: lowercase email, uppercase role
+[?2004l[?2004h>         processed_users = []
+[?2004l[?2004h>         for user in valid_users:
+[?2004l[?2004h>             processed = {
+[?2004l[?2004h>                 'email': user['email'].lower(),
+[?2004l[?2004h>                 'id': user['id'],
+[?2004l[?2004h>                 'role': user['role'].upper()
+[?2004l[?2004h>             }
+[?2004l[?2004h>             # Add department if present
+[?2004l[?2004h>             if 'department' in user:
+[?2004l[?2004h>                 processed['department'] = user['department']
+[?2004l[?2004h>             processed_users.append(processed)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Write without trailing newline
+[?2004l[?2004h>         with open(VALID_USERS_PATH, 'w') as f:
+[?2004l[?2004h>             json.dump(processed_users, f, indent=2, sort_keys=False)
+[?2004l[?2004h>             f.seek(0, os.SEEK_END)  # Seek to end
+[?2004l[?2004h>             if f.tell() > 0 and f.read(1) == '\n':  # Check for trailing newline
+[?2004l[?2004h>                 f.seek(-1, os.SEEK_END)
+[?2004l[?2004h>                 f.truncate()  # Remove trailing newline
+[?2004l[?2004h>         print(f"Valid users saved to {VALID_USERS_PATH}")
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def generate_summary(total_processed: int, total_valid: int) -> None:
+[?2004l[?2004h>         """Generate summary file with CRLF line endings and MD5 checksum"""
+[?2004l[?2004h>         # Calculate MD5 of log file
+[?2004l[?2004h>         md5_hash = hashlib.md5()
+[?2004l[?2004h>         with open(VALIDATION_LOG_PATH, 'rb') as f:
+[?2004l[?2004h>             md5_hash.update(f.read())
+[?2004l[?2004h>         log_md5 = md5_hash.hexdigest()
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Create content with CRLF line endings
+[?2004l[?2004h>         content = f"Files: {total_processed}\r\nPassed: {total_valid}\r\nLog Checksum: {log_md5}"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Write to file
+[?2004l[?2004h>         with open(SUMMARY_PATH, 'w') as f:
+[?2004l[?2004h>             f.write(content)
+[?2004l[?2004h>         print(f"Summary saved to {SUMMARY_PATH}")
+[?2004l[?2004h> 
+[?2004l[?2004h> def main():
+[?2004l[?2004h>     """Main execution function"""
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create output directories if needed
+[?2004l[?2004h>     Path("output").mkdir(exist_ok=True)
+[?2004l[?2004h>     Path("schema").mkdir(exist_ok=True)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 1. Generate schema
+[?2004l[?2004h>     schema = SchemaGenerator.generate_user_schema()
+[?2004l[?2004h>     SchemaGenerator.save_schema(schema)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 2. Initialize counters
+[?2004l[?2004h>     total_processed = 0
+[?2004l[?2004h>     total_valid = 0
+[?2004l[?2004h>     valid_users = []
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 3. Process input files
+[?2004l[?2004h>     for json_file in INPUT_DIR.glob('*.json'):
+[?2004l[?2004h>         total_processed += 1
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Skip symlinks
+[?2004l[?2004h>         if FileProcessor.is_symlink(json_file):
+[?2004l[?2004h>             ValidationLogger.log_event(json_file.name, "SKIPPED", "Symlink")
+[?2004l[?2004h>             continue
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Load and validate file
+[?2004l[?2004h>         user_data, bom_stripped, error = FileProcessor.load_json_file(json_file)
+[?2004l[?2004h>         
+[?2004l[?2004h>         if error:
+[?2004l[?2004h>             ValidationLogger.log_event(json_file.name, "INVALID", error)
+[?2004l[?2004h>             continue
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Validate user object
+[?2004l[?2004h>         is_valid = Validator.validate_user(user_data)
+[?2004l[?2004h>         if is_valid:
+[?2004l[?2004h>             total_valid += 1
+[?2004l[?2004h>             valid_users.append(user_data)
+[?2004l[?2004h>             status = "VALID" 
+[?2004l[?2004h>             if bom_stripped:
+[?2004l[?2004h>                 status = "VALID (BOM stripped)"
+[?2004l[?2004h>             ValidationLogger.log_event(json_file.name, status)
+[?2004l[?2004h>         else:
+[?2004l[?2004h>             ValidationLogger.log_event(json_file.name, "INVALID", "Schema validation failed")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 4. Generate valid users dump
+[?2004l[?2004h>     OutputGenerator.generate_valid_users(valid_users)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 5. Generate summary
+[?2004l[?2004h>     OutputGenerator.generate_summary(total_processed, total_valid)
+[?2004l[?2004h>     
+[?2004l[?2004h>     print("Processing complete!")
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == "__main__":
+[?2004l[?2004h>     main()
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# chmod +x test_harness.py
+[?2004l[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# python3 test_harness.py
+[?2004lSchema saved to schema/user.schema.json
+Traceback (most recent call last):
+  File "/home/user/projects/api-test/test_harness.py", line 248, in <module>
+    main()
+  File "/home/user/projects/api-test/test_harness.py", line 240, in main
+    OutputGenerator.generate_valid_users(valid_users)
+  File "/home/user/projects/api-test/test_harness.py", line 173, in generate_valid_users
+    if f.tell() > 0 and f.read(1) == '\n':  # Check for trailing newline
+io.UnsupportedOperation: not readable
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# echo "Verifying output files..."
+[?2004lVerifying output files...
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# ls -la schema/ output/
+[?2004loutput/:
+total 8
+drwxrwxrwx 1 root root  64 Feb 13 19:05 [0m[34;42m.[0m
+drwxrwxrwx 1 root root  73 Feb 13 19:04 [34;42m..[0m
+-rw-r--r-- 1 root root 350 Feb 13 19:05 valid_users.json
+-rw-r--r-- 1 root root 397 Feb 13 19:05 validation.log
+
+schema/:
+total 4
+drwxrwxrwx 1 root root   38 Feb 13 19:05 [34;42m.[0m
+drwxrwxrwx 1 root root   73 Feb 13 19:04 [34;42m..[0m
+-rw-r--r-- 1 root root 1912 Feb 13 19:05 user.schema.json
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# echo "Checking file contents..."
+[?2004lChecking file contents...
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# head -5 schema/user.schema.json
+[?2004l{
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "if": {
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# tail -3 output/summary.txt
+[?2004ltail: cannot open 'output/summary.txt' for reading: No such file or directory
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# cat > test_harness_fixed.py << 'EOF'
+[?2004l   {"properties": {"role": {"const": "manager"}}},
+                            {"properties": {"isActive": {"const": False}}}
+                        ]
+                    },
+                    "then": {"not": {"required": ["department"], "description": "Inactive managers must not have department"}}
+                }
+            ],
+            "additionalProperties": False
+        }
+
+    @staticmethod
+    def save_schema(schema: Dict[str, Any]) -> None:
+        """Save schema to file with proper formatting"""
+        with open(SCHEMA_PATH, 'w') as f:
+            json.dump(schema, f, indent=2, sort_keys=True)
+        print(f"Schema saved to {SCHEMA_PATH}")
+
+class FileProcessor:
+    """Handles file processing with BOM detection and symlink skipping"""
+
+    BOM_PATTERN = b'^\xef\xbb\xbf'
+    
+    @classmethod
+    def is_symlink(cls, path: Path) -> bool:
+        """Check if path is a symbolic link"""
+        return path.is_symlink()
+
+    @classmethod
+    def detect_and_strip_bom(cls, data: bytes) -> tuple:
+        """Detect and strip BOM if present"""
+        if re.match(cls.BOM_PATTERN, data):
+            return data[3:], True
+        return data, False
+
+    @classmethod
+    def load_json_file(cls, file_path: Path) -> tuple:
+        """Load JSON file with BOM handling and error reporting"""
+        try:
+            with open(file_path, 'rb') as f:
+                raw_data = f.read()
+            
+            # Handle BOM
+            processed_data, bom_stripped = cls.detect_and_strip_bom(raw_data)
+            return json.loads(processed_data.decode('utf-8')), bom_stripped, None
+        except json.JSONDecodeError as e:
+            return None, False, f"JSON syntax error: {str(e)}"
+        except Exception as e:
+            return None, False, f"Unexpected error: {str(e)}"
+
+
+class ValidationLogger:
+    """Handles validation logging with ISO-8859-1 encoding and prefixing"""
+
+    @staticmethod
+    def log_event(file_name: str, status: str, reason: Optional[str] = None) -> None:
+        """Log validation event with proper formatting"""
+        log_entry =[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> """
+[?2004l[?2004h> Legacy API Regression Test Suite Refactor - Fixed Version
+[?2004l[?2004h> """
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import json
+[?2004l[?2004h> import re
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import logging
+[?2004l[?2004h> from pathlib import Path
+[?2004l[?2004h> from typing import Dict, Any, List, Optional
+[?2004l[?2004h> 
+[?2004l[?2004h> # Constants
+[?2004l[?2004h> SCHEMA_PATH = Path("schema/user.schema.json")
+[?2004l[?2004h> VALID_USERS_PATH = Path("output/valid_users.json")
+[?2004l[?2004h> VALIDATION_LOG_PATH = Path("output/validation.log") 
+[?2004l[?2004h> SUMMARY_PATH = Path("output/summary.txt")
+[?2004l[?2004h> INPUT_DIR = Path("input")
+[?2004l[?2004h> LOG_PREFIX = os.getenv('LOG_PREFIX', 'DEFAULT_PREFIX:')
+[?2004l[?2004h> 
+[?2004l[?2004h> class SchemaGenerator:
+[?2004l[?2004h>     """Generates the complex JSON schema based on role-specific requirements"""
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def generate_user_schema() -> Dict[str, Any]:
+[?2004l[?2004h>         """Create the nested JSON schema structure"""
+[?2004l[?2004h>         return {
+[?2004l[?2004h>             "type": "object",
+[?2004l[?2004h>             "properties": {
+[?2004l[?2004h>                 "id": {"type": "integer"},
+[?2004l[?2004h>                 "name": {"type": "string"},
+[?2004l[?2004h>                 "email": {"type": "string", "format": "email"},
+[?2004l[?2004h>                 "isActive": {"type": "boolean"},
+[?2004l[?2004h>                 "role": {"type": "string", "enum": ["admin", "user", "manager"]}
+[?2004l[?2004h>             },
+[?2004l[?2004h>             "required": ["id", "name", "email", "isActive", "role"],
+[?2004l[?2004h>             "oneOf": [
+[?2004l[?2004h>                 {
+[?2004l[?2004h>                     "if": {"properties": {"role": {"const": "admin"}}},
+[?2004l[?2004h>                     "then": {"required": ["department"]}
+[?2004l[?2004h>                 },
+[?2004l[?2004h>                 {
+[?2004l[?2004h>                     "if": {"properties": {"role": {"const": "user"}}},
+[?2004l[?2004h>                     "then": {"not": {"required": ["department"]}}
+[?2004l[?2004h>                 },
+[?2004l[?2004h>                 {
+[?2004l[?2004h>                     "if": {
+[?2004l[?2004h>                         "allOf": [
+[?2004l[?2004h>                             {"properties": {"role": {"const": "manager"}}},
+[?2004l[?2004h>                             {"properties": {"isActive": {"const": True}}}
+[?2004l[?2004h>                         ]
+[?2004l[?2004h>                     },
+[?2004l[?2004h>                     "then": {"required": ["department"]}
+[?2004l[?2004h>                 },
+[?2004l[?2004h>                 {
+[?2004l[?2004h>                     "if": {
+[?2004l[?2004h>                         "allOf": [
+[?2004l[?2004h>                             {"properties": {"role": {"const": "manager"}}},
+[?2004l[?2004h>                             {"properties": {"isActive": {"const": False}}}
+[?2004l[?2004h>                         ]
+[?2004l[?2004h>                     },
+[?2004l[?2004h>                     "then": {"not": {"required": ["department"], "description": "Inactive managers must not have department"}}
+[?2004l[?2004h>                 }
+[?2004l[?2004h>             ],
+[?2004l[?2004h>             "additionalProperties": False
+[?2004l[?2004h>         }
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def save_schema(schema: Dict[str, Any]) -> None:
+[?2004l[?2004h>         """Save schema to file with proper formatting"""
+[?2004l[?2004h>         with open(SCHEMA_PATH, 'w') as f:
+[?2004l[?2004h>             json.dump(schema, f, indent=2, sort_keys=True)
+[?2004l[?2004h>         print(f"Schema saved to {SCHEMA_PATH}")
+[?2004l[?2004h> 
+[?2004l[?2004h> class FileProcessor:
+[?2004l[?2004h>     """Handles file processing with BOM detection and symlink skipping"""
+[?2004l[?2004h> 
+[?2004l[?2004h>     BOM_PATTERN = b'^\xef\xbb\xbf'
+[?2004l[?2004h>     
+[?2004l[?2004h>     @classmethod
+[?2004l[?2004h>     def is_symlink(cls, path: Path) -> bool:
+[?2004l[?2004h>         """Check if path is a symbolic link"""
+[?2004l[?2004h>         return path.is_symlink()
+[?2004l[?2004h> 
+[?2004l[?2004h>     @classmethod
+[?2004l[?2004h>     def detect_and_strip_bom(cls, data: bytes) -> tuple:
+[?2004l[?2004h>         """Detect and strip BOM if present"""
+[?2004l[?2004h>         if re.match(cls.BOM_PATTERN, data):
+[?2004l[?2004h>             return data[3:], True
+[?2004l[?2004h>         return data, False
+[?2004l[?2004h> 
+[?2004l[?2004h>     @classmethod
+[?2004l[?2004h>     def load_json_file(cls, file_path: Path) -> tuple:
+[?2004l[?2004h>         """Load JSON file with BOM handling and error reporting"""
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(file_path, 'rb') as f:
+[?2004l[?2004h>                 raw_data = f.read()
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Handle BOM
+[?2004l[?2004h>             processed_data, bom_stripped = cls.detect_and_strip_bom(raw_data)
+[?2004l[?2004h>             return json.loads(processed_data.decode('utf-8')), bom_stripped, None
+[?2004l[?2004h>         except json.JSONDecodeError as e:
+[?2004l[?2004h>             return None, False, f"JSON syntax error: {str(e)}"
+[?2004l[?2004h>         except Exception as e:
+[?2004l[?2004h>             return None, False, f"Unexpected error: {str(e)}"
+[?2004l[?2004h> 
+[?2004l[?2004h> 
+[?2004l[?2004h> class ValidationLogger:
+[?2004l[?2004h>     """Handles validation logging with ISO-8859-1 encoding and prefixing"""
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def log_event(file_name: str, status: str, reason: Optional[str] = None) -> None:
+[?2004l[?2004h>         """Log validation event with proper formatting"""
+[?2004l[?2004h>         log_entry = f"{LOG_PREFIX}{file_name} - {status}"
+[?2004l[?2004h>         if reason:
+[?2004l[?2004h>             log_entry += f" {reason}"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Write with ISO-8859-1 encoding
+[?2004l[?2004h>         with open(VALIDATION_LOG_PATH, 'ab') as f:
+[?2004l[?2004h>             f.write(log_entry.encode('iso-8859-1') + b'\n'
+[?2004l[?2004h> 
+[?2004l[?2004h> 
+[?2004l[?2004h> class Validator:
+[?2004l[?2004h>     """Validates user objects against the schema"""
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def validate_user(user_data: Dict[str, Any]) -> bool:
+[?2004l[?2004h>         """Validate user against business rules"""
+[?2004l[?2004h>         role = user_data.get('role')
+[?2004l[?2004h>         is_active = user_data.get('isActive', False)
+[?2004l[?2004h>         has_department = 'department' in user_data
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Admin validation
+[?2004l[?2004h>         if role == 'admin' and not has_department:
+[?2004l[?2004h>             return False
+[?2004l[?2004h>         
+[?2004l[?2004h>         # User validation  
+[?2004l[?2004h>         if role == 'user' and has_department:
+[?2004l[?2004h>             return False
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Manager validation
+[?2004l[?2004h>         if role == 'manager':
+[?2004l[?2004h>             if is_active and not has_department:
+[?2004l[?2004h>                 return False
+[?2004l[?2004h>             if not is_active and has_department:
+[?2004l[?2004h>                 return False
+[?2004l[?2004h>         
+[?2004l[?2004h>         return True
+[?2004l[?2004h> 
+[?2004l[?2004h> class OutputGenerator:
+[?2004l[?2004h>     """Generates required output files"""
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def generate_valid_users(valid_users: List[Dict[str, Any]]) -> None:
+[?2004l[?2004h>         """Generate valid users JSON with specific formatting"""
+[?2004l[?2004h>         # Transform data: lowercase email, uppercase role
+[?2004l[?2004h>         processed_users = []
+[?2004l[?2004h>         for user in valid_users:
+[?2004l[?2004h>             processed = {
+[?2004l[?2004h>                 'email': user['email'].lower(),
+[?2004l[?2004h>                 'id': user['id'],
+[?2004l[?2004h>                 'role': user['role'].upper()
+[?2004l[?2004h>             }
+[?2004l[?2004h>             # Add department if present
+[?2004l[?2004h>             if 'department' in user:
+[?2004l[?2004h>                 processed['department'] = user['department']
+[?2004l[?2004h>             processed_users.append(processed)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Write without trailing newline
+[?2004l[?2004h>         json_content = json.dumps(processed_users, indent=2, sort_keys=False)
+[?2004l[?2004h>         # Remove trailing newline if present
+[?2004l[?2004h>         if json_content.endswith('\n'):
+[?2004l[?2004h>             json_content = json_content[:-1]
+[?2004l[?2004h>         
+[?2004l[?2004h>         with open(VALID_USERS_PATH, 'w') as f:
+[?2004l[?2004h>             f.write(json_content)
+[?2004l[?2004h>         print(f"Valid users saved to {VALID_USERS_PATH}")
+[?2004l[?2004h> 
+[?2004l[?2004h>     @staticmethod
+[?2004l[?2004h>     def generate_summary(total_processed: int, total_valid: int) -> None:
+[?2004l[?2004h>         """Generate summary file with CRLF line endings and MD5 checksum"""
+[?2004l[?2004h>         # Calculate MD5 of log file
+[?2004l[?2004h>         md5_hash = hashlib.md5()
+[?2004l[?2004h>         with open(VALIDATION_LOG_PATH, 'rb') as f:
+[?2004l[?2004h>             md5_hash.update(f.read())
+[?2004l[?2004h>         log_md5 = md5_hash.hexdigest()
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Create content with CRLF line endings
+[?2004l[?2004h>         content = f"Files: {total_processed}\r\nPassed: {total_valid}\r\nLog Checksum: {log_md5}"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Write to file
+[?2004l[?2004h>         with open(SUMMARY_PATH, 'w') as f:
+[?2004l[?2004h>             f.write(content)
+[?2004l[?2004h>         print(f"Summary saved to {SUMMARY_PATH}")
+[?2004l[?2004h> 
+[?2004l[?2004h> def main():
+[?2004l[?2004h>     """Main execution function"""
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create output directories if needed
+[?2004l[?2004h>     Path("output").mkdir(exist_ok=True)
+[?2004l[?2004h>     Path("schema").mkdir(exist_ok=True)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 1. Generate schema
+[?2004l[?2004h>     schema = SchemaGenerator.generate_user_schema()
+[?2004l[?2004h>     SchemaGenerator.save_schema(schema)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 2. Initialize counters
+[?2004l[?2004h>     total_processed = 0
+[?2004l[?2004h>     total_valid = 0
+[?2004l[?2004h>     valid_users = []
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 3. Process input files
+[?2004l[?2004h>     for json_file in INPUT_DIR.glob('*.json'):
+[?2004l[?2004h>         total_processed += 1
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Skip symlinks
+[?2004l[?2004h>         if FileProcessor.is_symlink(json_file):
+[?2004l[?2004h>             ValidationLogger.log_event(json_file.name, "SKIPPED", "Symlink")
+[?2004l[?2004h>             continue
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Load and validate file
+[?2004l[?2004h>         user_data, bom_stripped, error = FileProcessor.load_json_file(json_file)
+[?2004l[?2004h>         
+[?2004l[?2004h>         if error:
+[?2004l[?2004h>             ValidationLogger.log_event(json_file.name, "INVALID", error)
+[?2004l[?2004h>             continue
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Validate user object
+[?2004l[?2004h>         is_valid = Validator.validate_user(user_data)
+[?2004l[?2004h>         if is_valid:
+[?2004l[?2004h>             total_valid += 1
+[?2004l[?2004h>             valid_users.append(user_data)
+[?2004l[?2004h>             status = "VALID" 
+[?2004l[?2004h>             if bom_stripped:
+[?2004l[?2004h>                 status = "VALID (BOM stripped)"
+[?2004l[?2004h>             ValidationLogger.log_event(json_file.name, status)
+[?2004l[?2004h>         else:
+[?2004l[?2004h>             ValidationLogger.log_event(json_file.name, "INVALID", "Schema validation failed")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 4. Generate valid users dump
+[?2004l[?2004h>     OutputGenerator.generate_valid_users(valid_users)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 5. Generate summary
+[?2004l[?2004h>     OutputGenerator.generate_summary(total_processed, total_valid)
+[?2004l[?2004h>     
+[?2004l[?2004h>     print("Processing complete!")
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == "__main__":
+[?2004l[?2004h>     main()
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# chmod +x test_harness_fixed.py
+[?2004l[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# rm -f output/*.json output/*.log
+[?2004l[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# python3 test_harness_fixed.py
+[?2004l  File "/home/user/projects/api-test/test_harness_fixed.py", line 121
+    f.write(log_entry.encode('iso-8859-1') + b'\n'
+           ^
+SyntaxError: '(' was never closed
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# echo "Verification after fixes..."
+[?2004lVerification after fixes...
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# ls -la output/
+[?2004ltotal 0
+drwxrwxrwx 1 root root  10 Feb 13 19:06 [0m[34;42m.[0m
+drwxrwxrwx 1 root root 106 Feb 13 19:06 [34;42m..[0m
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# tail -3 output/summary.txt
+[?2004ltail: cannot open 'output/summary.txt' for reading: No such file or directory
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# tail -5 output/validation.log
+[?2004ltail: cannot open 'output/validation.log' for reading: No such file or directory
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# tail -5 output/valid_users.json
+[?2004ltail: cannot open 'output/valid_users.json' for reading: No such file or directory
+[?2004hroot@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# 

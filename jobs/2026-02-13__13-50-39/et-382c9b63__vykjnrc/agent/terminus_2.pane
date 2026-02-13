@@ -1,0 +1,94 @@
+[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# clear
+[?2004l[H[J[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# mkdir -p /home/user/ingest
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# find /home/user/scan_logs /home/user/scan_logs/archive -type f -iname '*.log' -not -path '*backup*' -print > /tmp/candidate_logs.txt
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# TMP_WORK_DIR=$(mktemp -d)
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# VALID_LOG_FILES=()
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# CHECKSUM_FILE="${TMP_WORK_DIR}/checksums.txt"
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# touch "$CHECKSUM_FILE"
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# 
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# while IFS= read -r log_file_path; do
+[?2004l[?2004h>   echo "Processing $log_file_path..."
+[?2004l[?2004h>   # Extract scan date from Nmap header
+[?2004l[?2004h>   scan_date_line=$(grep -m 1 "Starting Nmap.*at" "$log_file_path" || true)
+[?2004l[?2004h>   if [ -z "$scan_date_line" ]; then
+[?2004l[?2004h>     echo "Warning: No Nmap start line in $log_file_path. Skipping."
+[?2004l[?2004h>     continue
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   
+[?2004l[?2004h>   extracted_date=$(echo "$scan_date_line" | awk -F"at " '{print $2}' | awk '{print $1}' | sed -e 's/ .*//' | xargs)
+[?2004l[?2004h>   if [ -z "$extracted_date" ]; then
+[?2004l[?2004h>     echo "Warning: Could not parse date from line in $log_file_path: $scan_date_line. Skipping."
+[?2004l[?2004h>     continue
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Convert extracted_date (e.g., YYYY-MM-DD) to YYYY-MM format
+[?2004l[?2004h>   file_month_year=$(date -d "$extracted_date" +"%Y-%m" 2>/dev/null || echo "")
+[?2004l[?2004h>   if [ -z "$file_month_year" ]; then
+[?2004l[?2004h>     echo "Warning: Invalid date format '$extracted_date' in $log_file_path. Skipping."
+[?2004l[?2004h>     continue
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   
+[?2004l[?2004h>   if [ "$file_month_year" = "2023-05" ]; then
+[?2004l[?2004h>     VALID_LOG_FILES+=("$log_file_path")
+[?2004l[?2004h>     # Get SHA256 checksum
+[?2004l[?2004h>     checksum=$(sha256sum "$log_file_path" | awk '{print $1}')
+[?2004l[?2004h>     echo "$log_file_path|$checksum" >> "${TMP_WORK_DIR}/checksums.txt"
+[?2004l[?2004h>   fi
+[?2004l[?2004h> 
+[?2004l[?2004h> done < /tmp/candidate_logs.txt
+[?2004lProcessing /home/user/scan_logs/archive/scan_gw.log...
+Warning: No Nmap start line in /home/user/scan_logs/archive/scan_gw.log. Skipping.
+Processing /home/user/scan_logs/scan_latin.log...
+Warning: No Nmap start line in /home/user/scan_logs/scan_latin.log. Skipping.
+Processing /home/user/scan_logs/scan_old.log...
+Warning: No Nmap start line in /home/user/scan_logs/scan_old.log. Skipping.
+Processing /home/user/scan_logs/scan_std.log...
+Warning: No Nmap start line in /home/user/scan_logs/scan_std.log. Skipping.
+Processing /home/user/scan_logs/archive/scan_gw.log...
+Warning: No Nmap start line in /home/user/scan_logs/archive/scan_gw.log. Skipping.
+[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# 
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# if [ ${#VALID_LOG_FILES[@]} -eq 0 ]; then
+[?2004l[?2004h>   echo "No valid May 2023 log files found."
+[?2004l[?2004h>   rm -f "${TMP_WORK_DIR}/checksums.txt"
+[?2004l[?2004h> else
+[?2004l[?2004h>   echo "Found ${#VALID_LOG_FILES[@]} valid log files from May 2023."
+[?2004l[?2004h> fi
+[?2004lNo valid May 2023 log files found.
+[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# 
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# # Clean up candidate list
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# rm /tmp/candidate_logs.txt
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# echo '{"scans": []}' > /home/user/ingest/manifest.json
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# CSV_CONTENT_ARRAY=()
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# CSV_HEADER="Hash,Host,Open_Ports,Duration,PPS"
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# CSV_CONTENT_ARRAY+=("${CSV_HEADER}")
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# 
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# START_TIME=$(date +%s.%N)
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# 
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# # Create runtime comment
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# RUNTIME_COMMENT="#parser_runtime=0.00"
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# CSV_CONTENT_ARRAY+=("${RUNTIME_COMMENT}")
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# 
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# # Join CSV lines and convert to UTF-16LE with BOM
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# CSV_UTF8=$(printf "%s\n" "${CSV_CONTENT_ARRAY[@]}")
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# CSV_UTF16LE=$(echo -n "$CSV_UTF8" | iconv -f UTF-8 -t UTF-16LE | (printf '\xEF\xBB\xBF'; cat))
+[?2004lbash: warning: command substitution: ignored null byte in input
+[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# 
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# echo -n "$CSV_UTF16LE" > /home/user/ingest/cyber_core_import.csv
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# 
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# echo "Manifest.json created. CSV created with header and runtime comment only."
+[?2004lManifest.json created. CSV created with header and runtime comment only.
+[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# 
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# # Display manifest.json content
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# if [ -f /home/user/ingest/manifest.json ]; then
+[?2004l[?2004h>     cat /home/user/ingest/manifest.json
+[?2004l[?2004h> else
+[?2004l[?2004h>     echo "Error: manifest.json not found."
+[?2004l[?2004h> fi
+[?2004l{"scans": []}
+[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# 
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# # Clean up temporary directory
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# rm -rf "$TMP_WORK_DIR"
+[?2004l[?2004hroot@3650ae5b-7ca8-43d0-9c41-36abf9b49945:~# 

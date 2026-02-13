@@ -1,0 +1,122 @@
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:~# clear
+[?2004l[H[J[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:~# cd /home/user/storage
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# cutoff_days=$(grep '^cutoff_days=' params.conf | sed 's/cutoff_days=//')
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# max_bak_kb=$(grep '^max_bak_kb=' params.conf | sed 's/max_bak_kb=//')
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# echo "cutoff_days: $cutoff_days, max_bak_kb: $max_bak_kb"
+[?2004lcutoff_days: , max_bak_kb: 
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# cat params.conf
+[?2004l# Storage Maintenance Configuration
+# Created by Admin on 2023-01-15
+
+cutoff_days = 12
+# Size limit in KB
+max_bak_kb = 2048
+
+# ignore_prefix = _
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# cutoff_days=$(sed 's/^[[:space:]]*//;s/[[:space:]]*$//' params.conf | grep '^cutoff_days' | sed 's/cutoff_days[[:space:]]*=[[:space:]]*//')
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# max_bak_kb=$(sed 's/^[[:space:]]*//;s/[[:space:]]*$//' params.conf | grep '^max_bak_kb' | sed 's/max_bak_kb[[:space:]]*=[[:space:]]*//')
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# echo "cutoff_days: $cutoff_days, max_bak_kb: $max_bak_kb"
+[?2004lcutoff_days: 12, max_bak_kb: 2048
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# # Start pruning phase
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# total_deleted_bytes=0
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# find incoming -type f -name '*.bak' ! -name '_*' -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>   size=$(stat -c%s "${file}")
+[?2004l[?2004h>   if [ ${size} -gt $((max_bak_kb * 1024)) ]; then
+[?2004l[?2004h>     echo "Deleting ${file} (size: ${size} bytes)"
+[?2004l[?2004h>     rm "${file}" && ((total_deleted_bytes+=size))
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004lDeleting incoming/project1/delete_me.bak (size: 2621440 bytes)
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# echo "Total bytes deleted from .bak files: ${total_deleted_bytes}"
+[?2004lTotal bytes deleted from .bak files: 0
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# # Fix variable scope issue and run pruning again
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# total_deleted_bytes=0
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# export total_deleted_bytes
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# find incoming -type f -name '*.bak' ! -name '_*' -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>   size=$(stat -c%s "${file}")
+[?2004l[?2004h>   if [ ${size} -gt $((max_bak_kb * 1024)) ]; then
+[?2004l[?2004h>     echo "Deleting ${file} (size: ${size} bytes)"
+[?2004l[?2004h>     rm "${file}" && ((total_deleted_bytes+=size))
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# echo "Total bytes deleted from .bak files: ${total_deleted_bytes}"
+[?2004lTotal bytes deleted from .bak files: 0
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# # Start archival phase
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# corrupt_count=0
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# find incoming -type f -name '*.txt' -mtime +${cutoff_days} -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>   if iconv -f UTF-8 -t UTF-8 "${file}" >/dev/null 2>&1; then
+[?2004l[?2004h>     echo "Moving valid file: ${file}"
+[?2004l[?2004h>     mv "${file}" archive/
+[?2004l[?2004h>   else
+[?2004l[?2004h>     echo "File is corrupt: ${file}"
+[?2004l[?2004h>     mv "${file}" "${file}.corrupt" && ((corrupt_count+=1))
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004lFile is corrupt: incoming/project2/invalid_utf8.txt
+Moving valid file: incoming/project2/valid_old.txt
+Moving valid file: incoming/space dir/file
+name.txt
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# echo "Total corrupt files: ${corrupt_count}"
+[?2004lTotal corrupt files: 0
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# # Fix corrupt_count variable scope
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# export corrupt_count=0
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# find incoming -type f -name '*.txt' -mtime +${cutoff_days} -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>   if iconv -f UTF-8 -t UTF-8 "${file}" >/dev/null 2>&1; then
+[?2004l[?2004h>     echo "Moving valid file: ${file}"
+[?2004l[?2004h>     mv "${file}" archive/
+[?2004l[?2004h>   else
+[?2004l[?2004h>     echo "File is corrupt: ${file}"
+[?2004l[?2004h>     mv "${file}" "${file}.corrupt" && ((corrupt_count+=1))
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# echo "Total corrupt files: ${corrupt_count}"
+[?2004lTotal corrupt files: 0
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# # Generate manifest.csv
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# cd archive
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage/archive# find . -type f -exec stat -c '%n,%s,%n' {} \; -exec md5sum {} \; | sed 's|/[^/]*| |;s|  *|,|;s|  *|,|' | sort -t, -k3 | awk 'BEGIN{ORS="\r\n"} {print $1 "," $2 "," $3}' > manifest.csv
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage/archive# cd ..
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# # Generate audit report
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# manifest_sha1=$(sha1sum archive/manifest.csv | awk '{print $1}')
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# cat > summary.xml << 'EOF'
+[?2004l[?2004h> <?xml version="1.0" encoding="ISO-8859-1"?>
+[?2004l[?2004h> <audit>
+[?2004l[?2004h>     <deleted_bytes>${total_deleted_bytes}</deleted_bytes>
+[?2004l[?2004h>     <corrupt_files>${corrupt_count}</corrupt_files>
+[?2004l[?2004h>     <manifest_sha1>${manifest_sha1}</manifest_sha1>
+[?2004l[?2004h> </audit>
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# echo "Audit report generated. Summary:"
+[?2004lAudit report generated. Summary:
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# cat summary.xml
+[?2004l<?xml version="1.0" encoding="ISO-8859-1"?>
+<audit>
+    <deleted_bytes>${total_deleted_bytes}</deleted_bytes>
+    <corrupt_files>${corrupt_count}</corrupt_files>
+    <manifest_sha1>${manifest_sha1}</manifest_sha1>
+</audit>
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# export total_deleted_bytes corrupt_count manifest_sha1
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# cat > summary.xml << 'EOF'
+[?2004l[?2004h> <?xml version="1.0" encoding="ISO-8859-1"?>
+[?2004l[?2004h> <audit>
+[?2004l[?2004h>     <deleted_bytes>${total_deleted_bytes}</deleted_bytes>
+[?2004l[?2004h>     <corrupt_files>${corrupt_count}</corrupt_files>
+[?2004l[?2004h>     <manifest_sha1>${manifest_sha1}</manifest_sha1>
+[?2004l[?2004h> </audit>
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# echo "Corrected audit report:"
+[?2004lCorrected audit report:
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# cat summary.xml
+[?2004l<?xml version="1.0" encoding="ISO-8859-1"?>
+<audit>
+    <deleted_bytes>${total_deleted_bytes}</deleted_bytes>
+    <corrupt_files>${corrupt_count}</corrupt_files>
+    <manifest_sha1>${manifest_sha1}</manifest_sha1>
+</audit>
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# # Remove empty directories under incoming/
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# find incoming -type d -empty -delete
+[?2004l[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# echo "Maintenance routine completed."
+[?2004lMaintenance routine completed.
+[?2004hroot@76919ff6-ef93-4008-8d59-03856ccca262:/home/user/storage# 

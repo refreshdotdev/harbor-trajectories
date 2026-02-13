@@ -1,0 +1,47 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat > load_initial.sh << 'EOF'
+> #!/bin/bash
+>
+> DB="db/audit.db"
+> CONFIG_DIR="configs"
+> SQL_LOG="logs/sql_history.log"
+>
+> # Insert initial file records
+> for file_path in "$CONFIG_DIR"/*; do
+>     rel_path="$(basename "$file_path")"
+>
+>     # Calculate SHA-256 hash
+>     file_hash="$(sha256sum "$file_path" | cut -d' ' -f1)"
+>
+>     # Get first 4 bytes as lowercase hex
+>     magic_hex="$(od -An -tx1 -j0 -N4 "$file_path" | tr -d ' \n' | awk '{print tolower($0)}')"
+>
+>     # Get file size in bytes
+>     size_bytes="$(stat -c%s "$file_path")"
+>
+>     # Get modification timestamp (ISO-8601 format)
+>     mtime_utc="$(date -u -d "$(stat -c%y "$file_path" | cut -d'.' -f1)" +'%Y-%m-%dT%H:%M:%SZ')"
+>
+>     # Insert into tracked_files
+>     sqlite3 "$DB" "INSERT INTO tracked_files (rel_path, file_hash, magic_hex, size_bytes) VALUES('$rel_path', '$file_hash', '$magic_hex', $size_bytes);" >> "$
+SQL_LOG" 2>&1
+>
+>     # Get the file_id
+>     file_id="$(sqlite3 "$DB" "SELECT id FROM tracked_files WHERE rel_path = '$rel_path';" | grep -v id)"
+>
+>     # Insert INIT event
+>     sqlite3 "$DB" "INSERT INTO audit_events (file_id, event_type, event_ts) VALUES($file_id, 'INIT', '$mtime_utc');" >> "$SQL_LOG" 2>&1
+>
+> done
+>
+> echo "-- Initial load completed" >> "$SQL_LOG"
+> EOF
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker#
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x load_initial.sh
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x load_initial.sh
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker#

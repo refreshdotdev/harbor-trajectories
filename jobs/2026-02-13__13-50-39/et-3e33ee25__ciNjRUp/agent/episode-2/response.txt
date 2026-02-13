@@ -1,0 +1,29 @@
+```json
+{
+  "analysis": "The commands from the previous batch were concatenated incorrectly, causing syntax errors. The script file was not created properly. Need to fix the input file creation and script implementation with proper command separation.",
+  "plan": "1. Create mock_netstat.txt and mock_passwd files using individual commands with proper newlines. 2. Process service_names.csv to remove BOM. 3. Create the security scan script with proper syntax and parallel job framework. 4. Implement the complete job processing logic.",
+  "commands": [
+    {
+      "keystrokes": "cat > /home/user/sample_data/mock_netstat.txt << 'EOF'\ntcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      \ntcp        0      0 127.0.0.1:3306          0.0.0.0:*               LISTEN      \nudp        0      0 0.0.0.0:68              0.0.0.0:*                           \ntcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN      \ntcp        0      0 192.168.1.100:443       0.0.0.0:*               LISTEN      \nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat > /home/user/sample_data/mock_passwd << 'EOF'\nroot:x:0:0:root:/root:/bin/bash\nbin:x:1:1:bin:/bin:/bin/false\ndaemon:x:2:2:daemon:/sbin:/bin/false\nadm:x:3:4:adm:/var/adm:/bin/false\nlp:x:4:7:lp:/var/spool/lpd:/bin/false\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "tail -n +2 /home/user/sample_data/service_names.csv > /home/user/sample_data/service_names_clean.csv\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat > /home/user/reports/run_security_scan.sh << 'EOF'\n#!/bin/bash\n\n# Enterprise Security Baseline Automation (SOP-992)\n# Ticket SEC-4022: Automate daily infrastructure snapshot report\n\n# Output files\nNETSTAT_OUT=\"/tmp/netstat_analysis.txt\"\nUSER_OUT=\"/tmp/user_audit.txt\"\nREPORT_YAML=\"/home/user/reports/infra_security_report.yml\"\nSCAN_LOG=\"/home/user/reports/scan_exec_time.log\"\n\n# Cleanup temporary files on exit\ncleanup() {\n    rm -f \"$NETSTAT_OUT\" \"$USER_OUT\"\n}\ntrap cleanup SIGINT SIGTERM EXIT\n\n# Process network exposure\nprocess_netstat() {\n    # Load service names\n    declare -A services\n    while IFS=',' read -r port service; do\n        if [ -n \"$port\" ]; then\n            services[\"$port\"]=\"$service\"\n        fi\ndone < \"/home/user/sample_data/service_names_clean.csv\"\n\n    # Process netstat data\n    awk -F'[ \t:]+' '/LISTEN|udp/ {\n        if ($3 == \"LISTEN\" || $1 == \"udp\") {\n            port_proto = $5 \":\" $4\n            service_name = \"\"\n            if (port_proto in services) {\n                service_name = services[port_proto]\n            }\n            prefix = \"\"\n            if ($2 == \"0.0.0.0\") {\n                prefix = \"public-\"\n            } else if ($2 == \"127.0.0.1\") {\n                prefix = \"local-\"\n            }\n            printf \"%s\\t%s\\t%s (%s)\\n\", $5, prefix $4, $6, service_name\n        }\n    }' /home/user/sample_data/mock_netstat.txt |\n    sort -k1n > \"$NETSTAT_OUT\"\n}\n\n# Process user audit\nprocess_user_audit() {\n    awk -F: '$3 < 1000 && $7 != \"/bin/false\"' /home/user/sample_data/mock_passwd |\n    sort > \"$USER_OUT\"\n}\n\n# Main script execution\nstart_epoch=$(date +%s)\n\n# Run jobs in parallel\nprocess_netstat &\nprocess_user_audit &\nwait\n\nend_epoch=$(date +%s)\n\n# Generate reports\n# TODO: Implement YAML generation with ISO-8859-1 encoding\n# TODO: Implement CSV log with CRLF line endings\n\necho \"Security scan completed\"\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "chmod +x /home/user/reports/run_security_scan.sh\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}
+```

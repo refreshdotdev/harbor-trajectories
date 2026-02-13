@@ -1,0 +1,56 @@
+Current terminal state:
+New Terminal Output:
+
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# export AUDIT_LOCATION="/home/user/audit"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mkdir -p "$AUDIT_LOCATION" && chmod 700 "$AUDIT_LOCATION"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# if [ -f "$AUDIT_LOCATION/benchmark_audit.log" ]; then mv "$AUDIT_LOCATION/benchmark_audit.log" "$AUDIT_LOCATION/ben
+chmark_audit.log.old"; fi
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp1=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# cpu_cores=$(nproc)
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp1|CPU_CORES|$cpu_cores|count|nproc" >> "$AUDIT_LOCATION/benchmark_audit.log"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp2=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mem_kib=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# mem_mib=$(echo "scale=2; $mem_kib / 1024" | bc | awk '{printf "%d", $1}')
+bash: bc: command not found
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp2|MEM_TOTAL_MIB|$mem_mib|MiB|grep MemTotal /proc/meminfo | awk '{print $2}'" >> "$AUDIT_LOCATION/be
+nchmark_audit.log"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# timestamp3=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# dd if=/dev/zero of="$AUDIT_LOCATION/disktest.tmp" bs=1M count=100 2>&1 | grep -oP '[0-9]+.[0-9]+ MB/s' | awk '{prin
+t $1}' | sed 's/MB/MiB/' > "$AUDIT_LOCATION/disk_speed.tmp"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# sleep 1
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# disk_speed_mibs=$(cat "$AUDIT_LOCATION/disk_speed.tmp")
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# rm "$AUDIT_LOCATION/disk_speed.tmp"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# echo "$timestamp3|DISK_WRITE_MIBPS|$disk_speed_mibs|MiB/s|dd if=/dev/zero of=\"$AUDIT_LOCATION/disktest.tmp\" bs=1M
+ count=100 2>&1 | grep -oP '[0-9]+.[0-9]+ MB/s' | awk '{print $1}' | sed 's/MB/MiB/'" >> "$AUDIT_LOCATION/benchmark_audit.log"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# rm "$AUDIT_LOCATION/disktest.tmp"
+root@67b2efe0-7a74-4ba2-8871-2419dde2cf61:~# ping_output=$(ping -c 5 8.8.8.8 2>&1 | grep -E 'time=[0-9]+ ms' | awk -F'time=' '{print $2}' | awk '{print $1}' | t
+r '\n' ' ')
+latencies=($(cat "$AUDIT_LOCATION/ping_times.tmp"))
+rm "$AUDIT_LOCATION/ping_times.tmp"
+min_lat=${latencies[0]}
+max_lat=${latencies[0]}
+for lat in "${latencies[@]}"; do
+  if (( $(echo "$lat < $min_lat" | bc -l) )); then
+    min_lat=$lat
+  fi
+  if (( $(echo "$lat > $max_lat" | bc -l) )); then
+    max_lat=$lat
+  fi
+done
+sorted=($(for l in "${latencies[@]}"; do echo $l; done | sort -n))
+median_lat=${sorted[2]}
+jitter=$(echo "$max_lat - $min_lat" | bc -l)
+timestamp4=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+echo "$timestamp4|NET_LATENCY_MS|$median_lat|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+timestamp5=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+echo "$timestamp5|NET_JITTER_MS|$jitter|ms|ping -c 5 8.8.8.8" >> "$AUDIT_LOCATION/benchmark_audit.log"
+log_start_ts=$(head -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+log_end_ts=$(tail -n 1 "$AUDIT_LOCATION/benchmark_audit.log" | cut -d'|' -f1)
+duration_sec=$(date -u -d "$log_end_ts" +%s.%3f -d "$log_start_ts" +%s.%3f)
+jq -n ".cpu_core_count=$cpu_cores | .total_memory_bytes=$mem_kib | .disk_write_mib_per_sec=$disk_speed_mibs | .network_latency_ms=$median_lat | .network_jitter_
+ms=$jitter | .benchmark_duration_seconds=$duration_sec | .timestamp=(now | todate)" > "$AUDIT_LOCATION/benchmark_summary.json"
+cat "$AUDIT_LOCATION/benchmark_audit.log"
+
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

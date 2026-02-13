@@ -1,0 +1,142 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are a FinOps analyst who has been asked to produce a concise cost summary from raw Google-Cloud-usage CSV logs that reside on the workstation. Everything must be done strictly from the Linux terminal, without installing third-party programs other than what is already available in a typical Debian/Ubuntu environment.
+
+1.  **Raw data location**
+    *   Folder: `/home/user/cloud_logs`
+    *   Files: The directory contains multiple files named `usage-YYYY-MM.csv`. You must process **all** such files found, sorted chronologically.
+
+2.  **CSV format and Data Quality**
+    *   Header is always the first line: `resource_id,service,usage_hours,cost`
+    *   **Warning:** The data is messy. Fields may contain leading/trailing whitespace which must be trimmed. The files may contain empty lines which must be ignored.
+    *   **Filtering:** Any row where the `service` name contains the text "Trial" (case-insensitive) must be strictly **excluded** from all calculations.
+
+3.  **Required calculations per month**
+    For each valid file (representing a month):
+    a.  **Subtotal:** The sum of the clean "cost" column.
+    b.  **Tax:** Calculate tax on the Subtotal using the rate defined in the environment variable `CORP_TAX_RATE` (e.g., `0.05` for 5%). If the variable is not set, default to `0.08`. Round the tax amount to exactly two decimal places.
+    c.  **Total:** Subtotal + Tax.
+    d.  **Service Breakdown:** Sum of costs per service (using the cleaned service name). Identify the 3 most expensive services, sorted descending.
+
+4.  **Expected output artefact**
+    Create the single text file `/home/user/cloud_logs/reports/cost_summary_report.txt`.
+    The directory `/home/user/cloud_logs/reports` does not exist yet; create it.
+
+    The file must follow this **exact** structure:
+    ```
+    CLOUD COST SUMMARY REPORT
+    == <Month_Name> <Year> ==
+    Subtotal: $<amount>
+    Tax: $<amount>
+    Total: $<amount>
+    Service Breakdown:
+      <Service-1>: $<cost>
+      <Service-2>: $<cost>
+      ... sorted by decreasing cost ...
+    Top 3 Services: <Service-A>, <Service-B>, <Service-C>
+
+    == <Next_Month_Name> <Year> ==
+    ... same structure ...
+
+    [CHECKSUM]: <sha256_hash>
+    ```
+    
+    **Footer Requirement:** The very last line of the file must be `[CHECKSUM]: <hash>`, where `<hash>` is the SHA-256 hexadecimal digest of all preceding content in the file (everything up to, but not including, the `[CHECKSUM]:` line). Ensure there is a blank line (empty line) between the last month's data and the checksum line.
+
+5.  **Additional requirements**
+    *   Do *not* modify, delete or rename the original CSV files.
+    *   All money values must be formatted to exactly two decimal places (e.g., `150.00`).
+    *   Service names in the output must be the trimmed versions from the CSV.
+    *   Date headers (e.g., "September 2023") must be derived from the filename `usage-YYYY-MM.csv`.
+
+Current terminal state:
+Current Terminal Screen:
+root@6ea3f48e-da4b-4524-812f-cf2ed6237b6d:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

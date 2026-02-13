@@ -1,0 +1,62 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# cat > generate_rules.py << 'EOF'
+> import json
+> import os
+>
+> # Load intermediate rules
+> with open('intermediate.json', 'r') as f:
+>     rules = json.load(f)
+>
+> # Extract state rule from base file
+> with open('base_rules.v4', 'r') as f:
+>     base_content = f.read()
+>
+> state_rule = None
+> for line in base_content.split('\r\n'):
+>     if 'RELATED,ESTABLISHED' in line:
+>         state_rule = line
+>         break
+>
+> # Sort rules by port number
+> def get_port_num(rule):
+>     return int(rule['port'])
+>
+> sorted_allow = sorted([r for r in rules if r['type'] == 'allow'], key=get_port_num)
+> sorted_block = sorted([r for r in rules if r['type'] == 'block'], key=get_port_num)
+>
+> # Generate iptables commands
+> output_lines = []
+> output_lines.append('*filter')
+> output_lines.append(':INPUT DROP [0:0]')
+> output_lines.append(':FORWARD DROP [0:0]')
+> output_lines.append(':OUTPUT ACCEPT [0:0]')
+>
+> if state_rule:
+>     output_lines.append(state_rule.replace('\r\n', '').strip())
+>
+> # Add allow rules first (sorted by port)
+> for rule in sorted_allow:
+>     output_lines.append(f'-A INPUT -p tcp --dport {rule["port"]} -s {rule["ip"]} -j ACCEPT')
+>
+> # Add block rules (sorted by port)
+> for rule in sorted_block:
+>     output_lines.append(f'-A INPUT -p tcp --dport {rule["port"]} -s {rule["ip"]} -j DROP')
+>
+> output_lines.append('COMMIT')
+>
+> # Write with Unix line endings
+> with open('optimized_rules.v4', 'w') as f:
+>     f.write('\n'.join(output_lines))
+>
+> print("Generated optimized_rules.v4")
+> EOF
+root@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# python3 generate_rules.py
+Generated optimized_rules.v4
+root@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall# wc -l optimized_rules.v4
+27 optimized_rules.v4
+root@38cc7097-ace1-487c-a838-1f4658c2bc86:/home/user/firewall#

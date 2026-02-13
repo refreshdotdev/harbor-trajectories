@@ -1,0 +1,48 @@
+New Terminal Output:
+
+root@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# mkdir -p summary
+root@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# grep ': OK$' logs/validation.log | cut -d: -f1 > valid_reports.txt
+root@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# totalGB=0; usedGB=0; freeGB=0; totalMonthlyCost=0; mounts=()
+root@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# while IFS= read -r report; do
+>   host=$(jq -r '.host' "${report}")
+>   env=$(jq -r '.environment // "Unknown"' "${report}")
+>   jq -r '.mounts[] | {host: "\ "$host"", environment: "\ "$env\", mountPoint, totalGB, usedGB, freeGB: (.totalGB - .usedGB), usagePercent: (.usedGB / .totalGB
+ * 100), monthlyCost: .} + {host: "\ "$host"", environment: "\ "$env\", mountPoint: ., totalGB: ., usedGB: ., freeGB: (.totalGB - .usedGB), usagePercent: (.used
+GB / .totalGB * 100 | round), monthlyCost: .} + {host: "\ "$host"", environment: "\ "$env\", mountPoint: ., totalGB: ., usedGB: ., freeGB: (.totalGB - .usedGB),
+ usagePercent: (.usedGB / .totalGB * 100 | round), monthlyCost: .}' "${report}" | jq -s -c '.[]' | while IFS= read -r mount; do
+>     m=$(echo "$mount" | jq -c '. + {host, environment, mountPoint, totalGB, usedGB, freeGB, usagePercent, monthlyCost}')
+>     totalGB=$(echo "$m" | jq '.totalGB' | awk '{printf "%.0f", $1}')
+>     usedGB=$(echo "$m" | jq '.usedGB' | awk '{printf "%.0f", $1}')
+>     freeGB=$(echo "$m" | jq '.freeGB' | awk '{printf "%.0f", $1}')
+>     host=$(echo "$m" | jq -r '.host')
+>     env=$(echo "$m" | jq -r '.environment')
+>     mountPoint=$(echo "$m" | jq -r '.mountPoint')
+>     cost_per_gb=$(grep -i "^${host}," inventory.csv | cut -d, -f3 || echo 0)
+>     if [ -z "$cost_per_gb" ] || [ "$cost_per_gb" == "null" ]; then
+>       env="Unmanaged"
+>       cost_per_gb=0
+>     fi
+>     monthlyCost=$(awk 'BEGIN {printf "%.2f", ARGV[1] * ARGV[2]}' "$usedGB" "$cost_per_gb")
+>     usagePercent=$(awk 'BEGIN {printf "%.2f", ARGV[1] / ARGV[2] * 100}' "$usedGB" "$totalGB")
+>     freeGB=$(awk 'BEGIN {printf "%.2f", ARGV[1] - ARGV[2]}' "$totalGB" "$usedGB")
+>     mount_json=$(jq -n --arg h "$host" --arg e "$env" --arg m "$mountPoint" --arg t "\"$(awk 'BEGIN {printf "%.2f",'$totalGB'}')\"" --arg u "\"$(awk 'BEGIN {p
+rintf "%.2f",'$usedGB'}')\"" --arg f "\"$(awk 'BEGIN {printf "%.2f",'$freeGB'}')\"" --arg p "\"$(awk 'BEGIN {printf "%.2f",'$usagePercent'}')\"" --arg c "\"$(aw
+k 'BEGIN {printf "%.2f",'$monthlyCost'}')\"" '{host: $h, environment: $e, mountPoint: $m, totalGB: $t|tonumber, usedGB: $u|tonumber, freeGB: $t|tonumber, usageP
+ercent: $p|tonumber, monthlyCost: $c|tonumber}')
+>     mounts+="${mount_json},\n"
+>     totalGB=$(awk 'BEGIN {printf "%.2f", '$totalGB' + '$totalGB'}')
+>     usedGB=$(awk 'BEGIN {printf "%.2f", '$usedGB' + '$usedGB'}')
+>     totalMonthlyCost=$(awk 'BEGIN {printf "%.2f", '$totalMonthlyCost' + '$monthlyCost'}')
+>   done
+> done < valid_reports.txt
+root@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# freeGB=$(awk 'BEGIN {printf "%.2f", '$totalGB' - '$usedGB'}')
+root@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# usagePercent=$(awk 'BEGIN {printf "%.2f", '$usedGB' / '$totalGB' * 100}' 2>/dev/null || echo
+ "0.00")
+root@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit# jq -n --arg gen "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" --argjson t "${totalGB}" --argjson u "${u
+sedGB}" --argjson f "${freeGB}" --argjson p "${usagePercent}" --argjson tm "${totalMonthlyCost}" '{generatedAt: $gen, totals: {totalGB: $t, usedGB: $u, freeGB:
+$f, usagePercent: $p, totalMonthlyCost: $tm}, mounts: [ '$mounts' | .[:-2] ] | sort_by(-.usagePercent)}' > summary/disk_usage_summary.json
+jq: error: syntax error, unexpected '|' (Unix shell quoting issues?) at <top-level>, line 1:
+{generatedAt: $gen, totals: {totalGB: $t, usedGB: $u, freeGB: $f, usagePercent: $p, totalMonthlyCost: $tm}, mounts: [  | .[:-2] ] | sort_by(-.usagePercent)}
+
+jq: 1 compile error
+root@bf14c2b4-fdc3-4736-90ba-a6336af70a23:/home/user/storage_audit#

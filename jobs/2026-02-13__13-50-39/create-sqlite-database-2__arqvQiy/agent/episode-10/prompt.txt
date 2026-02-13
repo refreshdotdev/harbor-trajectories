@@ -1,0 +1,49 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat > update_sshcfg.sh << 'EOF'
+ALUES($file_id, 'MODIFY', '$new_mtime_utc');" >> "$SQL_LOG" 2>&1
+
+echo "-- ssh.cfg updated and event logged" >> "$SQL_LOG"
+EOF
+
+chmod +x update_sshcfg.sh
+> #!/bin/bash
+>
+> DB="db/audit.db"
+> SQL_LOG="logs/sql_history.log"
+> FILE_PATH="configs/ssh.cfg"
+>
+> rel_path="$(basename "$FILE_PATH")"
+>
+> # Calculate new SHA-256 hash
+> new_file_hash="$(sha256sum "$FILE_PATH" | cut -d' ' -f1)"
+>
+> # Get new first 4 bytes as lowercase hex
+> new_magic_hex="$(od -An -tx1 -j0 -N4 "$FILE_PATH" | tr -d ' \n' | awk '{print tolower($0)}')"
+>
+> # Get new file size in bytes
+> new_size_bytes="$(stat -c%s "$FILE_PATH")"
+>
+> # Get new modification timestamp (ISO-8601 format)
+> new_mtime_utc="$(date -u -d "$(stat -c%y "$FILE_PATH" | cut -d'.' -f1)" +'%Y-%m-%dT%H:%M:%SZ')"
+>
+> # Get the file_id for ssh.cfg
+> file_id="$(sqlite3 "$DB" "SELECT id FROM tracked_files WHERE rel_path = '$rel_path';" | grep -v id)"
+>
+> # Update tracked_files record
+> sqlite3 "$DB" "UPDATE tracked_files SET file_hash='$new_file_hash', magic_hex='$new_magic_hex', size_bytes=$new_size_bytes WHERE id=$file_id;" >> "$SQL_LOG" 2
+>&1
+>
+> # Insert MODIFY event
+> sqlite3 "$DB" "INSERT INTO audit_events (file_id, event_type, event_ts) VALUES($file_id, 'MODIFY', '$new_mtime_utc');" >> "$SQL_LOG" 2>&1
+>
+> echo "-- ssh.cfg updated and event logged" >> "$SQL_LOG"
+> EOF
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker#
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x update_sshcfg.sh
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x update_sshcfg.sh
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker#

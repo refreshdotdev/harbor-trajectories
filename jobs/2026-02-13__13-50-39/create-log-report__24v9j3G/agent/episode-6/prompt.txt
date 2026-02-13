@@ -1,0 +1,53 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+> dst_base="${src##*/}"
+> dir_name="$(dirname "$src" | xargs basename)"
+> if [ ! -L "$src" ] && [ "$(stat -c %a "$src" 2>/dev/null)" != "000" ]; then
+>     case "$dst_base" in
+>         *.png)
+>             if [ "$(stat -c %s "$src" 2>/dev/null)" -gt 1000000 ]; then
+>                 echo "Processing PNG: $src"
+>                 if [ -f "organized/png_large/$dst_base" ]; then
+>                     new_dst="${dst_base%.*}_${dir_name}.${dst_base##*.}"
+>                     mv "$src" "organized/png_large/$new_dst" && new_path=$(realpath "organized/png_large/$new_dst")
+>                 else
+>                     mv "$src" "organized/png_large/$dst_base" && new_path=$(realpath "organized/png_large/$dst_base")
+>                 fi
+>                 size=$(stat -c %s "$new_path" 2>/dev/null)
+>                 mtime=$(stat -c %Y "$new_path" 2>/dev/null)
+>                 hash=$(md5sum "$new_path" | cut -d' ' -f1)
+>                 echo -e "$src\t$new_path\t$size\t$mtime\t$hash" >> organized/organize_log.tsv
+>                 let "moved_count+=1"
+>                 let "total_bytes+=${size:-0}"
+>             fi
+>             ;;
+>         *.jpg)
+>             if [ "$(stat -c %Y "$src" 2>/dev/null)" -lt 1625097600 ]; then
+>                 echo "Processing JPG: $src"
+>                 if [ -f "organized/jpg_old/$dst_base" ]; then
+>                     new_dst="${dst_base%.*}_${dir_name}.${dst_base##*.}"
+>                     cp -a "$src" "organized/jpg_old/$new_dst" && new_path=$(realpath "organized/jpg_old/$new_dst")
+>                 else
+>                     cp -a "$src" "organized/jpg_old/$dst_base" && new_path=$(realpath "organized/jpg_old/$dst_base")
+>                 fi
+>                 size=$(stat -c %s "$new_path" 2>/dev/null)
+>                 mtime=$(stat -c %Y "$new_path" 2>/dev/null)
+>                 hash=$(md5sum "$new_path" | cut -d' ' -f1)
+>                 echo -e "$src\t$new_path\t$size\t$mtime\t$hash" >> organized/organize_log.tsv
+>                 let "copied_count+=1"
+>                 let "total_bytes+=${size:-0}"
+>             fi
+>             ;;
+>     esac
+> fi
+> done
+Processing JPG: raw/orphan.jpg
+Processing PNG: raw/projectA/img1.png
+Processing JPG: raw/projectA/old1.jpg
+Processing PNG: raw/projectB/big_graph.png
+Processing PNG: raw/projectB/img1.png
+root@4ae6d2bb-a43d-4ccf-939c-1c831a251b49:/home/user/datasets#

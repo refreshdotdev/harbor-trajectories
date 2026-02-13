@@ -1,0 +1,59 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# python3 -c "
+> import json
+> from datetime import datetime
+>
+> # Load configuration
+> config = json.load(open('configs/config.json'))
+> trusted_ip = config['trusted_ip']
+> allow_ports = config['allow_ports']
+> block_ports = config['block_ports']
+>
+> # Extract state rule from base_rules.v4
+> state_rule = None
+> with open('base_rules.v4', 'r') as f:
+>     for line in f:
+>         line = line.strip()
+>         if '-m state --state RELATED,ESTABLISHED' in line:
+>             state_rule = line
+>             break
+>
+> # Create rule objects
+> rules = []
+> if state_rule:
+>     rules.append({'type': 'state', 'rule': state_rule})
+>
+> # Add allow rules
+> for port in allow_ports:
+>     rules.append({'type': 'allow', 'port': int(port), 'rule': f'-A INPUT -p tcp --dport {port} -s {trusted_ip} -j ACCEPT'})
+>
+> # Add block rules
+> for port in block_ports:
+>     rules.append({'type': 'block', 'port': int(port), 'rule': f'-A INPUT -p tcp --dport {port} -j DROP'})
+>
+> # Save intermediate state
+> with open('intermediate.json', 'w') as f:
+>     json.dump(rules, f, indent=2)
+> " 2>/dev/null || echo 'Error: Python not available, using fallback method'
+root@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall# if [ ! -f intermediate.json ]; then
+>     echo 'Creating intermediate.json using alternative method...'
+>     # Fallback method using grep, sed, and jq
+>     echo '[' > intermediate.json
+>     grep -E "-m state --state RELATED,ESTABLISHED" base_rules.v4 | while read -r line; do
+>         echo "\{\"type\": \"state\", \"rule\": \"$line\"\"\"" >> intermediate.json
+>     done
+>     cat configs/config.json | jq -r '.allow_ports[]' | while read -r port; do
+>         echo "\{\"type\": \"allow\", \"port\": $port, \"rule\": \"-A INPUT -p tcp --dport $port -s 192.168.1.100 -j ACCEPT\"\"\"" >> intermediate.json
+>     done
+>     cat configs/config.json | jq -r '.block_ports[]' | while read -r port; do
+>         echo "\{\"type\": \"block\", \"port\": $port, \"rule\": \"-A INPUT -p tcp --dport $port -j DROP\"\"\"" >> intermediate.json
+>     done
+>     sed -i '$ s/\]$//' intermediate.json
+>     echo ']' >> intermediate.json
+> fi
+root@c661c05d-099e-4747-899a-d7bc79cbde40:/home/user/firewall#

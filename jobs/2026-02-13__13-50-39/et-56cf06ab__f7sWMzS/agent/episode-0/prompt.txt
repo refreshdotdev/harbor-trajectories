@@ -1,0 +1,180 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are a storage administrator who has just received daily disk-usage reports in JSON format. A draft JSON-Schema for the reports already exists on the machine so that you can check every incoming document for structural correctness before you build any statistics.
+
+In addition, you have an inventory CSV file that defines the environment and cost associated with each host. You must incorporate this data into your report.
+
+Directories and files that are already present:
+
+1.  `/home/user/storage_audit/schema/disk_report.schema.json`
+2.  `/home/user/storage_audit/raw_reports/` (contains various `*.json` files, some may be hidden or have uppercase extensions)
+3.  `/home/user/storage_audit/inventory.csv`
+
+What you have to do:
+
+A.  Validation stage
+    1.  Scan the directory `/home/user/storage_audit/raw_reports/` for files ending in `.json` (case-insensitive).
+    2.  **Ignore** any file starting with a dot (`.`) (e.g., `.temp.json`).
+    3.  Validate every candidate file against the schema.
+    4.  Produce a validation log at `/home/user/storage_audit/logs/validation.log`
+        *   Create the directory “logs” if it does not yet exist.
+        *   The log must contain exactly one line per processed file with the following fixed format:
+            `&lt;fileName&gt; : &lt;result&gt;[ : &lt;errorMessage&gt;]`
+            where
+            *   `&lt;fileName&gt;` = the base name of the file
+            *   `&lt;result&gt;` can be:
+                *   `OK` : File is valid JSON and matches the schema.
+                *   `INVALID_JSON` : File content is not valid JSON syntax (parse error). No error message is appended for this case.
+                *   `ERROR` : File is valid JSON but fails schema validation. Append the first error message (no colons allowed in message).
+            Examples:
+            `daily_storage01.json : OK`
+            `corrupt_data.json : INVALID_JSON`
+            `broken_schema.json : ERROR : required property "host" missing`
+
+B.  Aggregation & reporting stage
+    1.  Ignore every file that was not logged as `OK`.
+    2.  Load `/home/user/storage_audit/inventory.csv`. It has the header `hostname,env,cost_per_gb`.
+    3.  For every **valid** mount entry in the valid reports:
+        *   Look up the report's `host` in the inventory.
+        *   If found, use the corresponding `env` and `cost_per_gb`.
+        *   If NOT found, default `env` to `"Unmanaged"` and `cost_per_gb` to `0`.
+        *   Calculate:
+            *   `freeGB` = `totalGB` – `usedGB`
+            *   `usagePercent` = (`usedGB` / `totalGB`) × 100
+            *   `monthlyCost` = `usedGB` × `cost_per_gb`
+    4.  Build a summary file at `/home/user/storage_audit/summary/disk_usage_summary.json` following **exactly** this structure:
+
+    ```json
+    {
+      "generatedAt": "2023-01-01T00:00:00Z",
+      "totals": {
+        "totalGB": <number>,
+        "usedGB": <number>,
+        "freeGB": <number>,
+        "usagePercent": <number>,
+        "totalMonthlyCost": <number>
+      },
+      "mounts": [
+        {
+          "host": "<host>",
+          "environment": "<env>",
+          "mountPoint": "<mount>",
+          "totalGB": <number>,
+          "usedGB": <number>,
+          "freeGB": <number>,
+          "usagePercent": <number>,
+          "monthlyCost": <number>
+        }
+      ]
+    }
+    ```
+
+    *   `totals.totalMonthlyCost` = sum of all `monthlyCost` values.
+    *   `totals.usagePercent` = (`totals.usedGB` / `totals.totalGB`) × 100.
+    *   The “mounts” array must be sorted **descending** by `usagePercent`.
+    *   **Formatting Rule**: Every numeric literal in the document must have **either zero or exactly two** digits after the decimal point (e.g., `150`, `12.50`, `0.00`). Rounding should be done to two decimal places.
+
+C.  Checksum
+    1.  Calculate the SHA256 checksum of the final `disk_usage_summary.json` file.
+    2.  Write the hexadecimal digest (and nothing else) to `/home/user/storage_audit/summary/checksum.sha256`.
+
+D.  Final console output
+    Print the absolute path of the summary JSON file.
+
+Notes:
+*   Do not modify the schema or the raw report files.
+*   Permissions: Directories 755, Files 644.
+*   Work entirely within `/home/user`.
+
+
+Current terminal state:
+Current Terminal Screen:
+root@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

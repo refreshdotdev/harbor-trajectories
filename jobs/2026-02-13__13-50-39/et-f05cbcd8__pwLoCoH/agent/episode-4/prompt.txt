@@ -1,0 +1,190 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ cat > incidents/tickets/dns_incident_2024.txt << EOF
+> app-internal.example.com
+> service-public.example.org
+> legacy-system.internal.net
+> api-gateway.external.com
+> EOF
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ cat > resources/mock_hosts << EOF
+> 192.168.1.100\tlegacy-system.internal.net
+> EOF
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ cat > resources/dns/internal_dns.json << EOF
+> {
+>   "app-internal.example.com": {"A": "10.10.10.10", "AAAA": "fd00::1"},
+>   "legacy-system.internal.net": {"A": "192.168.1.200", "AAAA": "fd00::2"},
+>   "db.internal.example.com": {"A": "10.10.10.20", "AAAA": "fd00::3"}
+> }
+> EOF
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ cat > resources/dns/external_dns.json << EOF
+> {
+>   "service-public.example.org": {"A": "203.0.113.10", "AAAA": "2001:db8::10"},
+>   "api-gateway.external.com": {"A": "203.0.113.20", "AAAA": "2001:db8::20"},
+>   "cdn.external.com": {"A": "203.0.113.30", "AAAA": "2001:db8::30"},
+>   "app-internal.example.com": {"A": "203.0.113.40", "AAAA": "2001:db8::40"},
+>   "alias-internal.internal.example.com": {"CNAME": "db.internal.example.com"}
+> }
+> EOF
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ cat > resolve_dns.sh << EOF
+> #!/bin/bash
+>
+> # Exit on error and unset variable
+> set -eu
+>
+> # Define file paths
+> TICKET_FILE="incidents/tickets/dns_incident_2024.txt"
+> MOCK_HOSTS_FILE="resources/mock_hosts"
+> INTERNAL_DNS_FILE="resources/dns/internal_dns.json"
+> EXTERNAL_DNS_FILE="resources/dns/external_dns.json"
+> REPORT_FILE="incidents/dns_resolution_report.log"
+>
+> echo "Starting DNS incident triage for user: $(whoami)" > /dev/stderr
+>
+> # Create/empty report file
+> echo -n "" > "$REPORT_FILE"
+>
+> # Associate arrays for DNS data
+> declare -A internal_dns_map
+> declare -A external_dns_map
+>
+> # Helper function to parse JSON and populate map
+> parse_json_to_map() {
+>   local file_path="\$1"
+>   local -n map_ref="\$2"
+>   local temp_map=()
+>
+>   # Use jq to parse JSON into an associative array string and then eval it
+>   if command -v jq &> /dev/null; then
+>     temp_map=\$(jq -r 'to_entries | .[] | [".key", (.value."A" // ""), (.value."AAAA" // ""), (.value."CNAME" // "")]| join(\t) | select(length>0)' "$file_pat
+h")
+>     while IFS=\t read -r host a_record aaaa_record cname_record; do
+>       if [[ -n "\$cname_record" && -z "\$a_record" && -z "\$aaaa_record" ]]; then
+>         map_ref["\$host"]="CNAME:\$cname_record"
+>       elif [[ -n "\$a_record" ]]; then
+>         map_ref["\$host"]="A:\$a_record:\$aaaa_record"
+>       elif [[ -n "\$aaaa_record" ]]; then
+>         map_ref["\$host"]="AAAA:::\$aaaa_record" # Store AAAA only if no A
+>       fi
+>     done <<< "\$temp_map"
+>   else
+>     echo "ERROR: jq not found. Cannot parse DNS JSON files." > /dev/stderr
+>     exit 1
+>   fi
+> }
+>
+> # Helper function to recursively resolve hostnames with CNAMEs
+> # Returns: final_ip_a, final_ip_aaaa, summary_message
+> resolve_host_dns() {
+>   local host_name="\$1"
+>   local current_target="\$host_name"
+>   local depth=0
+>   local ip_a_result="-"
+>   local ip_aaaa_result="-"
+>   local resolution_path=""
+>
+>   while [[ \$depth -lt 3 && -n "\$current_target" ]]; do
+>     # Check internal DNS
+>     if [[ -n "\${internal_dns_map[\$current_target]+isset}" ]]; then
+>       IFS=':' read -ra record_parts <<< "\${internal_dns_map[\$current_target]}"
+>       local rec_type="\${record_parts[0]}"
+>       local rec_value="\${record_parts[1]}"
+>       local rec_value2="\${record_parts[2]}" # For A record with AAAA
+>
+>       if [[ "\$rec_type" == "A" ]]; then
+>         ip_a_result="\$rec_value"
+>         ip_aaaa_result="\$rec_value2"
+>         resolution_path="\$resolution_path\$current_target (A: \$rec_value, AAAA: \$rec_value2) ->"
+>         break
+>       elif [[ "\$rec_type" == "CNAME" ]]; then
+>         current_target="\$rec_value"
+>         resolution_path="\$resolution_path\$current_target (CNAME: \$rec_value) ->"
+>         ((depth++))
+>       fi
+>     fi
+>
+>     # Check external DNS if not found in internal or if current_target changed due to CNAME
+>     if [[ -z \${internal_dns_map[\$current_target]+isset} ]]; then
+>       if [[ -n "\${external_dns_map[\$current_target]+isset}" ]]; then
+>         IFS=':' read -ra record_parts <<< "\${external_dns_map[\$current_target]}"
+>         local rec_type="\${record_parts[0]}"
+>         local rec_value="\${record_parts[1]}"
+>         local rec_value2="\${record_parts[2]}"
+>
+>         if [[ "\$rec_type" == "A" ]]; then
+>           ip_a_result="\$rec_value"
+>           ip_aaaa_result="\$rec_value2"
+>           resolution_path="\$resolution_path\$current_target (A: \$rec_value, AAAA: \$rec_value2) ->"
+>           break
+>         elif [[ "\$rec_type" == "CNAME" ]]; then
+>           current_target="\$rec_value"
+>           resolution_path="\$resolution_path\$current_target (CNAME: \$rec_value) ->"
+>           ((depth++))
+>         fi
+>       fi
+>     fi
+>
+>     # If host not found and not a CNAME, or depth limit reached
+>     if [[ -z \${internal_dns_map[\$current_target]+isset} && -z \${external_dns_map[\$current_target]+isset} ]] || [[ \$depth -ge 3 ]]; then
+>       # Check if it was a CNAME chain that ended without A/AAAA
+>       if [[ \$depth -ge 3 || ( -n "\$resolution_path" && \$resolution_path != "" ) ]]; then
+>          echo "-" "-" "CNAME_CHAIN_LIMIT_OR_LOOP"
+>          return
+>       else
+>         echo "-" "-" "NO_RECORD_IN_DNS"
+>         return
+>       fi
+>     fi
+>   done
+>
+>   # Final check if current_target is not empty (e.g. CNAME points to something not directly in map but might be A/AAAA)
+>   # This logic is mostly covered by loop, but good for final state.
+>   if [[ -n "\$current_target" ]]; then
+>     if [[ -n \${internal_dns_map[\$current_target]+isset} ]]; then
+>       IFS=':' read -ra record_parts <<< "\${internal_dns_map[\$current_target]}"
+>       if [[ "\${record_parts[0]}" == "A" ]]; then
+>         echo "\${record_parts[1]}" "\${record_parts[2]}" "FINAL_TARGET_AAAA"
+>         return
+>       fi
+>     elif [[ -n \${external_dns_map[\$current_target]+isset} ]]; then
+>       IFS=':' read -ra record_parts <<< "\${external_dns_map[\$current_target]}"
+>       if [[ "\${record_parts[0]}" == "A" ]]; then
+>         echo "\${record_parts[1]}" "\${record_parts[2]}" "FINAL_TARGET_AAAA"
+>         return
+>       fi
+>     fi
+>   fi
+>   echo "-" "-" "NO_RECORD_IN_DNS"
+> }
+>
+> # Helper function to get IP from mock_hosts
+> get_mock_hosts_ip() {
+>   local host_name="\$1"
+>   local ip_result="-"
+>   # grep -i for case-insensitive match, -m 1 for first match
+>   # -oP for Perl-compatible regex and output only matching part
+>   # Pattern: (any IP addr)\t(host_name) - IP is group 1, host is group 2
+>   ip_result=\$(grep -i -m 1 "^[0-9.\\[:space:]]*\\t\\\\\\\\\\t\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"\nEOF
+> chmod +x resolve_dns.sh
+> jq --version
+>

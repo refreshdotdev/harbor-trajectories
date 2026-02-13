@@ -1,0 +1,29 @@
+```json
+{
+  "analysis": "The certificate processing commands are executing but I'm not seeing any output, which makes it impossible to verify the results. Given the recurring issues with output display, I'll try to complete the task by creating a comprehensive processing script and then checking the final output files.",
+  "plan": "I will create a final version of the certificate processing script that handles all validation cases and writes to the required output files. After running it, I'll use multiple commands to verify the output files exist and contain data.",
+  "commands": [
+    {
+      "keystrokes": "cat > final_cert_processor.sh << 'EOF'\n#!/bin/bash\n\n# Create output directory if not exists\nmkdir -p /home/user/cert_analysis\n\n# Initialize output files\necho \"filename,subject,issuer,not_before,not_after,days_until_expiry,status\" > /home/user/cert_analysis/expiring_certs.csv\necho \"\" > /home/user/cert_analysis/analysis.log\nprintf \"[\\n]\" > /home/user/cert_analysis/errors.json\n\n# Get current timestamp\nnow_ts=$(date +%s)\n\n# Process each .meta file\nfor meta_file in $(find . -name \"*.meta\" 2>/dev/null); do\n    echo \"Processing: $meta_file\"\n    \n    # Extract components\n    crt_file=\"${meta_file%.*}.crt\"\n    base_name=$(basename -- \"${meta_file%.*}\")\n    \n    # Read metadata\n    if [ ! -f \"$meta_file\" ]; then\n        echo \"Meta file missing: $meta_file\"\n        continue\n    fi\n    \n    # Parse metadata\n    if [ -f \"$crt_file\" ]; then\n        # Read and parse\n        read -r line < \"$meta_file\"\n        IFS='|' read -r subject issuer not_before not_after checksum_meta <<< \"$line\"\n        \n        # Validate dates\n        if date -d \"$not_before\" +%F >/dev/null 2>&1 && date -d \"$not_after\" +%F >/dev/null 2>&1; then\n            # Convert to timestamps\n            not_before_ts=$(date -d \"$not_before\" +%s)\n            not_after_ts=$(date -d \"$not_after\" +%s)\n            \n            # Calculate days until expiry\n            days_until_expiry=$(((not_after_ts - now_ts) / 86400))\n            \n            # Verify checksum\n            checksum_actual=$(sha256sum \"$crt_file\" | awk '{print $1}')\n            if [ \"$checksum_actual\" = \"$checksum_meta\" ]; then\n                # Valid certificate - add to CSV\n                if [ $days_until_expiry -gt 30 ]; then\n                    status=\"OK\"\n                elif [ $days_until_expiry -ge 0 ]; then\n                    status=\"EXPIRING_SOON\"\n                else\n                    status=\"EXPIRED\"\n                fi\n                \n                echo \"${base_name}.crt,$subject,$issuer,$not_before,$not_after,$days_until_expiry,$status\" >> /home/user/cert_analysis/expiring_certs.csv\n                timestamp=$(date '+%Y-%m-%d %H:%M:%S')\n                echo \"${timestamp} Processed ${base_name}.crt - ${status}\" >> /home/user/cert_analysis/analysis.log\n            else\n                # Checksum mismatch\n                sed -i \"s/\\[\\n/,\\\\n\\t{\\\\\"filename\\\\\": \\\\\\\"${base_name}.meta\\\\\\\", \\\\\\\"reason\\\\\\\": \\\\\\\"CHECKSUM_MISMATCH\\\\\\"}/\" /home/user/cert_analysis/errors.json\n            fi\n        else\n            # Invalid dates\n            sed -i \"s/\\[\\n/,\\\\n\\t{\\\\\"filename\\\\\": \\\\\\\"${base_name}.meta\\\\\\\", \\\\\\\"reason\\\\\\\": \\\\\\\"INVALID_DATE\\\\\\"}/\" /home/user/cert_analysis/errors.json\n        fi\n    else\n        # Missing CRT file\n        sed -i \"s/\\[\\n/,\\\\n\\t{\\\\\"filename\\\\\": \\\\\\\"${base_name}.meta\\\\\\\", \\\\\\\"reason\\\\\\\": \\\\\\\"MISSING_CRT\\\\\\"}/\" /home/user/cert_analysis/errors.json\n    fi\ndone\n\n# Fix JSON formatting\nsed -i \"s/,\\\\n\\t\\]/\\\\n\\t\\]/\" /home/user/cert_analysis/errors.json\nsed -i \"s/,,,/,/\" /home/user/cert_analysis/errors.json\n\n# Sort CSV\ntmp_csv=$(mktemp)\nsort -t, -k5n /home/user/cert_analysis/expiring_certs.csv > \"$tmp_csv\"\nrm /home/user/cert_analysis/expiring_certs.csv\nmv \"$tmp_csv\" /home/user/cert_analysis/expiring_certs.csv\n\necho \"Processing complete. Results in /home/user/cert_analysis/\"\nEOF",
+      "duration": 3.0
+    },
+    {
+      "keystrokes": "chmod +x final_cert_processor.sh\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "./final_cert_processor.sh\n",
+      "duration": 8.0
+    },
+    {
+      "keystrokes": "echo \"=== Output Files ===\"\nls -la /home/user/cert_analysis/\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "echo \"=== CSV Content ===\"\nhead -3 /home/user/cert_analysis/expiring_certs.csv\n",
+      "duration": 0.5
+    }
+  ],
+  "task_complete": false
+}
+```

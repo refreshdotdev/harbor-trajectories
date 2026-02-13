@@ -1,0 +1,90 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 4 items
+
+../../tests/test_final_state.py::test_cleaned_log_exists_and_sanitized FAILED [ 25%]
+../../tests/test_final_state.py::test_report_structure_mixed_delimiters FAILED [ 50%]
+../../tests/test_final_state.py::test_report_content_logic FAILED        [ 75%]
+../../tests/test_final_state.py::test_checksum_file FAILED               [100%]
+
+=================================== FAILURES ===================================
+____________________ test_cleaned_log_exists_and_sanitized _____________________
+
+    def test_cleaned_log_exists_and_sanitized():
+        """Check that the intermediate clean log exists and has no null bytes."""
+>       assert os.path.exists(CLEAN_LOG), "Intermediate file cleaned_combined.log is missing."
+E       AssertionError: Intermediate file cleaned_combined.log is missing.
+E       assert False
+E        +  where False = <function exists at 0x7f6858585ea0>('/home/user/out/cleaned_combined.log')
+E        +    where <function exists at 0x7f6858585ea0> = <module 'posixpath' from '/usr/lib/python3.10/posixpath.py'>.exists
+E        +      where <module 'posixpath' from '/usr/lib/python3.10/posixpath.py'> = os.path
+
+/tests/test_final_state.py:35: AssertionError
+____________________ test_report_structure_mixed_delimiters ____________________
+
+    def test_report_structure_mixed_delimiters():
+        """Verify the bizarre CSV format: Header uses comma, Data uses semicolon."""
+>       assert os.path.exists(REPORT_FILE), "report.csv is missing."
+E       AssertionError: report.csv is missing.
+E       assert False
+E        +  where False = <function exists at 0x7f6858585ea0>('/home/user/out/report.csv')
+E        +    where <function exists at 0x7f6858585ea0> = <module 'posixpath' from '/usr/lib/python3.10/posixpath.py'>.exists
+E        +      where <module 'posixpath' from '/usr/lib/python3.10/posixpath.py'> = os.path
+
+/tests/test_final_state.py:54: AssertionError
+__________________________ test_report_content_logic ___________________________
+
+    def test_report_content_logic():
+        """
+        Verify the data logic.
+        Config min_port = 45000.
+    
+        10.0.0.1:
+          - 10:05 EST (15:05 UTC) | Port 46000 | Failed | Valid -> COUNT
+          - 10:15 EST (15:15 UTC) | Port 46002 | Failed | Invalid -> COUNT
+          -> Total: 2. First Seen: 15:05 UTC.
+    
+        192.168.1.100:
+          - 09:00 EST (14:00 UTC) | Port 50000 | Failed -> COUNT
+          - 09:01 EST (14:01 UTC) | Port 50001 | Failed -> COUNT
+          - 09:03 EST | Port 22 | Failed -> IGNORED (< 45000)
+          -> Total: 2. First Seen: 14:00 UTC.
+    
+        192.168.1.50:
+          - 10:00 EST | Port 44000 | Failed -> IGNORED (< 45000)
+    
+        Sorting:
+        1. 192.168.1.100 (Count 2, First Seen 14:00 UTC)
+        2. 10.0.0.1 (Count 2, First Seen 15:05 UTC)
+        (192... is first because tie-breaker is First_Seen DESC? No, First_Seen DESC means 'most recent first'.)
+        Wait, instruction says: "If counts are equal, break ties by First_Seen_UTC (descending / most recent first)."
+        15:05 is > 14:00. So 10.0.0.1 comes BEFORE 192.168.1.100.
+    
+        Expected Order:
+        1. 10.0.0.1;2023-01-10T15:05:00Z;2
+        2. 192.168.1.100;2023-01-10T14:00:00Z;2
+        """
+>       with open(REPORT_FILE, 'r', encoding='utf-8') as f:
+E       FileNotFoundError: [Errno 2] No such file or directory: '/home/user/out/report.csv'
+
+/tests/test_final_state.py:100: FileNotFoundError
+______________________________ test_checksum_file ______________________________
+
+    def test_checksum_file():
+        """Verify the SHA1 checksum file exists and is correct."""
+>       assert os.path.exists(CHECKSUM_FILE), "Checksum file is missing."
+E       AssertionError: Checksum file is missing.
+E       assert False
+E        +  where False = <function exists at 0x7f6858585ea0>('/home/user/out/report.csv.sha1')
+E        +    where <function exists at 0x7f6858585ea0> = <module 'posixpath' from '/usr/lib/python3.10/posixpath.py'>.exists
+E        +      where <module 'posixpath' from '/usr/lib/python3.10/posixpath.py'> = os.path
+
+/tests/test_final_state.py:120: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_cleaned_log_exists_and_sanitized
+FAILED ../../tests/test_final_state.py::test_report_structure_mixed_delimiters
+FAILED ../../tests/test_final_state.py::test_report_content_logic - FileNotFo...
+FAILED ../../tests/test_final_state.py::test_checksum_file - AssertionError: ...
+============================== 4 failed in 0.03s ===============================

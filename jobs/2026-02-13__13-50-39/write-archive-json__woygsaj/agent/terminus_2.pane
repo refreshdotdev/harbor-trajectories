@@ -1,0 +1,115 @@
+[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:~# clear
+[?2004l[H[J[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:~# cd /home/user/storage
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage# awk -F '=' '/^cutoff_days/ {print $2}' params.conf | tr -d ' 
+[?2004l[?2004h> 
+[?2004l[?2004h> ' | xargs -I {} sh -c "cutoff_days={}"; awk -F '=' '/^max_bak_kb/ {print $2}' params.conf | tr -d ' 
+[?2004l[?2004h> 
+[?2004l[?2004h> ' | xargs -I {} sh -c "max_bak_kb={}"
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage# cd incoming
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage/incoming# find . -type f -name '*.bak' ! -name '_*' -printf '%p\0' | while IFS= read -r -d $'\0' file; do
+[?2004l[?2004h>   size=$(stat -c %s "$file")
+[?2004l[?2004h>   if [ $size -gt $((max_bak_kb * 1024)) ]; then
+[?2004l[?2004h>     echo "Deleting: $file (Size: $size bytes)"
+[?2004l[?2004h>     deleted_bytes=$(($deleted_bytes + size))
+[?2004l[?2004h>     rm "$file"
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004lDeleting: ./project1/delete_me.bak (Size: 2621440 bytes)
+Deleting: ./project1/small.bak (Size: 1024 bytes)
+[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage/incoming# find . -type f -name '*.txt' -printf '%T@\t%p\0' | while IFS= read -r -d $'\0' line; do
+[?2004l[?2004h>   file="${line#*\t}"
+[?2004l[?2004h>   mod_time=$(echo "$line" | cut -f1 -d'\t')
+[?2004l[?2004h>   current_time=$(date +%s)
+[?2004l[?2004h>   age_days=$(echo "$current_time - $mod_time" | awk '{printf "%f", $1/86400}')
+[?2004l[?2004h>   if (( $(echo "$age_days > $cutoff_days" | bc -l) )); then
+[?2004l[?2004h>     iconv -f UTF-8 -t UTF-8 "$file" -o /dev/null 2>/dev/null
+[?2004l[?2004h>     if [ $? -eq 0 ]; then
+[?2004l[?2004h>       echo "Moving valid UTF-8 file: $file"
+[?2004l[?2004h>       mv "$file" "../archive/"
+[?2004l[?2004h>     else
+[?2004l[?2004h>       echo "File $file is not valid UTF-8, renaming to .$file.corrupt"
+[?2004l[?2004h>       corrupt_files=$(($corrupt_files + 1))
+[?2004l[?2004h>       mv "$file" "${file}.corrupt"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004lcut: the delimiter must be a single character
+Try 'cut --help' for more information.
+bash: bc: command not found
+cut: the delimiter must be a single character
+Try 'cut --help' for more information.
+bash: bc: command not found
+cut: the delimiter must be a single character
+Try 'cut --help' for more information.
+bash: bc: command not found
+cut: the delimiter must be a single character
+Try 'cut --help' for more information.
+bash: bc: command not found
+[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage/incoming# find . -type f -name '*.txt' -printf '%T@\t%p\0' | while IFS= read -r -d $'\0' line; do
+[?2004l[?2004h>   file="${line#*?\t}"
+[?2004l[?2004h>   mod_time=$(echo "$line" | cut -f1 -d?)
+[?2004l[?2004h>   current_time=$(date +%s)
+[?2004l[?2004h>   age_days=$(echo "$current_time - $mod_time" | awk '{print int($1/86400)}')
+[?2004l[?2004h>   if [ $(echo "$age_days > $cutoff_days" | bc) -eq 1 ]; then
+[?2004l[?2004h>     iconv -f UTF-8 -t UTF-8 "$file" -o /dev/null 2>/dev/null
+[?2004l[?2004h>     if [ $? -eq 0 ]; then
+[?2004l[?2004h>       echo "Moving valid UTF-8 file: $file"
+[?2004l[?2004h>       mv "$file" "../archive/"
+[?2004l[?2004h>     else
+[?2004l[?2004h>       echo "File $file is not valid UTF-8, renaming to .$file.corrupt"
+[?2004l[?2004h>       corrupt_files=$(($corrupt_files + 1))
+[?2004l[?2004h>       mv "$file" "${file}.corrupt"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004lbash: bc: command not found
+bash: [: -eq: unary operator expected
+bash: bc: command not found
+bash: [: -eq: unary operator expected
+bash: bc: command not found
+bash: [: -eq: unary operator expected
+bash: bc: command not found
+bash: [: -eq: unary operator expected
+[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage/incoming# find . -type f -name '*.txt' -printf '%T@\t%p\0' | while IFS= read -r -d $'\\0' line; do
+[?2004l[?2004h>   file="${line#*?\t}"
+[?2004l[?2004h>   mod_time=$(echo "$line" | cut -f1 -d?\t)
+[?2004l[?2004h>   current_time=$(date +%s)
+[?2004l[?2004h>   age_days=$(echo "$current_time - $mod_time" | awk '{print int($1/86400)}')
+[?2004l[?2004h>   if [ $(expr $age_days \> $cutoff_days) -eq 1 ]; then
+[?2004l[?2004h>     iconv -f UTF-8 -t UTF-8 "$file" -o /dev/null 2>/dev/null
+[?2004l[?2004h>     if [ $? -eq 0 ]; then
+[?2004l[?2004h>       echo "Moving valid UTF-8 file: $file"
+[?2004l[?2004h>       mv "$file" "../archive/"
+[?2004l[?2004h>     else
+[?2004l[?2004h>       echo "File $file is not valid UTF-8, renaming to .$file.corrupt"
+[?2004l[?2004h>       corrupt_files=$(($corrupt_files + 1))
+[?2004l[?2004h>       mv "$file" "${file}.corrupt"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage/incoming# cd ../archive
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage/archive# find . -maxdepth 1 -type f -printf '%f\0' | sort -z | while IFS= read -r -d $'\\0' file; do
+[?2004l[?2004h>   if [ "${file: -4}" = ".bak" ] || [ "${file: -8}" = ".corrupt" ]; then
+[?2004l[?2004h>     continue
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   size=$(stat -c %s "$file")
+[?2004l[?2004h>   md5=$(md5sum "$file" | awk '{print $1}')
+[?2004l[?2004h>   echo -e "${file},$size,$md5"
+[?2004l[?2004h> done | sort -t, -k3 | awk 'BEGIN{ORS="\r\n"} {print}' > manifest.csv
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage/archive# cd ..
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage# manifest_sha1=$(sha1sum archive/manifest.csv | awk '{print $1}')
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage# cat > summary.xml << EOF
+[?2004l[?2004h> <?xml version="1.0" encoding="ISO-8859-1"?>
+[?2004l[?2004h> <audit>
+[?2004l[?2004h>     <deleted_bytes>$deleted_bytes</deleted_bytes>
+[?2004l[?2004h>     <corrupt_files>$corrupt_files</corrupt_files>
+[?2004l[?2004h>     <manifest_sha1>$manifest_sha1</manifest_sha1>
+[?2004l[?2004h> </audit>
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage# cd incoming
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage/incoming# find . -type d -empty -delete
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage/incoming# cd ..
+[?2004l[?2004hroot@1ee683e1-ec3d-402c-b60b-ffdb4b48aa9d:/home/user/storage# 

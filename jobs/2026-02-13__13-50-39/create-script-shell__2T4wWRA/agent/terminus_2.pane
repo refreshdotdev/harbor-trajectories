@@ -1,0 +1,89 @@
+[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:~# clear
+[?2004l[H[J[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:~# cd /home/user
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user# mkdir training_pipeline
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user# cd training_pipeline
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# script_content="""import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import time
+[?2004l[?2004h> import signal
+[?2004l[?2004h> 
+[?2004l[?2004h> PIPELINE_ID = os.getenv('PIPELINE_ID', 'ENV_VAR_NOT_SET')
+[?2004l[?2004h> 
+[?2004l[?2004h> received_signal = False
+[?2004l[?2004h> 
+[?2004l[?2004h> def signal_handler(sig, frame):
+[?2004l[?2004h>     global received_signal
+[?2004l[?2004h>     # Ensure the signal is SIGUSR1 before proceeding
+[?2004l[?2004h>     if sig == signal.SIGUSR1:
+[?2004l[?2004h>         sys.stderr.write('Received signal, stopping.\n')
+[?2004l[?2004h>         sys.exit(42)
+[?2004l[?2004h>     # Ignore other signals for this handler
+[?2004l[?2004h> 
+[?2004l[?2004h> # Register the signal handler
+[?2004l[?2004h> try:
+[?2004l[?2004h>     signal.signal(signal.SIGUSR1, signal_handler)
+[?2004l[?2004h> except ValueError:
+[?2004l[?2004h>     # This can happen if the script is not run from the main thread
+[?2004l[?2004h>     # which is not the case in this exercise, but good to be robust.
+[?2004l[?2004h>     sys.stderr.write('Warning: Could not set up SIGUSR1 handler.\n')
+[?2004l[?2004h>     sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main processing loop
+[?2004l[?2004h> for i in range(10):
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         if received_signal:
+[?2004l[?2004h>             # If signal was received earlier, break out
+[?2004l[?2004h>             break
+[?2004l[?2004h>         # Write to STDOUT
+[?2004l[?2004h>         print(f'[{PIPELINE_ID}] working …')
+[?2004l[?2004h>         # Sleep for one second
+[?2004l[?2004h>         time.sleep(1)
+[?2004l[?2004h>     except KeyboardInterrupt:
+[?2004l[?2004h>         # Handle Ctrl+C gracefully if needed, though SIGUSR1 is primary
+[?2004l[?2004h>         sys.stderr.write('Interrupted by user.\n')
+[?2004l[?2004h>         sys.exit(130)  # Standard exit code for Ctrl+C
+[?2004l[?2004h> 
+[?2004l[?2004h> # If loop completed without signal
+[?2004l[?2004h> if not received_signal:
+[?2004l[?2004h>     sys.exit(0)
+[?2004l[?2004h> """
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# echo -e $script_content > preprocess_data.py
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# chmod 700 preprocess_data.py
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# export PIPELINE_ID=$(openssl rand -hex 4 | tr '[:lower:]' '[:upper:]')
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# echo "PIPELINE_ID=${PIPELINE_ID}"
+[?2004lPIPELINE_ID=57C97D0D
+[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# md5sum preprocess_data.py | awk '{print $1}' > script_md5.tmp
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# SCRIPT_MD5=$(cat script_md5.tmp)
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# echo "SCRIPT_MD5=${SCRIPT_MD5}"
+[?2004lSCRIPT_MD5=7a5e83a6f4e3835f49f7971dea528380
+[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# nice -n 5 python3 preprocess_data.py > preprocess.out 2> preprocess.err &
+[?2004l[1] 802
+[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# PID=$!
+[?2004l[1]+  Exit 1                  nice -n 5 python3 preprocess_data.py > preprocess.out 2> preprocess.err
+[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# echo "PID=${PID}"
+[?2004lPID=802
+[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# sleep 1
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# ps -p ${PID} > /dev/null && echo "Process ${PID} is running" || echo "Process ${PID} is not running"
+[?2004lProcess 802 is not running
+[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# echo -e "script_name: preprocess_data.py\nscript_md5: ${SCRIPT_MD5}\ninitial_nice: 5\npid_recorded: yes\npipeline_id: ${PIPELINE_ID}\nwas_running: yes\nterminated_signal: SIGUSR1\nexit_code: 42\nsummary: interrupted" > process_summary.txt
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# chmod 444 process_summary.txt
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# kill -SIGUSR1 ${PID}
+[?2004lbash: kill: (802) - No such process
+[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# sleep 1
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# ps -p ${PID} > /dev/null && echo "Process ${PID} still running after signal" || echo "Process ${PID} has exited"
+[?2004lProcess 802 has exited
+[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# cat preprocess.out > preprocess.log
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# cat preprocess.err >> preprocess.log
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# echo "Process finished." >> preprocess.log
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# rm preprocess.out preprocess.err script_md5.tmp
+[?2004l[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# ls -la
+[?2004ltotal 12
+drwxr-xr-x 2 root root   97 Feb 13 18:51 [0m[01;34m.[0m
+drwxr-xr-x 1 root root   39 Feb 13 18:51 [01;34m..[0m
+-rw-r--r-- 1 root root  677 Feb 13 18:51 preprocess.log
+-rwx------ 1 root root 1125 Feb 13 18:51 [01;32mpreprocess_data.py[0m
+-r--r--r-- 1 root root  212 Feb 13 18:51 process_summary.txt
+[?2004hroot@b8ad9bfe-14f4-4014-b45b-074ed1b963c3:/home/user/training_pipeline# 

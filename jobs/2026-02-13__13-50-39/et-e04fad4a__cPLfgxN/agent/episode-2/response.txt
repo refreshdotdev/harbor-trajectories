@@ -1,0 +1,21 @@
+```json
+{
+  "analysis": "I found several .meta files in various subdirectories. The file structure appears to contain both valid and potentially problematic certificates as indicated by the filenames (bad_hash, missing_crt, expired, etc.). I need to process each of these files systematically.",
+  "plan": "I will create a shell script to process all .meta files. The script will: 1) Read each .meta file and extract fields, 2) Validate the certificate pair (checking for existence of .crt file, date validity, and checksum match), 3) Calculate days until expiry and determine status, 4) Write valid certificates to CSV and log, 5) Write invalid certificates to errors.json.",
+  "commands": [
+    {
+      "keystrokes": "cat > process_certs.sh << 'EOF'\n#!/bin/bash\n\n# Initialize output files\necho \"filename,subject,issuer,not_before,not_after,days_until_expiry,status\" > /home/user/cert_analysis/expiring_certs.csv\necho \"\" > /home/user/cert_analysis/analysis.log\nprintf \"[]\" > /home/user/cert_analysis/errors.json\n\ntoday_ts=$(date +%s)\n\n# Process each .meta file\nfor meta_file in $(find . -name \"*.meta\"); do\n    # Extract filename and path components\n    crt_file=\"${meta_file%.*}.crt\"\n    base_name=$(basename -- \"${meta_file%.*}\")\n    \n    # Read metadata line\n    if ! read -r line < \"${meta_file}\"; then\n        echo \"Error reading ${meta_file}\" >> /home/user/cert_analysis/errors.json\n        continue\n    fi\n    \n    # Parse metadata fields\n    IFS='|' read -ra fields <<< \"${line}\"\n    subject=\"${fields[0]}\"\n    issuer=\"${fields[1]}\"\n    not_before=\"${fields[2]}\"\n    not_after=\"${fields[3]}\"\n    checksum_meta=\"${fields[4]}\"\n    \n    # Validation 1: Check if .crt file exists\n    if [ ! -f \"${crt_file}\" ]; then\n        # Update errors.json\n        tmp_json=\"$(cat /home/user/cert_analysis/errors.json)\"\n        echo \"${tmp_json%,*},\\n\\t{\\\"filename\\\": \\\"${base_name}.meta\\\", \\\"reason\\\": \\\"MISSING_CRT\\\"}\" > /home/user/cert_analysis/errors.json\n        continue\n    fi\n    \n    # Validation 2: Verify dates are valid\n    if ! date -d \"${not_before}\" +%F >/dev/null 2>&1 || ! date -d \"${not_after}\" +%F >/dev/null 2>&1; then\n        tmp_json=\"$(cat /home/user/cert_analysis/errors.json)\"\n        echo \"${tmp_json%,*},\\n\\t{\\\"filename\\\": \\\"${base_name}.meta\\\", \\\"reason\\\": \\\"INVALID_DATE\\\"}\" > /home/user/cert_analysis/errors.json\n        continue\n    fi\n    \n    # Convert dates to timestamps\n    not_before_ts=$(date -d \"${not_before}\" +%s)\n    not_after_ts=$(date -d \"${not_after}\" +%s)\n    \n    # Validation 3: Verify checksum\n    checksum_actual=$(sha256sum \"${crt_file}\" | awk '{print $1}')\n    if [ \"${checksum_actual}\" != \"${checksum_meta}\" ]; then\n        tmp_json=\"$(cat /home/user/cert_analysis/errors.json)\"\n        echo \"${tmp_json%,*},\\n\\t{\\\"filename\\\": \\\"${base_name}.meta\\\", \\\"reason\\\": \\\"CHECKSUM_MISMATCH\\\"}\" > /home/user/cert_analysis/errors.json\n        continue\n    fi\n    \n    # Calculate days until expiry\n    days_until_expiry=$(((not_after_ts - today_ts) / 86400))\n    \n    # Determine status\n    if [ ${days_until_expiry} -gt 30 ]; then\n        status=\"OK\"\n    elif [ ${days_until_expiry} -ge 0 ]; then\n        status=\"EXPIRING_SOON\"\n    else\n        status=\"EXPIRED\"\n    fi\n    \n    # Add to CSV\n    echo \"${base_name}.crt,${subject},${issuer},${not_before},${not_after},${days_until_expiry},${status}\" >> /home/user/cert_analysis/expiring_certs.csv\n    \n    # Add to log\n    timestamp=$(date '+%Y-%m-%d %H:%M:%S')\n    echo \"${timestamp} Processed ${base_name}.crt - ${status}\" >> /home/user/cert_analysis/analysis.log\ndone\n\n# Sort CSV by days_until_expiry ascending\nsort -t, -k5n /home/user/cert_analysis/expiring_certs.csv -o /home/user/cert_analysis/expiring_certs.csv\n\n# Fix JSON formatting\ntmp_json=\"$(cat /home/user/cert_analysis/errors.json)\"\necho \"${tmp_json%,*}]\" > /home/user/cert_analysis/errors.json\nEOF",
+      "duration": 2.0
+    },
+    {
+      "keystrokes": "chmod +x process_certs.sh\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./process_certs.sh\n",
+      "duration": 5.0
+    }
+  ],
+  "task_complete": false
+}
+```

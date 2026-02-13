@@ -1,0 +1,76 @@
+New Terminal Output:
+
+root@e17ec119-5239-403e-97ef-9cdc64b4fd47:/home/user# rm -f process_backups.py
+root@e17ec119-5239-403e-97ef-9cdc64b4fd47:/home/user# cat > process_backups.py << 'END_SCRIPT'
+> #!/usr/bin/python3
+> import os
+> import gzip
+> import json
+> import hashlib
+> import re
+> from pathlib import Path
+>
+> BACKUP_DIR = Path('/home/user/db_backups')
+> LOG_DIR = Path('/home/user/backup_logs')
+> batch_id = "BID-PROD-8821"
+>
+> def normalize_sql_content(content_bytes):
+>     content_bytes = content_bytes.lstrip(b'\xef\xbb\xbf')
+>     normalized_lines = []
+>     for line in content_bytes.splitlines():
+>         normalized_lines.append(line.rstrip(b' \t') + b'\n')
+>     return b''.join(normalized_lines)
+>
+> def generate_manifest(normalized_sizes):
+>     manifest_path = LOG_DIR / 'manifest.json'
+>     with open(manifest_path, 'w', encoding='utf-8') as f:
+>         json.dump(normalized_sizes, f, indent=2, ensure_ascii=False)
+>
+> def generate_compliance_report(file_records, manifest_path):
+>     report_path = LOG_DIR / 'compliance_report.log'
+>     with open(manifest_path, 'rb') as f:
+>         manifest_sha256 = hashlib.sha256(f.read()).hexdigest()
+>     file_records_sorted = sorted(
+>         file_records.items(),
+>         key=lambda item: (item[0].lower(), item[0].count('_'), item[0].count('-'))
+>     )
+>     with open(report_path, 'wb') as f:
+>         f.write(f'BATCH: {batch_id}\r\n'.encode('latin-1'))
+>         for filename, record in file_records_sorted:
+>             line = (f'FILE: {filename} | N_SIZE: {record[0]} | GZ_SIZE: {record[1]} | MD5: {record[2]}\r\n')
+>             f.write(line.encode('latin-1'))
+>         f.write(f'MANIFEST_SHA256: {manifest_sha256}\r\n'.encode('latin-1'))
+>
+> def process_sql_files():
+>     normalized_sizes = {}
+>     file_records = {}
+>     sql_files = list(BACKUP_DIR.glob('*.sql')) + list(BACKUP_DIR.glob('*.SQL'))
+>
+>     for sql_file in sql_files:
+>         try:
+>             with open(sql_file, 'rb') as f:
+>                 raw_content = f.read()
+>             normalized_content = normalize_sql_content(raw_content)
+>             n_size = len(normalized_content)
+>             normalized_sizes[str(sql_file.name)] = n_size
+>             gz_path = sql_file.with_suffix('.sql.gz')
+>             with gzip.open(gz_path, 'wb') as f:
+>                 f.write(normalized_content)
+>             gz_size = gz_path.stat().st_size
+>             md5_hash = hashlib.md5(normalized_content).hexdigest()
+>             file_records[str(sql_file.name)] = (n_size, gz_size, md5_hash)
+>             sql_file.unlink()
+>         except Exception as e:
+>             print(f'Error processing {sql_file.name}: {e}')
+>
+>     if normalized_sizes:
+>         generate_manifest(normalized_sizes)
+>         generate_compliance_report(file_records, LOG_DIR / 'manifest.json')
+>
+> if __name__ == '__main__':
+>     process_sql_files()
+> END_SCRIPT
+root@e17ec119-5239-403e-97ef-9cdc64b4fd47:/home/user# chmod +x process_backups.py
+root@e17ec119-5239-403e-97ef-9cdc64b4fd47:/home/user# ls -la process_backups.py
+-rwxr-xr-x 1 root root 2566 Feb 13 18:55 process_backups.py
+root@e17ec119-5239-403e-97ef-9cdc64b4fd47:/home/user#

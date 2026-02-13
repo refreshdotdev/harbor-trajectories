@@ -1,0 +1,74 @@
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/home/user# clear
+[?2004l[H[J[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/home/user# mkdir -p /home/user/clean_data
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/home/user# mkdir -p /tmp/log_processor_temp
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/home/user# cd /tmp/log_processor_temp
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# tar -xzf /home/user/datasets/log_archive.tar.gz settings.json
+[?2004ltar: settings.json: Not found in archive
+tar: Exiting with failure status due to previous errors
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# RED_LABEL=$(jq -r '.redaction_label' settings.json)
+[?2004ljq: error: Could not open file settings.json: No such file or directory
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# TARGET_ENC=$(jq -r '.target_encoding' settings.json)
+[?2004ljq: error: Could not open file settings.json: No such file or directory
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# mkdir -p extracted_logs
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# tar -xzf /home/user/datasets/log_archive.tar.gz --wildcards 'logs/prod-*.log' -C extracted_logs
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# cat extracted_logs/logs/prod-*.log | awk -F'' \
+[?2004l[?2004h> "BEGIN { \"date -I +%s\" | getline epoch_start }\n/ERROR\tDataCleaner/ { \"date -d '\"$1'\" +%s\" | getline epoch_date; if (epoch_date > epoch_start) { epoch_start = epoch_date } \"$1\\t$2\\t$3\\t$4\\t$5\" | \"sed 's/\\([[:alnum:]_\\-\\.+]+@[^@]+\\.[[:alnum:]\\-.]+\\)/\\$RED_LABEL/g'\" | getline redacted_line; print redacted_line } END { if (epoch_start > \"$epoch_start\") { \"date -d '@'\"epoch_start\"' +'\\%H:\\%M:\\%S'\" | getline earliest_time; print earliest_time } }" > /tmp/temp_errors.log
+[?2004lcat: 'extracted_logs/logs/prod-*.log': No such file or directory
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# sort /tmp/temp_errors.log > /home/user/clean_data/mainframe_errors.log
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# awk -F'' \
+[?2004l[?2004h> "BEGIN { \"date -I +%s\" | getline epoch_start }\n/ERROR\tDataCleaner/ { \"date -d '\"$1'\" +%s\" | getline epoch_date; if (epoch_date > epoch_start) { epoch_start = epoch_date } \"$1\\t$2\\t$3\\t$4\\t$5\" | \"sed 's/\\([[:alnum:]_\\-\\.+]+@[^@]+\\.[[:alnum:]\\-.]+\\)/\\$RED_LABEL/g'\" | getline redacted_line; split($1, date_parts, '-'); \"date -d '\"$1'\" +\\'%d-%b-%Y'\" | tr '[:lower:]' '[:upper:]' | getline date_upper; print date_upper, ++count[date_upper], epoch_date } END { for (d in count) { if (count[d] > 0) { print d, count[d], earliest[d] } } }" /tmp/temp_errors.log | sort -k1,1 | awk 'NR==1{print \"Date,Error_Count,Earliest_Error\"} NR>1{print}' | iconv -t $TARGET_ENC | awk 'NR==1{printf \"%s\\r\\n\", $0; next} {printf \"%s\\r\\n\", $0}' > /home/user/clean_data/daily_summary.csv
+[?2004lawk: 1: unexpected character '\'
+awk: line 1: runaway string constant "%s\\r\\n\" ...
+awk: 1: unexpected character '.'
+iconv: option requires an argument -- 't'
+awk: 1: Try `iconv --help' or `iconv --usage' for more information.
+unexpected character '\'
+awk: line 1: runaway string constant "Date,Error ...
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# cd /home/user/clean_data
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/home/user/clean_data# md5sum mainframe_errors.log > checksum.md5
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/home/user/clean_data# cd /tmp/log_processor_temp
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# rm -rf /tmp/log_processor_temp
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# cd /tmp/log_processor_temp
+[?2004lbash: cd: /tmp/log_processor_temp: No such file or directory
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# tar -tf /home/user/datasets/log_archive.tar.gz
+[?2004llogs/
+logs/archive/
+logs/archive/prod-app3.log
+logs/prod-app1.log
+logs/prod-app2.log
+logs/dev-app1.log
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# tar -xzf /home/user/datasets/log_archive.tar.gz -C /tmp/log_processor_temp config/settings.json
+[?2004ltar: config/settings.json: Not found in archive
+tar: Exiting with failure status due to previous errors
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# RED_LABEL=$(jq -r '.redaction_label' /tmp/log_processor_temp/config/settings.json)
+[?2004ljq: error: Could not open file /tmp/log_processor_temp/config/settings.json: No such file or directory
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# TARGET_ENC=$(jq -r '.target_encoding' /tmp/log_processor_temp/config/settings.json)
+[?2004ljq: error: Could not open file /tmp/log_processor_temp/config/settings.json: No such file or directory
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# tar -xzf /home/user/datasets/log_archive.tar.gz --wildcards 'logs/prod-*.log' -C extracted_logs
+[?2004ltar: logs: Cannot mkdir: No such file or directory
+tar: logs/prod-app1.log: Cannot open: No such file or directory
+tar: logs: Cannot mkdir: No such file or directory
+tar: logs/prod-app2.log: Cannot open: No such file or directory
+tar: Exiting with failure status due to previous errors
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# ls -la extracted_logs/logs/
+[?2004lls: cannot access 'extracted_logs/logs/': No such file or directory
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# cat extracted_logs/logs/prod-*.log | awk -F'' \
+[?2004l[?2004h> "BEGIN { \"date -I +%s\" | getline epoch_start }\n/ERROR\tDataCleaner/ { \"date -d '\"$1'\" +%s\" | getline epoch_date; if (epoch_date > epoch_start) { epoch_start = epoch_date } \"$1\\t$2\\t$3\\t$4\\t$5\" | \"sed 's/\\([[:alnum:]_\\-\\.+]+@[^@]+\\.[[:alnum:]\\-.]+\\)/\\$RED_LABEL/g'\" | getline redacted_line; print redacted_line } END { if (epoch_start > \"$epoch_start\") { \"date -d '@'\"epoch_start\"' +'\\%H:\\%M:\\%S'\" | getline earliest_time; print earliest_time } }" > /tmp/temp_errors.log
+[?2004lcat: 'extracted_logs/logs/prod-*.log': No such file or directory
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# sort /tmp/temp_errors.log > /home/user/clean_data/mainframe_errors.log
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# awk -F'' \
+[?2004l[?2004h> "BEGIN { \"date -I +%s\" | getline epoch_start }\n/ERROR\tDataCleaner/ { \"date -d '\"$1'\" +%s\" | getline epoch_date; if (epoch_date > epoch_start) { epoch_start = epoch_date } \"$1\\t$2\\t$3\\t$4\\t$5\" | \"sed 's/\\([[:alnum:]_\\-\\.+]+@[^@]+\\.[[:alnum:]\\-.]+\\)/\\$RED_LABEL/g'\" | getline redacted_line; split($1, date_parts, '-'); \"date -d '\"$1'\" +\\'%d-%b-%Y'\" | tr '[:lower:]' '[:upper:]' | getline date_upper; print date_upper, ++count[date_upper], epoch_date } END { for (d in count) { if (count[d] > 0) { print d, count[d], earliest[d] } } }" /tmp/temp_errors.log | sort -k1,1 | awk 'NR==1{print \"Date,Error_Count,Earliest_Error\"} NR>1{print}' | iconv -t \"$TARGET_ENC\" | awk 'NR==1{printf \"%s\\r\\n\", $0; next} {printf \"%s\\r\\n\", $0}' > /home/user/clean_data/daily_summary.csv
+[?2004lawk: 1: unexpected character '.'
+awk: 1: unexpected character '\'
+awk: line 1: runaway string constant "Date,Error ...
+awk: 1: unexpected character '\'
+awk: line 1: runaway string constant "%s\\r\\n\" ...
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/tmp/log_processor_temp# cd /home/user/clean_data
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/home/user/clean_data# md5sum mainframe_errors.log > checksum.md5
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/home/user/clean_data# cd /tmp/log_processor_temp
+[?2004lbash: cd: /tmp/log_processor_temp: No such file or directory
+[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/home/user/clean_data# rm -rf /tmp/log_processor_temp
+[?2004l[?2004hroot@8b14366c-41cf-4569-a1f7-b78a4076213f:/home/user/clean_data# 

@@ -1,0 +1,294 @@
+[?2004hroot@2c8c1f72-a726-4d8a-9ec0-ab27e94372c4:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@2c8c1f72-a726-4d8a-9ec0-ab27e94372c4:~# clear
+[?2004l[H[J[?2004hroot@2c8c1f72-a726-4d8a-9ec0-ab27e94372c4:~# cd /home/user
+[?2004l[?2004hroot@2c8c1f72-a726-4d8a-9ec0-ab27e94372c4:/home/user# mkdir -p mlops/experiments mlops/deprecated mlops/summary
+[?2004l[?2004hroot@2c8c1f72-a726-4d8a-9ec0-ab27e94372c4:/home/user# ls -la mlops/
+[?2004ltotal 0
+drwxr-xr-x 1 user user 29 Feb 13 19:04 [0m[01;34m.[0m
+drwxr-xr-x 1 user user 27 Feb 12 23:58 [01;34m..[0m
+drwxr-xr-x 1 user user 35 Feb 12 23:58 [01;34mdeprecated[0m
+drwxr-xr-x 1 user user 94 Feb 12 23:58 [01;34mexperiments[0m
+drwxr-xr-x 2 root root 10 Feb 13 19:04 [01;34msummary[0m
+[?2004hroot@2c8c1f72-a726-4d8a-9ec0-ab27e94372c4:/home/user# cat > mlops/process_artifacts.py << 'EOF'
+[?2004lstrip()
+                    # metadata = [?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import chardet
+[?2004l[?2004h> import yaml
+[?2004l[?2004h> import re
+[?2004l[?2004h> from collections import defaultdict
+[?2004l[?2004h> from datetime import datetime
+[?2004l[?2004h> 
+[?2004l[?2004h> def detect_and_convert_encoding(file_path):
+[?2004l[?2004h>     """Detect file encoding and return decoded content as UTF-8 string"""
+[?2004l[?2004h>     with open(file_path, 'rb') as f:
+[?2004l[?2004h>         raw_data = f.read()
+[?2004l[?2004h>     
+[?2004l[?2004h>     if not raw_data:
+[?2004l[?2004h>         return ''
+[?2004l[?2004h>     
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         # Try UTF-8 first
+[?2004l[?2004h>         return raw_data.decode('utf-8')
+[?2004l[?2004h>     except UnicodeDecodeError:
+[?2004l[?2004h>         pass
+[?2004l[?2004h>     
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         # Try UTF-16LE with BOM
+[?2004l[?2004h>         return raw_data.decode('utf-16-le')
+[?2004l[?2004h>     except UnicodeDecodeError:
+[?2004l[?2004h>         pass
+[?2004l[?2004h>     
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         # Try Latin-1
+[?2004l[?2004h>         return raw_data.decode('latin-1')
+[?2004l[?2004h>     except UnicodeDecodeError as e:
+[?2004l[?2004h>         # Fallback to chardet detection
+[?2004l[?2004h>         result = chardet.detect(raw_data)
+[?2004l[?2004h>         encoding = result['encoding']
+[?2004l[?2004h>         return raw_data.decode(encoding, errors='replace')
+[?2004l[?2004h> 
+[?2004l[?2004h> def is_line_corrupted(line):
+[?2004l[?2004h>     """Check if line ends with odd number of trailing spaces"""
+[?2004l[?2004h>     stripped_line = line.rstrip()
+[?2004l[?2004h>     if len(line) == len(stripped_line):
+[?2004l[?2004h>         return False  # No trailing spaces
+[?2004l[?2004h>     return (len(line) - len(stripped_line)) % 2 != 0
+[?2004l[?2004h> 
+[?2004l[?2004h> def process_artifacts(base_path, deprecated_dir, summary_dir):
+[?2004l[?2004h>     """Main processing function"""
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create corruption report file
+[?2004l[?2004h>     corruption_report_path = os.path.join(summary_dir, 'corruption_report.txt')
+[?2004l[?2004h>     with open(corruption_report_path, 'w', encoding='utf-8') as corr_f:
+[?2004l[?2004h>         corr_f.write('')  # Create empty file
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Load deprecated patterns
+[?2004l[?2004h>     deprecated_patterns = set()
+[?2004l[?2004h>     for fname in os.listdir(deprecated_dir):
+[?2004l[?2004h>         root_name = os.path.splitext(fname)[0].lower()
+[?2004l[?2004h>         deprecated_patterns.add(root_name)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Process status override map
+[?2004l[?2004h>     def load_status_map(override_map_path):
+[?2004l[?2004h>         status_map = {}
+[?2004l[?2004h>         if not os.path.exists(override_map_path):
+[?2004l[?2004h>             return status_map
+[?2004l[?2004h>         with open(override_map_path, 'r', encoding='utf-8', errors='ignore') as f:
+[?2004l[?2004h>             for line in f:
+[?2004l[?2004h>                 line = line.strip()
+[?2004l[?2004h>                 if line and '=' in line:
+[?2004l[?2004h>                     key, val = line.split('=', 1)
+[?2004l[?2004h>                     status_map[key.strip()] = val.strip()
+[?2004l[?2004h>         return status_map
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Main processing
+[?2004l[?2004h>     valid_artifacts = defaultdict(list)
+[?2004l[?2004h>     
+[?2004l[?2004h>     for root, dirs, files in os.walk(os.path.join(base_path, 'mlops', 'experiments')):
+[?2004l[?2004h>         for file in files:
+[?2004l[?2004h>             if file not in ['artifacts.txt', 'artifacts.log']:
+[?2004l[?2004h>                 continue
+[?2004l[?2004h>             
+[?2004l[?2004h>             file_path = os.path.join(root, file)
+[?2004l[?2004h>             
+[?2004l[?2004h>             try:
+[?2004l[?2004h>                 content = detect_and_convert_encoding(file_path)
+[?2004l[?2004h>             except Exception as e:
+[?2004l[?2004h>                 with open(corruption_report_path, 'a', encoding='utf-8') as corr_f:
+[?2004l[?2004h>                     corr_f.write(f"{file_path}: Error reading file - {str(e)}\n")
+[?2004l[?2004h>                 continue
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Load status overrides for this experiment
+[?2004l[?2004h>             status_map = load_status_map(os.path.join(root, 'status_override.map'))
+[?2004l[?2004h>             
+[?2004l[?2004h>             lines = content.splitlines()
+[?2004l[?2004h>             for line_num, line in enumerate(lines):
+[?2004l[?2004h>                 try:
+[?2004l[?2004h>                     original_line = line  # Preserve for corruption report
+[?2004l[?2004h>                     line = line.strip()
+[?2004l[?2004h>                     
+[?2004l[?2004h>                     # Skip empty lines
+[?2004l[?2004h>                     if not line:
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>                     
+[?2004l[?2004h>                     # Validate line integrity
+[?2004l[?2004h>                     if is_line_corrupted(original_line):
+[?2004l[?2004h>                         with open(corruption_report_path, 'a', encoding='utf-8') as corr_f:
+[?2004l[?2004h>                             corr_f.write(f"{file_path}:{line_num+1}: {original_line}\n")
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>                     
+[?2004l[?2004h>                     # Parse line
+[?2004l[?2004h>                     parts = line.split('|', 2)
+[?2004l[?2004h>                     if len(parts) < 3:
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>                     
+[?2004l[?2004h>                     name = parts[0].strip()
+[?2004l[?2004h>                     status = parts[1].strip()
+[?2004l[?2004h>                     # metadata = parts[2].strip()  # Not used in final output
+[?2004l[?2004h>                     
+[?2004l[?2004h>                     # Apply status override
+[?2004l[?2004h>                     if name in status_map:
+[?2004l[?2004h>                         status = status_map[name]
+[?2004l[?2004h>                     
+[?2004l[?2004h>                     # Check if status is READY
+[?2004l[?2004h>                     if status.upper() != 'READY':
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>                     
+[?2004l[?2004h>                     # Apply exclusion policy
+[?2004l[?2004h>                     root_name = os.path.splitext(name)[0].lower()
+[?2004l[?2004h>                     if root_name in deprecated_patterns:
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>                     
+[?2004l[?2004h>                     # Calculate relative path
+[?2004l[?2004h>                     rel_path = os.path.relpath(root, os.path.join(base_path, 'mlops'))
+[?2004l[?2004h>                     valid_artifacts[name].append(rel_path)
+[?2004l[?2004h>                 except Exception as e:
+[?2004l[?2004h>                     with open(corruption_report_path, 'a', encoding='utf-8') as corr_f:
+[?2004l[?2004h>                         corr_f.write(f"{file_path}:{line_num+1}: Error processing line - {str(e)}\n")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Generate inventory.csv
+[?2004l[?2004h>     inventory_path = os.path.join(summary_dir, 'inventory.csv')
+[?2004l[?2004h>     with open(inventory_path, 'w', encoding='utf-8') as inv_f:
+[?2004l[?2004h>         inv_f.write("Artifact|NameHash|Locations\n")
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Sort artifacts and write output
+[?2004l[?2004h>         for name in sorted(valid_artifacts.keys()):
+[?2004l[?2004h>             name_hash = hashlib.md5(name.encode('utf-8')).hexdigest()
+[?2004l[?2004h>             locations = ';'.join(sorted(set(valid_artifacts[name])))
+[?2004l[?2004h>             inv_f.write(f"{name}|{name_hash}|{locations}\n")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Generate manifest.yaml
+[?2004l[?2004h>     manifest_path = os.path.join(summary_dir, 'manifest.yaml')
+[?2004l[?2004h>     manifest_data = {
+[?2004l[?2004h>         'total_artifacts': len(valid_artifacts),
+[?2004l[?2004h>         'generated_at': datetime.utcnow().strftime('%Y-%m-%d')
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Calculate inventory hash
+[?2004l[?2004h>     with open(inventory_path, 'rb') as inv_f:
+[?2004l[?2004h>         manifest_data['inventory_hash'] = hashlib.sha256(inv_f.read()).hexdigest()
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(manifest_path, 'w', encoding='utf-8') as man_f:
+[?2004l[?2004h>         yaml.safe_dump(manifest_data, man_f, default_flow_style=False)
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     base_path = '/home/user'
+[?2004l[?2004h>     deprecated_dir = os.path.join(base_path, 'mlops', 'deprecated')
+[?2004l[?2004h>     summary_dir = os.path.join(base_path, 'mlops', 'summary')
+[?2004l[?2004h>     process_artifacts(base_path, deprecated_dir, summary_dir)
+[?2004l[?2004h> EOFchmod +x mlops/process_artifacts.py
+[?2004l[?2004h> cat > mlops/create_test_data.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os
+[?2004l[?2004h> import codecs
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> from datetime import datetime
+[?2004l[?2004h> 
+[?2004l[?2004h> def create_test_data(base_path):
+[?2004l[?2004h>     """Create comprehensive test dataset"""
+[?2004l[?2004h>     experiments_dir = os.path.join(base_path, 'mlops', 'experiments')
+[?2004l[?2004h>     deprecated_dir = os.path.join(base_path, 'mlops', 'deprecated')
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create sample experiments
+[?2004l[?2004h>     experiments = [
+[?2004l[?2004h>         ('exp_alpha', 'READY', 'model_alpha.pt'),
+[?2004l[?2004h>         ('exp_beta', 'READY', 'model_beta.pt'),
+[?2004l[?2004h>         ('exp_gamma', 'READY', 'model_gamma.pt'),
+[?2004l[?2004h>         ('exp_delta', 'READY', 'model_delta.pt'),
+[?2004l[?2004h>         ('exp_epsilon', 'READY', 'model_epsilon.pt')
+[?2004l[?2004h>     ]
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create status override
+[?2004l[?2004h>     override_dir = os.path.join(experiments_dir, 'exp_override')
+[?2004l[?2004h>     os.makedirs(override_dir, exist_ok=True)
+[?2004l[?2004h>     with open(os.path.join(override_dir, 'status_override.map'), 'w') as f:
+[?2004l[?2004h>         f.write("model_gamma.pt=PROCESSED\n")
+[?2004l[?2004h>         f.write("model_delta.pt=ERROR\n")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create deprecated files
+[?2004l[?2004h>     deprecated_files = ['LEGACY_MODEL.OLD', 'OLD_ASSET.TXT', 'deprecated_file.bin']
+[?2004l[?2004h>     for f in deprecated_files:
+[?2004l[?2004h>         open(os.path.join(deprecated_dir, f), 'w').close()
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create test files with different encodings and content
+[?2004l[?2004h>     for i, (exp_name, default_status, artifact) in enumerate(experiments):
+[?2004l[?2004h>         exp_dir = os.path.join(experiments_dir, exp_name)
+[?2004l[?2004h>         os.makedirs(exp_dir, exist_ok=True)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Create UTF-8 file
+[?2004l[?2004h>         with open(os.path.join(exp_dir, 'artifacts.txt'), 'w', encoding='utf-8') as f:
+[?2004l[?2004h>             f.write(f"{artifact} | {default_status} | metadata1\n")
+[?2004l[?2004h>             f.write(f"  even_spaces.txt | READY | metadata2    \n")  # 4 trailing spaces - valid
+[?2004l[?2004h>             f.write(f"odd_spaces.log | READY | metadata3   \n")   # 3 trailing spaces - corrupted
+[?2004l[?2004h>             f.write(f"empty_line.log | READY |          \n")    # Empty line - valid
+[?2004l[?2004h>             f.write(f"corrupted_line.txt | READY | metadata4\n") # No trailing spaces - valid
+[?2004l[?2004h>             f.write(f"  indented_line.log | READY | metadata5   \n") # 2 trailing spaces - valid
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Add additional artifacts for testing
+[?2004l[?2004h>             f.write(f"{artifact.replace('.pt', '_v2.pt')} | READY | metadata6\n")
+[?2004l[?2004h>             f.write(f"{artifact.replace('.pt', '_v3.pt')} | READY | metadata7\n")
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Add deprecated artifact
+[?2004l[?2004h>             deprecated_artifact = "LEGACY_MODEL.OLD"
+[?2004l[?2004h>             f.write(f"{deprecated_artifact} | READY | deprecated_meta\n")
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Add artifact that should be overridden
+[?2004l[?2004h>             if exp_name == 'exp_override':
+[?2004l[?2004h>                 f.write(f"model_gamma.pt | READY | should_be_overridden\n")
+[?2004l[?2004h>                 f.write(f"model_delta.pt | READY | should_be_overridden\n")
+[?2004l[?2004h>             
+[?2004l[?2004h>         # Create UTF-16LE file
+[?2004l[?2004h>         utf16le_content = f"utf16le_artifact.txt | READY | utf16le_meta\n".encode('utf-16-le')
+[?2004l[?2004h>         with open(os.path.join(exp_dir, 'artifacts.log'), 'wb') as f:
+[?2004l[?2004h>             f.write(utf16le_content)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Create Latin-1 file
+[?2004l[?2004h>         latin1_content = f"latin1_artifact.bin | READY | latin1_meta\n".encode('latin-1')
+[?2004l[?2004h>         with open(os.path.join(exp_dir, 'artifacts.bin'), 'wb') as f:
+[?2004l[?2004h>             f.write(latin1_content)
+[?2004l[?2004h>     
+[?2004l[?2004h>     print("Test data created successfully")
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     create_test_data('/home/user')
+[?2004l[?2004h> EOFpython3 mlops/create_test_data.py
+[?2004l[?2004h> python3 mlops/create_test_data.py
+[?2004l[?2004h> ls -la mlops/experiments/
+[?2004l[?2004h> ls -la mlops/experiments/exp_alpha/
+[?2004l[?2004h> head -5 mlops/experiments/exp_alpha/artifacts.txt
+[?2004l[?2004h> mkdir -p mlops/experiments/exp_test1 mlops/experiments/exp_test2
+[?2004l[?2004h> cat > mlops/experiments/exp_test1/artifacts.txt << 'EOF'
+[?2004l[?2004h> model_v1.pt | READY | version1
+[?2004l[?2004h> model_v2.pt | READY | version2  
+[?2004l[?2004h>   model_v3.pt | READY | version3
+[?2004l[?2004h> invalid_status.pt | PENDING | should_be_excluded
+[?2004l[?2004h> EOFcat > mlops/experiments/exp_test2/artifacts.log << 'EOF'
+[?2004l[?2004h> legacy_model.old | READY | legacy
+[?2004l[?2004h> utf16le_test.txt | READY | utf16le_test
+[?2004l[?2004h> EOFecho -n "legacy_model.old | READY | legacy" > mlops/experiments/exp_test2/artifacts_utf16le.log
+[?2004l[?2004h> iconv -f UTF-8 -t UTF-16LE mlops/experiments/exp_test2/artifacts_utf16le.log > mlops/experiments/exp_test2/artifacts_utf16le.log.tmp && mv mlops/experiments/exp_test2/artifacts_utf16le.log.tmp mlops/experiments/exp_test2/artifacts_utf16le.log
+[?2004l[?2004h> ls -la mlops/experiments/
+[?2004l[?2004h> ls -la mlops/experiments/exp_test1/
+[?2004l[?2004h> cat mlops/experiments/exp_test1/artifacts.txt
+[?2004l[?2004h> pwd
+[?2004l[?2004h> mkdir -p mlops/experiments/exp_test1
+[?2004l[?2004h> echo "model_v1.pt | READY | version1" > mlops/experiments/exp_test1/artifacts.txt
+[?2004l[?2004h> echo "model_v2.pt | READY | version2" >> mlops/experiments/exp_test1/artifacts.txt
+[?2004l[?2004h> ls -la mlops/experiments/exp_test1/
+[?2004l[?2004h> python3 mlops/process_artifacts.py
+[?2004l[?2004h> ls -la mlops/summary/
+[?2004l[?2004h> ls
+[?2004l[?2004h> ls -la mlops/
+[?2004l[?2004h> find mlops/ -type f
+[?2004l[?2004h> echo "test content" > test_file.txt
+[?2004l[?2004h> cat test_file.txt
+[?2004l[?2004h> ls -la test_file.txt
+[?2004l[?2004h> whoami
+[?2004l[?2004h> date
+[?2004l[?2004h> pwd
+[?2004l[?2004h> 

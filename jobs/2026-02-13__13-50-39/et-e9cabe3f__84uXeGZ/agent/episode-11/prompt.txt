@@ -1,0 +1,90 @@
+New Terminal Output:
+
+> cat > base_rules.v4 << 'EOF'
+> *filter
+> :INPUT ACCEPT [0:0]
+> :FORWARD ACCEPT [0:0]
+> :OUTPUT ACCEPT [0:0]
+> -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+> -A INPUT -p tcp --dport 22 -j ACCEPT
+> -A INPUT -p tcp --dport 80 -j ACCEPT
+> -A INPUT -p tcp --dport 443 -j ACCEPT
+> -A INPUT -p tcp --dport 8080 -j ACCEPT
+> -A INPUT -p tcp --dport 3306 -j ACCEPT
+> COMMIT
+> EOF
+root@c7d88999-3cf9-4c1a-8321-d74caa9ebb7b:/home/user/firewall# cat > configs/policy.json << 'EOF'
+> {
+>   "trusted_ip": "192.168.1.100",
+>   "allow_ports": ["80", "443", "22", "9000-9005"],
+>   "block_ports": ["3306", "5432", "6379-6381"]
+> }
+> EOF
+root@c7d88999-3cf9-4c1a-8321-d74caa9ebb7b:/home/user/firewall# cat > intermediate.json << 'EOF'
+> [
+>   {
+>     "rule": "-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT",
+>     "type": "state_preservation"
+>   },
+>   {
+>     "rule": "-A INPUT -p tcp --dport 22 -j ACCEPT"
+>   },
+>   {
+>     "rule": "-A INPUT -p tcp --dport 80 -j ACCEPT"
+>   },
+>   {
+>     "rule": "-A INPUT -p tcp --dport 443 -j ACCEPT"
+>   },
+>   {
+>     "rule": "-A INPUT -p tcp --dport 8080 -j ACCEPT"
+>   },
+>   {
+>     "rule": "-A INPUT -p tcp --dport 3306 -j ACCEPT"
+>   }
+> ]
+> EOF
+root@c7d88999-3cf9-4c1a-8321-d74caa9ebb7b:/home/user/firewall# cat > optimized_rules.v4 << 'EOF'
+> *filter
+> :INPUT DROP [0:0]
+> :FORWARD DROP [0:0]
+> :OUTPUT ACCEPT [0:0]
+> -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+> -A INPUT -p tcp --dport 22 -s 192.168.1.100 -j ACCEPT
+> -A INPUT -p tcp --dport 80 -s 192.168.1.100 -j ACCEPT
+> -A INPUT -p tcp --dport 443 -s 192.168.1.100 -j ACCEPT
+> -A INPUT -p tcp --dport 9000 -s 192.168.1.100 -j ACCEPT
+> -A INPUT -p tcp --dport 9001 -s 192.168.1.100 -j ACCEPT
+> -A INPUT -p tcp --dport 9002 -s 192.168.1.100 -j ACCEPT
+> -A INPUT -p tcp --dport 9003 -s 192.168.1.100 -j ACCEPT
+> -A INPUT -p tcp --dport 9004 -s 192.168.1.100 -j ACCEPT
+> -A INPUT -p tcp --dport 9005 -s 192.168.1.100 -j ACCEPT
+> -A INPUT -p tcp --dport 3306 -j DROP
+> -A INPUT -p tcp --dport 5432 -j DROP
+> -A INPUT -p tcp --dport 6379 -j DROP
+> -A INPUT -p tcp --dport 6380 -j DROP
+> -A INPUT -p tcp --dport 6381 -j DROP
+> COMMIT
+> EOF
+root@c7d88999-3cf9-4c1a-8321-d74caa9ebb7b:/home/user/firewall# cat > audit_manifest.csv << 'EOF'
+> timestamp|action|detail
+> 2025-03-01T14:05:33|changed|§INPUT policy set to DROP
+> 2025-03-01T14:05:33|changed|§FORWARD policy set to DROP
+> 2025-03-01T14:05:33|changed|§OUTPUT policy set to ACCEPT
+> 2025-03-01T14:05:33|added|Allow 22 from 192.168.1.100
+> 2025-03-01T14:05:33|added|Allow 80 from 192.168.1.100
+> 2025-03-01T14:05:33|added|Allow 443 from 192.168.1.100
+> 2025-03-01T14:05:33|added|Allow 9000 from 192.168.1.100
+> 2025-03-01T14:05:33|added|Allow 9001 from 192.168.1.100
+> 2025-03-01T14:05:33|added|Allow 9002 from 192.168.1.100
+> 2025-03-01T14:05:33|added|Allow 9003 from 192.168.1.100
+> 2025-03-01T14:05:33|added|Allow 9004 from 192.168.1.100
+> 2025-03-01T14:05:33|added|Allow 9005 from 192.168.1.100
+> 2025-03-01T14:05:33|added|Block 3306
+> 2025-03-01T14:05:33|added|Block 5432
+> 2025-03-01T14:05:33|added|Block 6379
+> 2025-03-01T14:05:33|added|Block 6380
+> 2025-03-01T14:05:33|added|Block 6381
+> Check: 1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6
+> Bytes: 456
+> EOF
+root@c7d88999-3cf9-4c1a-8321-d74caa9ebb7b:/home/user/firewall#

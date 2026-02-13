@@ -1,0 +1,121 @@
+Current terminal state:
+New Terminal Output:
+
+> cat > verify_log.py << 'EOF'
+> #!/usr/bin/env python3
+> import sys
+> import hashlib
+> import codecs
+> import os
+>
+> log_file_path = sys.argv[1]
+> verification_status = "VERIFICATION_PASSED"
+>
+> try:
+>     # Read log file content (ISO-8859-1) after the FILE_RECORDS line
+>     with open(log_file_path, 'r', encoding='iso-8859-1') as f:
+>         lines = f.readlines()
+>
+>     # Find the line number of FILE_RECORDS to start parsing actual records
+>     file_records_start_index = -1
+{>     for i, line in enumerate(lines):
+>         if line.strip() == "FILE_RECORDS":
+>             file_records_start_index = i + 1 # Records start on the next line
+>             break
+ >
+>     if file_records_start_index == -1 or file_records_start_index >= len(lines):
+>         # No records or FILE_RECORDS not found as expected
+>         verification_status = "VERIFICATION_FAILED - No records or FILE_RECORDS line issue"
+>         print(f"Verification status: {verification_status}") # For debugging
+>     else:
+>         all_ok = True
+>         for i in range(file_records_start_index, len(lines)):
+>             line = lines[i].strip()
+>             if not line or line.startswith("END_TIME") or line.startswith("END"): # Stop at footer
+>                 break
+>
+>             if not line: continue # Skip empty lines within records
+>
+>             parts = line.split()
+>             if len(parts) < 4: # Basic format check
+>                 all_ok = False
+>                 verification_status = "VERIFICATION_FAILED"
+>                 print(f"Failed to parse line: {line}") # For debugging
+>                 break
+>
+>             filename = parts[0]
+>             expected_sha256 = parts[2] # parts[1] is SHA256=
+>
+>             # Ensure filename refers to a file within the source directory context
+>             # The log stores the original filename from audit directory list
+>             file_to_check_path = os.path.join("${SOURCE_DIR}", filename)
+>
+>             if not os.path.exists(file_to_check_path):
+>                 all_ok = False
+>                 verification_status = "VERIFICATION_FAILED"
+>                 print(f"File not found for verification: {filename}") # For debugging
+>                 break
+>
+>             # Read file content in binary mode for hashing
+>             with open(file_to_check_path, 'rb') as f_check:
+>                 file_content = f_check.read()
+>
+>             calculated_sha256 = hashlib.sha256(file_content).hexdigest()
+>
+>             if calculated_sha256 != expected_sha256:
+>                 all_ok = False
+>                 verification_status = "VERIFICATION_FAILED"
+>                 print(f"Hash mismatch for {filename}: expected {expected_sha256}, got {calculated_sha256}") # For debugging
+>                 break
+>
+>         if not all_ok:
+>             verification_status = "VERIFICATION_FAILED"
+>
+>     # Append verification status line
+>     with open(log_file_path, 'a', encoding='iso-8859-1') as f:
+>         f.write(f"{verification_status}\n")
+>
+>     # Also append END_TIME and END lines if they are not present yet
+>     # (They should be, if the log was constructed as per spec)
+>     # For robustness, check and append if missing.
+>     last_lines = []
+>     with open(log_file_path, 'r', encoding='iso-8859-1') as f:
+>         last_lines = f.readlines()[-2:] # Get last two lines
+>
+>     end_time_present = False
+>     end_present = False
+>     if len(last_lines) >= 1 and last_lines[-1].strip() != verification_status:
+>         print("Error: Last line not verification status. Log might be malformed.")
+>     elif len(last_lines) >= 1:
+>         # Verification status is the last line. Check for END_TIME and END before it.
+>         if len(last_lines) >= 2 and last_lines[-2].strip().startswith("END_TIME"):
+>             end_time_present = True
+>         if len(last_lines) >= 3 and last_lines[-3].strip().startswith("END"):
+>             end_present = True
+>
+>     if not end_time_present:
+>         with open(log_file_path, 'a', encoding='iso-8859-1') as f:
+>             f.write(f"END_TIME  : {os.environ.get('START_TIME', 'UNKNOWN_START_TIME')}\n") # Use existing START_TIME if END_TIME wasn't set
+>     if not end_present:
+>         with open(log_file_path, 'a', encoding='iso-8859-1') as f:
+>             f.write(f"END         : 2023-Q4 checksum verification\n")
+>
+>     print(f"Verification process completed. Status appended to log: {verification_status}")
+>
+> except Exception as e:
+>     verification_status = f"VERIFICATION_FAILED - Script error: {str(e)}"
+>     print(f"Error during verification: {str(e)}")
+>     # Append error status
+>     try:
+>         with open(log_file_path, 'a', encoding='iso-8859-1') as f:
+>             f.write(f"{verification_status}\n")
+>     except:
+>         pass
+>
+>     print(f"Error status appended to log: {verification_status}")
+>
+> EOFpython3 verify_log.py "${LOG_FILE}"
+> rm verify_log.py
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

@@ -1,0 +1,25 @@
+```json
+{
+  "analysis": "The current terminal state shows a fresh Ubuntu environment with the user root. The home directory exists but the `/home/user/diagnostics` directory structure and the required script `run_net_checks.sh` do not yet exist. The task requires creating this directory, a configuration file `targets.txt`, and the script itself with specific functionality for network diagnostics and logging.",
+  "plan": "First, create the `/home/user/diagnostics` directory to store all diagnostic files. Then, create the `targets.txt` configuration file with sample host entries. Next, create the main script file `run_net_checks.sh` with the required POSIX-compliant shell code. The script must handle log rotation, parallel execution of network commands (ping, traceroute, dig) for each host, Base64 encoding of outputs, atomic logging with proper headers and exit codes, and finally SHA-256 checksum generation of the log file. Set execute permissions on the script.",
+  "commands": [
+    {
+      "keystrokes": "mkdir -p /home/user/diagnostics\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat > /home/user/diagnostics/targets.txt << 'EOF'\nexample.com\n# This is a comment\n1.1.1.1\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat > /home/user/diagnostics/run_net_checks.sh << 'EOF'\n#!/bin/sh\n\n# Directory containing logs and configuration\ntest -d /home/user/diagnostics || { echo \"Error: diagnostics directory missing\" >&2; exit 1; }\n\n# Configuration file containing target hosts\ntargets_file=\"/home/user/diagnostics/targets.txt\"\ntest -f \"$targets_file\" || { echo \"Error: targets.txt file not found\" >&2; exit 1; }\n\n# Log file\nlog_file=\"/home/user/diagnostics/netcheck.log\"\n\n# Rotate existing log if needed\nif [ -f \"$log_file\" ]; then\n    gzip -c \"$log_file\" > /home/user/diagnostics/netcheck.previous.log.gz\n    rm -f \"$log_file\"\nfi\n\n# Create new log with header\ntimestamp=$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")\necho \"# Netcheck Report\" > \"$log_file\"\necho \"Timestamp: $timestamp\" >> \"$log_file\"\n\n# Function to run a single network check\nrun_check() {\n    local host=\"$1\"\n    local command=\"$2\"\n    local cmd_to_run=\"$3\"\n    \n    # Execute command, capture stdout and stderr combined\n    output=$(eval \"$cmd_to_run\" 2>&1)\n    \n    # Get exit code\n    exit_code=$?\n    \n    # Encode output and write to log atomically\n    flock -x 200\n    echo \"===== START host=$host check=$command =====\" >> \"$log_file\"\n    echo \"$output\" | base64 >> \"$log_file\"\n    echo \"===== END host=$host check=$command status=$exit_code =====\" >> \"$log_file\"\n    flock -u 200\n}\n\n# Read target hosts from file, skipping comments and empty lines\nhosts=$(grep -v '^#' \"$targets_file\" | grep -v '^$')\n\n# Execute checks in parallel using background jobs\nfor host in $hosts; do\n    # Ping check\n    run_check \"$host\" \"ping\" \"ping -n -c 1 $host\" &\n    \n    # Traceroute check  \n    run_check \"$host\" \"traceroute\" \"traceroute -n -m 5 $host\" &\n    \n    # DNS check\n    run_check \"$host\" \"dig\" \"dig +short $host A\" &\ndone\n\n# Wait for all background jobs to complete\nwait\n\n# Calculate SHA-256 checksum of the final log\nsha256sum \"$log_file\" | awk '{print $1}' > /home/user/diagnostics/netcheck.sha256\n\necho \"Diagnostics completed successfully.\"\nEOF",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "chmod +x /home/user/diagnostics/run_net_checks.sh\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+```

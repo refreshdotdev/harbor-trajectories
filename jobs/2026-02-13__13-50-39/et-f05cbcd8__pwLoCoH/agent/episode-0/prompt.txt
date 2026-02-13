@@ -1,0 +1,151 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are an on–call operations engineer who has been paged because “some internal and public hostnames are not resolving for application pods”. There is a **mock** name-service setup under your non-privileged account. Your task is to triage the incident and leave an auditable trail of what you did.
+
+### INPUT MATERIAL (already present in the home directory)
+*   `/home/user/incidents/tickets/dns_incident_2024.txt`
+    *   ASCII text, one hostname per line, no blank lines.
+*   `/home/user/resources/mock_hosts`
+    *   Works exactly like the traditional /etc/hosts file.
+    *   Fields are whitespace-separated.
+*   `/home/user/resources/dns/internal_dns.json`
+    *   **Primary** DNS source. JSON object.
+*   `/home/user/resources/dns/external_dns.json`
+    *   **Secondary** DNS source. JSON object.
+
+**DNS JSON Format:**
+Keys are hostnames. Values are objects containing either:
+*   `"A"` and `"AAAA"` keys (IP addresses).
+*   **OR** a `"CNAME"` key (alias to another hostname).
+
+### WHAT YOU MUST DO
+1.  **Read Hostnames**: Read every hostname from the ticket file.
+
+2.  **Resolution Logic**: For each hostname, determine its status:
+    *   **Check `mock_hosts`**: Look up the hostname here first.
+    *   **Check DNS**: If the hostname is not in `mock_hosts` (or to verify consistency), resolve it using the JSON files.
+        *   **Precedence**: Look in `internal_dns.json` first. If not found, look in `external_dns.json`.
+        *   **CNAMEs**: If a record contains a `"CNAME"` key, you must recursively resolve the target hostname using the same DNS precedence rules. Support a maximum recursion depth of **3**. If the chain exceeds 3 or loops, treat it as "no record".
+        *   **Result**: The final resolution is the `"A"` and `"AAAA"` values of the final target.
+
+3.  **Update Hosts File**: If a hostname has **no entry** in `mock_hosts` but **does** resolve to a non-empty IPv4 (`"A"`) via DNS (after following any CNAMEs), append a new line to `/home/user/resources/mock_hosts`:
+    `<Resolved_IPv4><tab><Original_Hostname>`
+
+4.  **Generate Report**: Produce a **sorted** tab-separated log file `/home/user/incidents/dns_resolution_report.log`.
+    *   **Sorting**: The lines must be sorted alphabetically by `HOSTNAME`.
+    *   **Columns** (Tab-separated):
+        1.  `HOSTNAME` (from ticket)
+        2.  `HOSTS_FILE_IP` (IP from `mock_hosts` or “-”)
+        3.  `DNS_IPV4` (Resolved “A” from JSON or “-”)
+        4.  `DNS_IPV6` (Resolved “AAAA” from JSON or “-”)
+        5.  `SUMMARY` (Exact phrase required):
+            *   `OK - hosts entry present, no DNS` (In hosts, not in DNS)
+            *   `OK - consistent` (In hosts and DNS, IPv4 matches)
+            *   `WARN - inconsistent` (In hosts and DNS, but IPv4 differs)
+            *   `UPDATED hosts with DNS A` (Not in hosts, found in DNS)
+            *   `NO RECORD FOUND` (In neither)
+
+### SUCCESS CRITERIA
+*   Log file exists, is UTF-8, and permissions are `0640` (rw-r-----).
+*   Log file content is **sorted alphabetically** by hostname.
+*   `mock_hosts` is updated correctly with resolved IPs for new hosts.
+*   CNAME chains are followed correctly to find the final IP.
+*   Internal DNS takes precedence over External DNS.
+*   The `WARN - inconsistent` state is correctly identified.
+
+### IMPORTANT
+*   Use only the provided files. Do not query real DNS.
+*   Do not modify the JSON files.
+*   Do not use root privileges.
+
+Current terminal state:
+Current Terminal Screen:
+root@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,37 @@
+```json
+{
+  "analysis": null,
+  "plan": {
+    "step_1": "Set up the working environment by creating the necessary output directories.",
+    "step_2": "Retrieve the reference date from `/home/user/reference_date.txt`.",
+    "step_3": "Identify all configuration files matching the naming pattern `config_YYYYMMDD.conf` and filter out any that are strictly newer than the reference date.",
+    "step_4": "For each valid configuration file (those not newer than the reference date), extract the date portion from the filename to facilitate chronological sorting.",
+    "step_5": "Process each valid configuration file to extract active lines (non-blank, non-comment) and create sanitized versions.",
+    "step_6": "Aggregate key-value data from all valid files to produce the merged configuration.",
+    "step_7": "Generate all required output files based on the processed data."
+  },
+  "commands": [
+    {
+      "keystrokes": "mkdir -p /home/user/output /home/user/clean_configs\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "REF_DATE=$(cat /home/user/reference_date.txt)\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "find /home/user/configs -maxdepth 1 -name 'config_????????\\.conf' -print | while IFS= read -r filename; do file_date=$(echo \"${filename##*/}\" | sed -E 's/config_(........)\\.conf/\\\\1/'); if [ \"${file_date}\" \">\" \"${REF_DATE}\" ]; then echo \"Skipping future draft: ${filename}\" >&2; else echo \"${filename}\"; fi; done > /tmp/valid_files.txt\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "if [ -s /tmp/valid_files.txt ]; then awk -v ref_date=\"${REF_DATE}\" '{print $0}' /tmp/valid_files.txt | while IFS= read -r fname; do echo \"Processing: ${fname}\"; base_name=$(basename \"${fname}\"); file_date=$(echo \"${base_name}\" | sed -E 's/config_(........)\\.conf/\\\\1/');\n# Create sanitized file\ncat \"${fname}\" | awk -F= 'BEGIN { OFS=\"=\" } $1 ~ /^[^#]/ { key=$1; sub(/[[:space:]]+$/, \"; sub(/^[[:space:]]+/, \\"\\", key); $1=key; if (index($2, \"\\\"\") == 1) { gsub(/^[[:space:]]*\\\"|\\\"[[:space:]]*(#.*)?$/, \\"\\"); print } else { sub(/[[:space:]]*#.*$/, \\"\\"); sub(/[[:space:]]+$/, \\"\\"); $1=$1; print } }' > \"/home/user/clean_configs/${base_name}\";\n# Count active lines\ngrep -cE '^[^[:space:]]' \"/home/user/clean_configs/${base_name}\" >> /tmp/line_counts.tsv;\ndone; else echo \"No valid config files found relative to reference date ${REF_DATE}\"; fi\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "if [ -f /tmp/valid_files.txt ] && [ -s /tmp/valid_files.txt ]; then paste -d$'\\t' <(awk '{print $1}' /tmp/valid_files.txt | xargs -I {} basename {}) <(cut -f2 /tmp/line_counts.tsv) | sort -k1,1 > /home/user/output/config_line_counts.tsv;\n# Extract all keys (lowercase, unique, sorted)\ncat /home/user/clean_configs/* | awk -F= '!seen[$1]++ {print tolower($1)}' | sort > /home/user/output/all_keys.txt;\n# Prepare data for merged_config.csv and new_keys.log\ntmp_all_keys=\"/tmp/all_keys.txt\"; tmp_merged_data=\"/tmp/merged_config_data.txt\"; > \"${tmp_merged_data}\";\nfor key in $(cat /home/user/output/all_keys.txt); do\n  newest_val_source=\"\"; newest_val=\"\";\n  while IFS= read -r fname; do\n    base_name=$(basename \"${fname}\");\n    val=$(grep -i \"^${key}=\" \\\"${fname}\\\" | awk -F= '{print $2}' | head -1);\n    if [ -n \"${val}\" ]; then\n      newest_val_source=\"${base_name}\";\n      newest_val=\"${val}\";\n      break;\n    fi;\n  done < /tmp/valid_files.txt;\n  if [ -n \"${newest_val_source}\" ]; then\n    echo -e \"${key}\\t${newest_val}\\t${newest_val_source}\" >> \"${tmp_merged_data}\";\n  fi;\ndone;\n# Generate merged_config.csv\n{ echo -e \"Key\\tValue\\tSource\"; sort -k1,1 \"${tmp_merged_data}\"; } > /home/user/output/merged_config.csv;\n# Generate new_keys.log\nif [ -s /tmp/valid_files.txt ]; then\n  newest_file=$(sort -r /tmp/valid_files.txt | head -1);\n  oldest_file=$(sort /tmp/valid_files.txt | head -1);\n  newest_keys=$(grep -oE \"^[^=]+=\" \\\"${newest_file}\\\" | awk -F= '{print tolower($1)}' | sort -u);\n  oldest_keys=$(grep -oE \"^[^=]+=\" \\\"${oldest_file}\\\" | awk -F= '{print tolower($1)}' | sort -u);\n  comm -23 <(echo \"${newest_keys}\") <(echo \"${oldest_keys}\") > /home/user/output/new_keys.log;\nfi;\nrm -f /tmp/valid_files.txt /tmp/line_counts.tsv \"${tmp_merged_data}\";\nelse echo \"No valid files processed\"; fi\n",
+      "duration": 1.0
+    }
+  ],
+  "task_complete": true
+}
+```

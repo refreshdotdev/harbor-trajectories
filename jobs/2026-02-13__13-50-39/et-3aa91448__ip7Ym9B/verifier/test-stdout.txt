@@ -1,0 +1,93 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 4 items
+
+../../tests/test_final_state.py::test_directories_exist PASSED           [ 25%]
+../../tests/test_final_state.py::test_report_csv_attributes FAILED       [ 50%]
+../../tests/test_final_state.py::test_firewall_rules_content FAILED      [ 75%]
+../../tests/test_final_state.py::test_manifest_integrity PASSED          [100%]
+
+=================================== FAILURES ===================================
+__________________________ test_report_csv_attributes __________________________
+
+    def test_report_csv_attributes():
+        assert REPORT_CSV.exists()
+    
+        # 1. Check Encoding (Windows-1252)
+        raw_bytes = REPORT_CSV.read_bytes()
+        try:
+            content = raw_bytes.decode('cp1252')
+        except UnicodeDecodeError:
+            pytest.fail("report.csv is not valid Windows-1252 (cp1252).")
+    
+        # 2. Check Line Endings (CRLF)
+        # Strict check: Must contain \r\n, and must NOT contain \n that is not preceded by \r
+        if b'\r\n' not in raw_bytes:
+             pytest.fail("report.csv must use CRLF line endings.")
+    
+        # Remove all \r\n, then check if any \n remains
+        if b'\n' in raw_bytes.replace(b'\r\n', b''):
+             pytest.fail("report.csv contains LF line endings without CR.")
+    
+        # 3. Check Header
+        lines = content.splitlines()
+        assert lines[0] == "Source_IP,Risk_Score,Packet_Count"
+    
+        # 4. Check Content & Sorting
+        data_rows = [l for l in lines[1:] if l.strip()]
+        assert len(data_rows) == 2, f"Expected 2 data rows, found {len(data_rows)}"
+    
+        row1 = data_rows[0].split(',')
+        row2 = data_rows[1].split(',')
+    
+        # Expected: 203.0.113.88 (Risk 90, Count 5) -> First
+>       assert row1[0] == "203.0.113.88"
+E       AssertionError: assert '192.168.1.100' == '203.0.113.88'
+E         
+E         - 203.0.113.88
+E         + 192.168.1.100
+
+/tests/test_final_state.py:48: AssertionError
+_________________________ test_firewall_rules_content __________________________
+
+    def test_firewall_rules_content():
+        assert RULES_FILE.exists()
+    
+        # Check encoding (UTF-8)
+        try:
+            content = RULES_FILE.read_text(encoding='utf-8')
+        except UnicodeDecodeError:
+            pytest.fail("hardened_rules.v4 must be valid UTF-8.")
+    
+        # Check line endings (LF only, not CRLF)
+        raw = RULES_FILE.read_bytes()
+        if b'\r\n' in raw:
+            pytest.fail("hardened_rules.v4 must use Unix LF line endings, found CRLF.")
+    
+        lines = content.splitlines()
+    
+        # Check Insertion Point
+        try:
+            lo_idx = lines.index("-A INPUT -i lo -j ACCEPT")
+        except ValueError:
+            pytest.fail("Could not find loopback rule in firewall output.")
+    
+        rule1 = "-A INPUT -s 203.0.113.88 -j DROP"
+        rule2 = "-A INPUT -s 192.168.100.15 -j DROP"
+    
+>       assert lines[lo_idx + 1] == rule1, f"Expected {rule1} after loopback"
+E       AssertionError: Expected -A INPUT -s 203.0.113.88 -j DROP after loopback
+E       assert '-A INPUT -s ...1.100 -j DROP' == '-A INPUT -s ...13.88 -j DROP'
+E         
+E         - -A INPUT -s 203.0.113.88 -j DROP
+E         ?              ----   - ^^
+E         + -A INPUT -s 192.168.1.100 -j DROP
+E         ?             ++   +++  ^^^
+
+/tests/test_final_state.py:82: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_report_csv_attributes - Assertio...
+FAILED ../../tests/test_final_state.py::test_firewall_rules_content - Asserti...
+========================= 2 failed, 2 passed in 0.02s ==========================

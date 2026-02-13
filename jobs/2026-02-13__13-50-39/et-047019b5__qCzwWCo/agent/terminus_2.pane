@@ -1,0 +1,218 @@
+[?2004hroot@ed0bc50e-0418-42e9-8194-0847d038e748:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@ed0bc50e-0418-42e9-8194-0847d038e748:~# clear
+[?2004l[H[J[?2004hroot@ed0bc50e-0418-42e9-8194-0847d038e748:~# cd /home/user
+[?2004l[?2004hroot@ed0bc50e-0418-42e9-8194-0847d038e748:/home/user# mkdir -p forensics
+[?2004l[?2004hroot@ed0bc50e-0418-42e9-8194-0847d038e748:/home/user# cd forensics
+[?2004l[?2004hroot@ed0bc50e-0418-42e9-8194-0847d038e748:/home/user/forensics# python3 -m venv clean_env
+[?2004lsource clean_env/bin/activate
+[?2004hroot@ed0bc50e-0418-42e9-8194-0847d038e748:/home/user/forensics# source clean_env/bin/activate
+[?2004l[?2004h(clean_env) root@ed0bc50e-0418-42e9-8194-0847d038e748:/home/user/forensics# sed -i '1i\nexport PS1=\"(AUDIT_SAFE) \$\x07\"' clean_env/bin/activate
+[?2004l[?2004h(clean_env) root@ed0bc50e-0418-42e9-8194-0847d038e748:/home/user/forensics# source clean_env/bin/activate
+[?2004lbash: nexport: command not found
+[?2004h(clean_env) root@ed0bc50e-0418-42e9-8194-0847d038e748:/home/user/forensics# pip install wheel
+[?2004lLooking in indexes: https://invalid.pypi.org/simple
+[33mWARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7789d41cfaf0>: Failed to establish a new connection: [Errno -5] No address associated with hostname')': /simple/wheel/[0m[33m
+[0m[33mWARNING: Retrying (Retry(total=3, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7789d41cfd00>: Failed to establish a new connection: [Errno -5] No address associated with hostname')': /simple/wheel/[0m[33m
+[0m[33mWARNING: Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7789d41cff10>: Failed to establish a new connection: [Errno -5] No address associated with hostname')': /simple/wheel/[0m[33m
+[0m[33mWARNING: Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7789d42140d0>: Failed to establish a new connection: [Errno -5] No address associated with hostname')': /simple/wheel/[0m[33m
+[0mpython3 -c "
+import re, json, os, datetime, hashlib
+
+# Workflow for Task: Incident 714-B
+
+# 1. Define key paths
+PROJECT_ROOT = '/home/user/forensics'
+VENV_DIR = os.path.join(PROJECT_ROOT, 'clean_env')
+BANLIST_PATH = '/var/lib/secops/legacy_banlist.txt'
+MANIFEST_PATH = os.path.join(PROJECT_ROOT, 'audit_manifest.json')
+SIG_PATH = os.path.join(PROJECT_ROOT, 'audit_manifest.sig')
+
+# 2. Read and process banlist
+print('Processing banlist...')
+banlist_packages = set()
+try:
+    with open(BANLIST_PATH, 'r', encoding='iso-8859-1', errors='replace') as f:
+        for line in f:
+            line = line.strip()
+            # Remove Windows CRLF if present
+            line = line.rstrip('\\r') 
+            if line and not line.startswith('#'):
+                banlist_packages.add(line.lower())
+    print(f'Loaded {len(banlist_packages)} packages from banlist.')
+except FileNotFoundError:
+    print(f'Warning: Banlist file not found at {BANLIST_PATH}. Proceeding with an empty banlist.')
+    pass # Proceed with empty banlist if file is missing
+
+# 3. Get current package list from pip freeze
+print('Getting current package list...')
+import subprocess
+try:
+    pip_freeze_output = subprocess.check_output(['pip', 'freeze'], text=True, stderr=subprocess.DEVNULL)
+except subprocess.CalledProcessError as e:
+    print(f'Error running pip freeze: {e}')
+    pip_freeze_output = ''
+
+# 4. Filter packages against banlist and sort
+allowed_packages = []
+for line in pip_freeze_output.splitlines():
+    if line: # Ensure line is not empty
+        name = line.split('==')[0].strip()
+        version = line.split('==')[1].strip() if '==' in line else 'unknown'
+        if name.lower() not in banlist_packages:
+            allowed_packages.append({'name': name, 'version': version})
+
+# Sort packages alphabetically by name
+allowed_packages.sort(key=lambda x: x['name'])
+
+print(f'Found {len(allowed_packages)} allowed packages after filtering.')
+
+# 5. Get metadata for manifest
+print('Gathering metadata...')
+scan_timestamp = datetime.datetime.utcnow().strftime('%%Y-%%m-%%dT%%H:%%M:%%SZ')
+try:
+    environment_inode = os.stat(VENV_DIR).st_ino
+except FileNotFoundError:
+    print(f'Error: Venv directory {VENV_DIR} not found. Cannot get inode.')
+    environment_inode = -1 # Fallback if venv dir is missing
+
+# 6. Construct and write minified JSON manifest
+print('Generating JSON manifest...')
+manifest_data = {
+    'scan_timestamp': scan_timestamp,
+    'environment_inode': environment_inode,
+    'packages': allowed_packages
+}
+
+# Minify JSON: remove all whitespace
+minified_json = json.dumps(manifest_data, separators=(',', ':'))
+
+with open(MANIFEST_PATH, 'w') as f:
+    f.write(minified_json)
+
+print(f'Manifest written to {MANIFEST_PATH}')
+
+# 7. Generate SHA-512 signature
+print('Generating SHA-512 signature...')
+try:
+    with open(MANIFEST_PATH, 'rb') as f:
+        manifest_bytes = f.read()
+    sha512_hash = hashlib.sha512(manifest_bytes).hexdigest()
+    with open(SIG_PATH, 'w') as f_sig:
+        f_sig.write(sha512_hash) # Write hash without trailing newline
+    print(f'Signature written to {SIG_PATH}')
+    print(f'Signature: {sha512_hash}')
+except FileNotFoundError:
+    print(f'Error: Manifest file {MANIFEST_PATH} not found for signing.')
+    pass
+
+print('Security Audit & Remediation Task complete.')
+" 2>/dev/null
+[33mWARNING: Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7789d42142b0>: Failed to establish a new connection: [Errno -5] No address associated with hostname')': /simple/wheel/[0m[33m
+[0m[31mERROR: Could not find a version that satisfies the requirement wheel (from versions: none)[0m[31m
+[0m[31mERROR: No matching distribution found for wheel[0m[31m
+[0m[?2004h(clean_env) root@ed0bc50e-0418-42e9-8194-0847d038e748:/home/user/forensics# python3 -c "
+[?2004l[?2004h> import re, json, os, datetime, hashlib
+[?2004l[?2004h> 
+[?2004l[?2004h> # Workflow for Task: Incident 714-B
+[?2004l[?2004h> 
+[?2004l[?2004h> # 1. Define key paths
+[?2004l[?2004h> PROJECT_ROOT = '/home/user/forensics'
+[?2004l[?2004h> VENV_DIR = os.path.join(PROJECT_ROOT, 'clean_env')
+[?2004l[?2004h> BANLIST_PATH = '/var/lib/secops/legacy_banlist.txt'
+[?2004l[?2004h> MANIFEST_PATH = os.path.join(PROJECT_ROOT, 'audit_manifest.json')
+[?2004l[?2004h> SIG_PATH = os.path.join(PROJECT_ROOT, 'audit_manifest.sig')
+[?2004l[?2004h> 
+[?2004l[?2004h> # 2. Read and process banlist
+[?2004l[?2004h> print('Processing banlist...')
+[?2004l[?2004h> banlist_packages = set()
+[?2004l[?2004h> try:
+[?2004l[?2004h>     with open(BANLIST_PATH, 'r', encoding='iso-8859-1', errors='replace') as f:
+[?2004l[?2004h>         for line in f:
+[?2004l[?2004h>             line = line.strip()
+[?2004l[?2004h>             # Remove Windows CRLF if present
+[?2004l[?2004h>             line = line.rstrip('\\r') 
+[?2004l[?2004h>             if line and not line.startswith('#'):
+[?2004l[?2004h>                 banlist_packages.add(line.lower())
+[?2004l[?2004h>     print(f'Loaded {len(banlist_packages)} packages from banlist.')
+[?2004l[?2004h> except FileNotFoundError:
+[?2004l[?2004h>     print(f'Warning: Banlist file not found at {BANLIST_PATH}. Proceeding with an empty banlist.')
+[?2004l[?2004h>     pass # Proceed with empty banlist if file is missing
+[?2004l[?2004h> 
+[?2004l[?2004h> # 3. Get current package list from pip freeze
+[?2004l[?2004h> print('Getting current package list...')
+[?2004l[?2004h> import subprocess
+[?2004l[?2004h> try:
+[?2004l[?2004h>     pip_freeze_output = subprocess.check_output(['pip', 'freeze'], text=True, stderr=subprocess.DEVNULL)
+[?2004l[?2004h> except subprocess.CalledProcessError as e:
+[?2004l[?2004h>     print(f'Error running pip freeze: {e}')
+[?2004l[?2004h>     pip_freeze_output = ''
+[?2004l[?2004h> 
+[?2004l[?2004h> # 4. Filter packages against banlist and sort
+[?2004l[?2004h> allowed_packages = []
+[?2004l[?2004h> for line in pip_freeze_output.splitlines():
+[?2004l[?2004h>     if line: # Ensure line is not empty
+[?2004l[?2004h>         name = line.split('==')[0].strip()
+[?2004l[?2004h>         version = line.split('==')[1].strip() if '==' in line else 'unknown'
+[?2004l[?2004h>         if name.lower() not in banlist_packages:
+[?2004l[?2004h>             allowed_packages.append({'name': name, 'version': version})
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort packages alphabetically by name
+[?2004l[?2004h> allowed_packages.sort(key=lambda x: x['name'])
+[?2004l[?2004h> 
+[?2004l[?2004h> print(f'Found {len(allowed_packages)} allowed packages after filtering.')
+[?2004l[?2004h> 
+[?2004l[?2004h> # 5. Get metadata for manifest
+[?2004l[?2004h> print('Gathering metadata...')
+[?2004l[?2004h> scan_timestamp = datetime.datetime.utcnow().strftime('%%Y-%%m-%%dT%%H:%%M:%%SZ')
+[?2004l[?2004h> try:
+[?2004l[?2004h>     environment_inode = os.stat(VENV_DIR).st_ino
+[?2004l[?2004h> except FileNotFoundError:
+[?2004l[?2004h>     print(f'Error: Venv directory {VENV_DIR} not found. Cannot get inode.')
+[?2004l[?2004h>     environment_inode = -1 # Fallback if venv dir is missing
+[?2004l[?2004h> 
+[?2004l[?2004h> # 6. Construct and write minified JSON manifest
+[?2004l[?2004h> print('Generating JSON manifest...')
+[?2004l[?2004h> manifest_data = {
+[?2004l[?2004h>     'scan_timestamp': scan_timestamp,
+[?2004l[?2004h>     'environment_inode': environment_inode,
+[?2004l[?2004h>     'packages': allowed_packages
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Minify JSON: remove all whitespace
+[?2004l[?2004h> minified_json = json.dumps(manifest_data, separators=(',', ':'))
+[?2004l[?2004h> 
+[?2004l[?2004h> with open(MANIFEST_PATH, 'w') as f:
+[?2004l[?2004h>     f.write(minified_json)
+[?2004l[?2004h> 
+[?2004l[?2004h> print(f'Manifest written to {MANIFEST_PATH}')
+[?2004l[?2004h> 
+[?2004l[?2004h> # 7. Generate SHA-512 signature
+[?2004l[?2004h> print('Generating SHA-512 signature...')
+[?2004l[?2004h> try:
+[?2004l[?2004h>     with open(MANIFEST_PATH, 'rb') as f:
+[?2004l[?2004h>         manifest_bytes = f.read()
+[?2004l[?2004h>     sha512_hash = hashlib.sha512(manifest_bytes).hexdigest()
+[?2004l[?2004h>     with open(SIG_PATH, 'w') as f_sig:
+[?2004l[?2004h>         f_sig.write(sha512_hash) # Write hash without trailing newline
+[?2004l[?2004h>     print(f'Signature written to {SIG_PATH}')
+[?2004l[?2004h>     print(f'Signature: {sha512_hash}')
+[?2004l[?2004h> except FileNotFoundError:
+[?2004l[?2004h>     print(f'Error: Manifest file {MANIFEST_PATH} not found for signing.')
+[?2004l[?2004h>     pass
+[?2004l[?2004h> 
+[?2004l[?2004h> print('Security Audit & Remediation Task complete.')
+[?2004l[?2004h> " 2>/dev/null
+[?2004lProcessing banlist...
+Loaded 2 packages from banlist.
+Getting current package list...
+Found 0 allowed packages after filtering.
+Gathering metadata...
+Generating JSON manifest...
+Manifest written to /home/user/forensics/audit_manifest.json
+Generating SHA-512 signature...
+Signature written to /home/user/forensics/audit_manifest.sig
+Signature: f06da7390a9cc9ac3335effebbab1fcf0f7e9d3aaa9062f4d14482da78561ad226a3a78fcd7250ab0e114772ef8ab07707354cc8c9c1702ba552ca2965b4a8b2
+Security Audit & Remediation Task complete.
+[?2004h(clean_env) root@ed0bc50e-0418-42e9-8194-0847d038e748:/home/user/forensics# 

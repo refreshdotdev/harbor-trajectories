@@ -1,0 +1,199 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# FinOps Workflow Update: Project Cost-Ray
+
+**To:** FinOps Analyst
+**From:** Director of Cloud Operations
+**Subject:** Automated Cost Reporting Pipeline v2
+
+We are upgrading our container cost tracking workflow. The previous ad-hoc reporting method is no longer audit-compliant. You need to build a robust, multi-stage pipeline script (`generate_cost_report.sh`) that ingests raw logs, sanitizes them, models the costs with our new regional tax rules, and produces a final legacy-compatible report.
+
+## 1. Input Data Sources
+
+The data is located in `/home/user/container_usage/`. Note that we are in the middle of a migration, so you will see multiple files. **Do not use the old `owners.csv` file**; it is deprecated. Use the new v2 export from the Windows Active Directory system (`owners_v2.csv`).
+
+1.  **Usage Log** (`usage.log`):
+    - Standard UTF-8 CSV.
+    - Columns: `container_id,image,cpu_percent,mem_mb,runtime_hours,cost_per_hour`.
+    - **Data Quality Warning:** Some sensors are misfiring. You may find string literals like "NULL" or "N/A" in numeric columns (`cpu_percent`, `mem_mb`). Treat these as `0`. Lines starting with `#` are comments.
+
+2.  **Owners Registry** (`owners_v2.csv`):
+    - This is a raw export from the new Windows-based system.
+    - **Format:** It uses Semicolons (`;`) as delimiters, not commas.
+    - **Encoding:** It is encoded in **UTF-16LE** with a BOM. You must handle this correctly.
+    - Columns: `container_id;owner_email;environment;region`.
+
+## 2. The Pipeline Specification
+
+Your script must execute three distinct phases. All intermediate artifacts must be saved to `/home/user/data/` (create this directory if it doesn't exist).
+
+### Phase 1: Ingestion & Sanitization
+Read `usage.log`. Filter out comments. Sanitize any "NULL"/"N/A" values to `0`. Save the clean, normalized data to:
+`/home/user/data/clean_usage.csv`
+*Format: Standard CSV (comma-delimited), UTF-8, Header included.*
+
+### Phase 2: Enrichment & Cost Modeling
+Read `clean_usage.csv` and merge it with `owners_v2.csv` on `container_id`. If a container is not found in the owners file, assume Owner="Unknown", Env="prod", Region="global".
+
+**Cost Calculation Logic:**
+We have new business rules. Calculate costs in this specific order:
+1.  **Base Cost:** `runtime_hours * cost_per_hour`.
+2.  **Regional Tax:** Apply tax to the Base Cost based on the `region` column:
+    - `eu-west`: Add **10%** tax.
+    - `us-east`: **0%** tax (tax-free zone).
+    - All other regions (including "global"): Add **5%** tax.
+3.  **Environment Discount:** After adding tax, check the `environment`. If it is exactly `dev`, apply a **50% discount** to the *taxed* amount.
+
+*Rounding: Round the final cost to 4 decimal places for the JSON model.*
+
+**Idle Detection:**
+A container is "Idle" if `cpu_percent` <= 5.0 **AND** `mem_mb` < 512. (Note: High memory usage implies active caching, so it's not idle even if CPU is low).
+
+**Output:**
+Generate a JSON file at `/home/user/data/cost_model.json`. 
+Structure:
+```json
+{
+  "_meta": {
+    "generated": "<ISO-8601 Timestamp>",
+    "source_hash": "<SHA256 checksum of clean_usage.csv>"
+  },
+  "data": [
+    { "container_id": "...", "total_cost": 12.3456, "is_idle": true, ... },
+    ...
+  ]
+}
+```
+*The `source_hash` is critical for our audit chain. It must be the lowercase hex digest of the Phase 1 output file.*
+
+### Phase 3: Final Reporting
+Read the JSON model from Phase 2 and generate the human-readable report at:
+`/home/user/container_usage/cost_report.txt`
+
+**Critical Constraint:** The finance mainframe that ingests this report requires **ISO-8859-1 (Latin-1)** encoding. Do not use UTF-8 for the final text report.
+
+**Report Layout:**
+```text
+FinOps Cost Report (v2)
+Date: YYYY-MM-DD
+
+Container | Region | Tax | Cost
+---------------------------------
+<rows sorted by Cost Descending>
+
+Summary
+=======
+Active Containers: <int>
+Idle Containers: <int>
+Total Cost: $<float with 2 decimals>
+
+[Integrity Hash: <MD5 checksum of cost_model.json>]
+```
+
+**Formatting Rules:**
+- The table columns are pipe-separated but aligned? No, just pipe-delimited: `id | region | tax_rate | final_cost`.
+- `tax_rate` should be displayed as a percentage (e.g., `10%`, `5%`, `0%`).
+- `final_cost` in the table: 2 decimal places.
+- The footer `[Integrity Hash: ...]` must contain the MD5 hex digest of the `cost_model.json` file generated in Phase 2. This ensures the report matches the JSON model exactly.
+
+## 3. Deliverables
+
+1.  `/home/user/bin/generate_cost_report.sh` (Executable, POSIX-compliant entry point).
+2.  `/home/user/container_usage/cost_report.txt` (The final output).
+3.  The intermediate files in `/home/user/data/` must exist after execution.
+
+The script should handle arguments: if no argument is provided, write to the default path. If a file path is provided as output, write the report there (and still generate the intermediates in `~/data/`).
+
+Good luck. The auditors are watching.
+
+Current terminal state:
+Current Terminal Screen:
+root@0a2420fe-fc93-4111-856f-d3cbc843a217:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

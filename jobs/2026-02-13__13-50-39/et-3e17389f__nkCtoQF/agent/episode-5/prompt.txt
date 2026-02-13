@@ -1,0 +1,188 @@
+New Terminal Output:
+
+(opt_queries) root@b82784c7-2a45-4d16-9e1a-4e0b54903093:/home/user/.venvs# cd /home/user/db_queries
+(opt_queries) root@b82784c7-2a45-4d16-9e1a-4e0b54903093:/home/user/db_queries# cat > process_batch.py << 'EOF'
+ile} does not exist")
+        sys.exit(1)
+
+    # Initialize output files and counters
+    read_queries = []
+    write_queries = []
+    total_queries = 0
+
+    # Read and process queries
+    with open(input_file, 'r') as f:
+        for line in f:
+            # Consider only non-empty lines
+            if not line.strip():
+                continue
+
+            original_query = line.strip()
+            total_queries += 1
+
+            # Get hash and optimize
+            query_hash = get_query_hash(original_query)
+            optimized_query = optimize_query(original_query)
+
+            # Classify query
+            if is_read_query(original_query):
+                read_queries.append(f"{optimized_query} -- id={query_hash};\n")
+            else:
+                write_queries.append(f"{optimized_query} -- id={query_hash};\n")
+
+    # Write output files
+    with open(read_output, 'w') as f:
+        f.writelines(read_queries)
+
+    with open(write_output, 'w') as f:
+        f.writelines(write_queries)
+
+    # Create manifest
+    manifest = {
+        "batch_id": batch_id,
+        "read_count": len(read_queries),
+        "write_count": len(write_queries)
+    }
+    with open(manifest_file, 'w') as f:
+        json.dump(manifest, f, indent=2)
+
+    # Create log file
+    log_content = f"""PIPELINE START
+Batch ID: {batch_id}
+Input: {input_file}
+Processed: {total_queries}
+PIPELINE END
+"""
+    with open(log_file, 'w') as f:
+        f.write(log_content)
+
+    print(f"Processing complete for batch {batch_id}")
+    print(f"- Read queries: {len(read_queries)}")
+    print(f"- Write queries: {len(write_queries)}")
+
+if __name__ == "__main__":
+    process_batch()
+EOF> #!/usr/bin/env python3
+>
+> import os
+> import sys
+> import sqlparse
+> import hashlib
+> import json
+> import shutil
+> import re
+> from pathlib import Path
+>
+> def is_read_query(query):
+>     """Check if query is a read query (SELECT)"""
+>     try:
+>         parsed = sqlparse.parse(query)
+>         if not parsed:
+>             return False
+>         first_token = str(parsed[0].get_real_name()).upper()
+>         return first_token == 'SELECT'
+>     except:
+>         return False
+>
+> def optimize_query(query):
+>     """Optimize query: uppercase keywords, spaces around operators, single line"""
+>     try:
+>         # Format with sqlparse
+>         formatted = sqlparse.format(query,
+>                                   keyword_case='upper',
+>                                   indent_columns=True,
+>                                   indent_tabs=False,
+>                                   wrap_after=False)
+>
+>         # Replace newlines with spaces and clean up whitespace
+>         result = re.sub(r'\s+', ' ', formatted).strip()
+>         return result
+>     except Exception as e:
+>         print(f"Error optimizing query: {e}")
+>         return query
+>
+> def get_query_hash(query):
+>     """Get MD5 hash of the original query string"""
+>     return hashlib.md5(query.strip().encode('utf-8')).hexdigest()
+>
+> def process_batch():
+>     """Main processing function"""
+>     # Get batch ID from environment
+>     batch_id = os.getenv('DB_BATCH_ID')
+>     if not batch_id:
+>         print("Error: DB_BATCH_ID environment variable not set")
+>         sys.exit(1)
+>
+>     # Define file paths
+>     input_file = Path(f"raw_batch_{batch_id}.sql")
+>     backup_file = Path(f"raw_batch_{batch_id}_backup.sql")
+>     read_output = Path(f"batch_{batch_id}_optimized_read.sql")
+>     write_output = Path(f"batch_{batch_id}_optimized_write.sql")
+>     manifest_file = Path(f"batch_{batch_id}_manifest.json")
+>     log_file = Path(f"batch_{batch_id}_pipeline.log")
+>
+>     # Create backup
+>     if input_file.exists():
+>         shutil.copy(input_file, backup_file)
+>     else:
+>         print(f"Error: Input file {input_file} does not exist")
+>         sys.exit(1)
+>
+>     # Initialize output files and counters
+>     read_queries = []
+>     write_queries = []
+>     total_queries = 0
+>
+>     # Read and process queries
+>     with open(input_file, 'r') as f:
+>         for line in f:
+>             # Consider only non-empty lines
+>             if not line.strip():
+>                 continue
+>
+>             original_query = line.strip()
+>             total_queries += 1
+>
+>             # Get hash and optimize
+>             query_hash = get_query_hash(original_query)
+>             optimized_query = optimize_query(original_query)
+>
+>             # Classify query
+>             if is_read_query(original_query):
+>                 read_queries.append(f"{optimized_query} -- id={query_hash};\n")
+>             else:
+>                 write_queries.append(f"{optimized_query} -- id={query_hash};\n")
+>
+>     # Write output files
+>     with open(read_output, 'w') as f:
+>         f.writelines(read_queries)
+>
+>     with open(write_output, 'w') as f:
+>         f.writelines(write_queries)
+>
+>     # Create manifest
+>     manifest = {
+>         "batch_id": batch_id,
+>         "read_count": len(read_queries),
+>         "write_count": len(write_queries)
+>     }
+>     with open(manifest_file, 'w') as f:
+>         json.dump(manifest, f, indent=2)
+>
+>     # Create log file
+>     log_content = f"""PIPELINE START
+> Batch ID: {batch_id}
+> Input: {input_file}
+> Processed: {total_queries}
+> PIPELINE END
+> """
+>     with open(log_file, 'w') as f:
+>         f.write(log_content)
+>
+>     print(f"Processing complete for batch {batch_id}")
+>     print(f"- Read queries: {len(read_queries)}")
+>     print(f"- Write queries: {len(write_queries)}")
+>
+> if __name__ == "__main__":
+>     process_batch()
+> EOF

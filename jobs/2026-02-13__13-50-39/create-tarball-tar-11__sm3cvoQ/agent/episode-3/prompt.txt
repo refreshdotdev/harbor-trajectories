@@ -1,0 +1,186 @@
+Current terminal state:
+New Terminal Output:
+
+root@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# cat > backups/backup_script.py << 'EOF'
+    sys.exit(1)
+
+    # MD5 Hash
+    md5_hash = hashlib.md5()
+    with open(ARCHIVE_FILENAME, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            md5_hash.update(chunk)
+    manifest_data["md5_hash"] = md5_hash.hexdigest()
+
+    # SHA256 Hash
+    sha256_hash = hashlib.sha256()
+    with open(ARCHIVE_FILENAME, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(chunk)
+    manifest_data["sha256_hash"] = sha256_hash.hexdigest()
+
+    # Created At UTC
+    manifest_data["created_at_utc"] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    # Write Manifest
+    with open(MANIFEST_FILENAME, 'w') as f:
+        json.dump(manifest_data, f, indent=2)
+    print(f"Manifest created: {MANIFEST_FILENAME}")
+
+except Exception as e:
+    print(f"ERROR: Failed to generate manifest: {e}")
+    sys.exit(1)
+
+# --- Generate Legacy Summary Report ---
+try:
+    # Line 1: Copyright string (ISO-8859-1 compatible)
+    line1 = "Legacy Backup Operation © 2023"
+
+    # Line 2: Manifest SHA256 hash
+    # Re-read manifest to get its SHA256 hash for the summary
+    manifest_sha256 = hashlib.sha256()
+    with open(MANIFEST_FILENAME, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            manifest_sha256.update(chunk)
+    line2 = f"Manifest SHA256: {manifest_sha256.hexdigest()}"
+
+    # Write summary file with ISO-8859-1 encoding and CRLF line endings
+    with open(SUMMARY_FILENAME, 'wb') as f:
+        f.write(line1.encode('ISO-8859-1'))
+        f.write(b'\r\n')
+        f.write(line2.encode('ISO-8859-1'))
+        f.write(b'\r\n') # Add a final CRLF as per typical text file practice
+    print(f"Legacy summary created: {SUMMARY_FILENAME}")
+    print("Backup operation completed successfully.")
+    sys.exit(0)
+
+except Exception as e:
+    print(f"ERROR: Failed to generate legacy summary: {e}")
+    sys.exit(1)
+EOF
+> #!/usr/bin/env python3
+> import os
+> import tarfile
+> import json
+> import hashlib
+> import datetime
+> import subprocess
+> import sys
+>
+> # --- Configuration ---
+> SOURCE_DIR = "/home/user/tickets/issue_20230815/"
+> BACKUP_DIR = "/home/user/backups/"
+> ARCHIVE_BASENAME = "support_issue_20230815_legacy.tar.gz"
+> ARCHIVE_FILENAME = os.path.join(BACKUP_DIR, ARCHIVE_BASENAME)
+> MANIFEST_FILENAME = "/home/user/backups/backup_manifest.json"
+> SUMMARY_FILENAME = "/home/user/backups/backup_summary.txt"
+> IGNORE_PATTERNS = ["*.tmp", "*.bak"] # Derived from .backupignore
+>
+> # --- Helper function for tarfile filter to exclude specific patterns ---
+> def exclude_patterns(member):
+>     """Filter function for tarfile.add to exclude files matching IGNORE_PATTERNS."""
+>     for pattern in IGNORE_PATTERNS:
+>         if member.name.endswith(pattern):
+>             print(f"DEBUG: Excluding {member.name} due to pattern {pattern}")
+>             return None # Exclude this member
+>     return member # Include this member
+>
+> # --- Backup the directory ---
+> print("Starting backup of {}...".format(SOURCE_DIR))
+> try:
+>     with tarfile.open(ARCHIVE_FILENAME, "w:gz") as tar:
+>         # Add files, dereferencing symlinks. Use filterfunc to apply exclusions.
+>         # This will also handle broken symlinks gracefully by typically excluding them
+>         # or adding their metadata without content, which is safer than crashing.
+>         tar.add(SOURCE_DIR, arcname=os.path.basename(SOURCE_DIR),
+>                 recursive=True, follow_symlinks=True, filter=exclude_patterns)
+>     print(f"Archive created: {ARCHIVE_FILENAME}")
+> except Exception as e:
+>     print(f"ERROR: Failed to create archive: {e}")
+>     sys.exit(1)
+>
+> # --- Generate Manifest ---
+> manifest_data = {}
+> try:
+>     # Archive Name
+>     manifest_data["archive_name"] = ARCHIVE_BASENAME
+>
+>     # File Size
+>     if os.path.exists(ARCHIVE_FILENAME):
+>         manifest_data["file_size_bytes"] = os.path.getsize(ARCHIVE_FILENAME)
+>     else:
+>         print(f"ERROR: Archive file {ARCHIVE_FILENAME} not found after creation.")
+>         sys.exit(1)
+>
+>     # MD5 Hash
+>     md5_hash = hashlib.md5()
+>     with open(ARCHIVE_FILENAME, 'rb') as f:
+>         for chunk in iter(lambda: f.read(4096), b""):
+>             md5_hash.update(chunk)
+>     manifest_data["md5_hash"] = md5_hash.hexdigest()
+>
+>     # SHA256 Hash
+>     sha256_hash = hashlib.sha256()
+>     with open(ARCHIVE_FILENAME, 'rb') as f:
+>         for chunk in iter(lambda: f.read(4096), b""):
+>             sha256_hash.update(chunk)
+>     manifest_data["sha256_hash"] = sha256_hash.hexdigest()
+>
+>     # Created At UTC
+>     manifest_data["created_at_utc"] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+>
+>     # Write Manifest
+>     with open(MANIFEST_FILENAME, 'w') as f:
+>         json.dump(manifest_data, f, indent=2)
+>     print(f"Manifest created: {MANIFEST_FILENAME}")
+>
+> except Exception as e:
+>     print(f"ERROR: Failed to generate manifest: {e}")
+>     sys.exit(1)
+>
+> # --- Generate Legacy Summary Report ---
+> try:
+>     # Line 1: Copyright string (ISO-8859-1 compatible)
+>     line1 = "Legacy Backup Operation © 2023"
+>
+>     # Line 2: Manifest SHA256 hash
+>     # Re-read manifest to get its SHA256 hash for the summary
+>     manifest_sha256 = hashlib.sha256()
+>     with open(MANIFEST_FILENAME, 'rb') as f:
+>         for chunk in iter(lambda: f.read(4096), b""):
+>             manifest_sha256.update(chunk)
+>     line2 = f"Manifest SHA256: {manifest_sha256.hexdigest()}"
+>
+>     # Write summary file with ISO-8859-1 encoding and CRLF line endings
+>     with open(SUMMARY_FILENAME, 'wb') as f:
+>         f.write(line1.encode('ISO-8859-1'))
+>         f.write(b'\r\n')
+>         f.write(line2.encode('ISO-8859-1'))
+>         f.write(b'\r\n') # Add a final CRLF as per typical text file practice
+>     print(f"Legacy summary created: {SUMMARY_FILENAME}")
+>     print("Backup operation completed successfully.")
+>     sys.exit(0)
+>
+> except Exception as e:
+>     print(f"ERROR: Failed to generate legacy summary: {e}")
+>     sys.exit(1)
+> EOF
+root@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# chmod +x backups/backup_script.py
+root@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# python3 backups/backup_script.py
+Starting backup of /home/user/tickets/issue_20230815/...
+ERROR: Failed to create archive: TarFile.add() got an unexpected keyword argument 'follow_symlinks'
+root@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# echo "--- Operation Status Check ---"
+--- Operation Status Check ---
+root@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# ls -la backups/
+total 8
+drwxr-xr-x 1 root root   74 Feb 13 18:56 .
+drwxr-xr-x 1 root root   29 Feb 13 00:04 ..
+-rwxr-xr-x 1 root root 3911 Feb 13 18:56 backup_script.py
+-rw-r--r-- 1 root root   54 Feb 13 18:56 support_issue_20230815_legacy.tar.gz
+root@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user# wc -l backups/*
+ 106 backups/backup_script.py
+   0 backups/support_issue_20230815_legacy.tar.gz
+ 106 total
+root@07524ea4-1b99-4e05-a181-6ca8ebfb5266:/home/user#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

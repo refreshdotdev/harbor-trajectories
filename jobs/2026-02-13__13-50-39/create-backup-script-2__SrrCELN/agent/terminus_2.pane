@@ -1,0 +1,68 @@
+[?2004hroot@6e95a9e8-0beb-48a6-b4e0-00edf3be1c28:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@6e95a9e8-0beb-48a6-b4e0-00edf3be1c28:~# clear
+[?2004l[H[J[?2004hroot@6e95a9e8-0beb-48a6-b4e0-00edf3be1c28:~# cd /home/user/hardening_test
+[?2004l[?2004hroot@6e95a9e8-0beb-48a6-b4e0-00edf3be1c28:/home/user/hardening_test# touch apply_hardening.sh
+[?2004l[?2004hroot@6e95a9e8-0beb-48a6-b4e0-00edf3be1c28:/home/user/hardening_test# chmod +x apply_hardening.sh
+[?2004l[?2004hroot@6e95a9e8-0beb-48a6-b4e0-00edf3be1c28:/home/user/hardening_test# nano apply_hardening.sh
+[?2004lbash: nano: command not found
+[?2004hroot@6e95a9e8-0beb-48a6-b4e0-00edf3be1c28:/home/user/hardening_test# cat > apply_hardening.sh << 'EOF'
+[?2004l[?2004h> #!/bin/sh
+[?2004l[?2004h> 
+[?2004l[?2004h> # POSIX-compliant script for hardening configuration files
+[?2004l[?2004h> 
+[?2004l[?2004h> set -e
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize empty log file
+[?2004l[?2004h> > hardening.log
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process each rule from rules.txt
+[?2004l[?2004h> while IFS="|" read -r filename search_pattern enforced_line; do
+[?2004l[?2004h>     # Trim whitespace from variables
+[?2004l[?2004h>     filename=$(echo "$filename" | xargs)
+[?2004l[?2004h>     search_pattern=$(echo "$search_pattern" | xargs)
+[?2004l[?2004h>     enforced_line=$(echo "$enforced_line" | xargs)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Skip empty lines
+[?2004l[?2004h>     if [ -z "$filename" ] || [ -z "$search_pattern" ] || [ -z "$enforced_line" ]; then
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create backup if it doesn't exist
+[?2004l[?2004h>     if [ ! -f "${filename}.bak" ]; then
+[?2004l[?2004h>         cp "$filename" "${filename}.bak"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check if enforced_line already exists exactly
+[?2004l[?2004h>     if grep -q -F -x "$enforced_line" "$filename" 2>/dev/null; then
+[?2004l[?2004h>         # Line already exists - skip processing
+[?2004l[?2004h>         echo "${filename}:SKIPPED" >> hardening.log
+[?2004l[?2004h>     else
+[?2004l[?2004h>         # Try to repair by replacing matching line
+[?2004l[?2004h>         if grep -q -E "^${search_pattern}$" "$filename" 2>/dev/null; then
+[?2004l[?2004h>             # Repair by replacing the matching line
+[?2004l[?2004h>             sed -i -E "s|^${search_pattern}|${enforced_line}|" "$filename"
+[?2004l[?2004h>             echo "${filename}:REPAIRED" >> hardening.log
+[?2004l[?2004h>         else
+[?2004l[?2004h>             # Append new line if pattern not found
+[?2004l[?2004h>             echo "$enforced_line" >> "$filename"
+[?2004l[?2004h>             echo "${filename}:APPENDED" >> hardening.log
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Set appropriate permissions
+[?2004l[?2004h>     if [ "$filename" = "sshd_config" ]; then
+[?2004l[?2004h>         chmod 0600 "$filename"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         chmod 0644 "$filename"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h> done < rules.txt
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort the log file alphabetically by filename
+[?2004l[?2004h> sort -o hardening.log hardening.log
+[?2004l[?2004h> 
+[?2004l[?2004h> # Final confirmation message
+[?2004l[?2004h> echo "Hardening completed"
+[?2004l[?2004h> EOF

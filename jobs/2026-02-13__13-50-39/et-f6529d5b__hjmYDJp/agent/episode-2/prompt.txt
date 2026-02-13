@@ -1,0 +1,76 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+- Command 2 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+- Command 5 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@0069f637-be91-467f-80c8-8631f22d31b5:/home/user# export START_TIME="$(date -u --iso-8601=seconds)"
+root@0069f637-be91-467f-80c8-8631f22d31b5:/home/user# cat > generate_artifact_list.sh << 'EOF'
+> #!/bin/bash
+> set -euo pipefail
+>
+> SOURCE_DIR="${SOURCE_DIR}"
+> LOG_FILE="${LOG_FILE}"
+>
+> # Function to check if a file is a valid artifact based on its properties
+> is_valid_artifact() {
+>   local file_path="$1"
+>   local filename="$(basename "${file_path}")"
+>
+>   if [[ "${filename}" == .* ]]; then
+>     return 1 # Exclude hidden files
+>   fi
+>
+>   if [[ "${filename}" == *.txt ]]; then
+>     return 0 # Text files (any size)
+>   fi
+>
+>   if [[ ! -f "${file_path}" ]]; then
+>     return 1 # Not a regular file (e.g. broken symlink, dir, etc.)
+>   fi
+>
+>   if [[ $(stat -c%s "${file_path}") -ge 1024 ]]; then
+>     return 0 # Other regular files >= 1KB
+>   fi
+>
+>   return 1 # Not a valid artifact
+> }
+>
+> # Prepare file records
+> find "${SOURCE_DIR}" -mindepth 1 -maxdepth 1 \( ! -name '.*' \) -type f -print0 | while IFS= read -r -d '' filepath; do
+>   # Resolve symlinks, skip broken ones
+>   resolved_path="$(readlink -f "${filepath}" 2>/dev/null || true)"
+>   if [[ -z "${resolved_path}" && ! -e "${filepath}" ]]; then
+>     continue # Skip broken symlinks (readlink failed and original path doesn't exist)
+>   fi
+>
+>   # Use the symlink's name for logging if it's valid, otherwise use the file itself
+>   log_filename="${filepath##*/}"
+>   target_file_to_check="${resolved_path:-${filepath}}"
+>
+>   if [[ ! -f "${target_file_to_check}" ]]; then
+>     continue # Ensure target is a regular file (e.g. skip if symlink points to a dir)
+>   fi
+>
+>   if is_valid_artifact "${target_file_to_check}"; then
+>     # Calculate hashes for the target file's content
+>     sha256_hash=$(sha256sum "${target_file_to_check}" | cut -d' ' -f1)
+>     md5_hash=$(md5sum "${target_file_to_check}" | cut -d' ' -f1)
+>
+>     # Output in the required format for sorting
+>     echo "${log_filename} SHA256=${sha256_hash}  MD5=${md5_hash}"
+>   fi
+> done
+> EOFchmod +x generate_artifact_list.sh
+> ./generate_artifact_list.sh | LC_ALL=C sort > /tmp/audit_file_records.txt
+> cat > /tmp/audit_log_header.txt << EOF
+> START       : 2023-Q4 checksum verification
+> START_TIME  : ${START_TIME}
+>
+> FILE_RECORDS
+> EOFcat /tmp/audit_log_header.txt /tmp/audit_file_records.txt > "${LOG_FILE}.tmp_content_utf8"
+> iconv -f UTF-8 -t ISO-8859-1 "${LOG_FILE}.tmp_content_utf8" > "${LOG_FILE}"
+> rm /tmp/audit_file_records.txt /tmp/audit_log_header.txt generate_artifact_list.sh "${LOG_FILE}.tmp_content_utf8"
+>

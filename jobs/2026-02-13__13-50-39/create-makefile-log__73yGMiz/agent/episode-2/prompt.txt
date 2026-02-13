@@ -1,0 +1,52 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@b8e6a0ea-0acd-4c20-a887-0b32e764c8d9:/home/user/netdiag# cat > Makefile << 'EOF'
+> # Netdiag Makefile
+> # Environment variable TARGET_IP for target IP address
+> TARGET_IP ?= 127.0.0.1
+> LOG_DIR = logs
+> LOG_FILE = $(LOG_DIR)/loopback.log
+> LOG_BAK_FILE = $(LOG_DIR)/loopback.bak
+>
+> # Default goal: run log rotation, session header, ping, then trace
+> all: rotate_log session_header ping trace
+>
+> # Individual target: ping
+> ping: session_header
+> logs/@echo ">>> PING START" >> $(LOG_FILE)
+> logs/@ping -c 3 $(TARGET_IP) 2>&1 | grep -i "bytes from" >> $(LOG_FILE)
+> logs/@echo ">>> PING END" >> $(LOG_FILE)
+>
+> # Individual target: traceroute
+> trace: session_header
+> logs/@echo ">>> TRACE START" >> $(LOG_FILE)
+> logs/@traceroute -m 3 $(TARGET_IP) >> $(LOG_FILE) 2>&1
+> logs/@echo ">>> TRACE END" >> $(LOG_FILE)
+>
+> # Log rotation: check if log file exceeds 500 bytes, then rotate if needed
+> rotate_log:
+> logs/@# Check if log file exists and is greater than 500 bytes
+> logs/@if [ -f $(LOG_FILE) ] && [ $(shell stat --printf="%s" $(LOG_FILE)) -gt 500 ]; then \
+> logs/echo "Log file size > 500 bytes. Rotating..."; \
+> logs/mv -f $(LOG_FILE) $(LOG_BAK_FILE); \
+> logs/touch $(LOG_FILE);
+> logs/else \
+> logs/if [ ! -e $(LOG_FILE) ]; then \
+> logs/touch $(LOG_FILE); \
+> logs/fi;
+> logs/fi
+>
+> # Session header: write timestamp to log file
+> session_header:
+> logs/@echo ">>> SESSION: $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $(LOG_FILE)
+>
+> # Ensure log directory exists
+> $(LOG_DIR):
+> logs/@mkdir -p $(LOG_DIR)
+>
+> .PHONY: all ping trace rotate_log session_header
+> EOF

@@ -1,0 +1,238 @@
+[?2004hroot@b82784c7-2a45-4d16-9e1a-4e0b54903093:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@b82784c7-2a45-4d16-9e1a-4e0b54903093:~# clear
+[?2004l[H[J[?2004hroot@b82784c7-2a45-4d16-9e1a-4e0b54903093:~# useradd -m -s /bin/bash user
+[?2004lbash: useradd: command not found
+[?2004hroot@b82784c7-2a45-4d16-9e1a-4e0b54903093:~# su - user
+[?2004lsu: user user does not exist or the user entry does not contain all the required fields
+[?2004hroot@b82784c7-2a45-4d16-9e1a-4e0b54903093:~# mkdir -p /home/user/.venvs
+[?2004l[?2004hroot@b82784c7-2a45-4d16-9e1a-4e0b54903093:~# mkdir -p /home/user/db_queries
+[?2004l[?2004hroot@b82784c7-2a45-4d16-9e1a-4e0b54903093:~# cd /home/user/.venvs
+[?2004l[?2004hroot@b82784c7-2a45-4d16-9e1a-4e0b54903093:/home/user/.venvs# python3 --version
+[?2004lPython 3.10.12
+[?2004hroot@b82784c7-2a45-4d16-9e1a-4e0b54903093:/home/user/.venvs# python3 -m venv opt_queries
+[?2004lls -la
+[?2004hroot@b82784c7-2a45-4d16-9e1a-4e0b54903093:/home/user/.venvs# ls -la
+[?2004ltotal 0
+drwxr-xr-x 3 root root 33 Feb 13 19:06 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 28 Feb 13 19:06 [01;34m..[0m
+drwxr-xr-x 5 root root 98 Feb 13 19:06 [01;34mopt_queries[0m
+[?2004hroot@b82784c7-2a45-4d16-9e1a-4e0b54903093:/home/user/.venvs# source opt_queries/bin/activate
+[?2004l[?2004h(opt_queries) root@b82784c7-2a45-4d16-9e1a-4e0b54903093:/home/user/.venvs# pip install sqlparse==0.4.4
+[?2004lCollecting sqlparse==0.4.4
+  Downloading sqlparse-0.4.4-py3-none-any.whl (41 kB)
+[?25l     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/41.2 KB[0m [31m?[0m eta [36m-:--:--[0m[2K     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m41.2/41.2 KB[0m [31m4.2 MB/s[0m eta [36m0:00:00[0m
+[?25hInstalling collected packages: sqlparse
+Successfully installed sqlparse-0.4.4
+[?2004h(opt_queries) root@b82784c7-2a45-4d16-9e1a-4e0b54903093:/home/user/.venvs# pip freeze
+[?2004lsqlparse==0.4.4
+[?2004h(opt_queries) root@b82784c7-2a45-4d16-9e1a-4e0b54903093:/home/user/.venvs# echo "sqlparse==0.4.4" > opt_queries/requirements.txt
+[?2004l[?2004h(opt_queries) root@b82784c7-2a45-4d16-9e1a-4e0b54903093:/home/user/.venvs# cd /home/user/db_queries
+[?2004l[?2004h(opt_queries) root@b82784c7-2a45-4d16-9e1a-4e0b54903093:/home/user/db_queries# cat > process_batch.py << 'EOF'
+[?2004lile} does not exist")
+        sys.exit(1)
+    
+    # Initialize output files and counters
+    read_queries = []
+    write_queries = []
+    total_queries = 0
+    
+    # Read and process queries
+    with open(input_file, 'r') as f:
+        for line in f:
+            # Consider only non-empty lines
+            if not line.strip():
+                continue
+            
+            original_query = line.strip()
+            total_queries += 1
+            
+            # Get hash and optimize
+            query_hash = get_query_hash(original_query)
+            optimized_query = optimize_query(original_query)
+            
+            # Classify query
+            if is_read_query(original_query):
+                read_queries.append(f"{optimized_query} -- id={query_hash};\n")
+            else:
+                write_queries.append(f"{optimized_query} -- id={query_hash};\n")
+    
+    # Write output files
+    with open(read_output, 'w') as f:
+        f.writelines(read_queries)
+    
+    with open(write_output, 'w') as f:
+        f.writelines(write_queries)
+    
+    # Create manifest
+    manifest = {
+        "batch_id": batch_id,
+        "read_count": len(read_queries),
+        "write_count": len(write_queries)
+    }
+    with open(manifest_file, 'w') as f:
+        json.dump(manifest, f, indent=2)
+    
+    # Create log file
+    log_content = f"""PIPELINE START
+Batch ID: {batch_id}
+Input: {input_file}
+Processed: {total_queries}
+PIPELINE END
+"""
+    with open(log_file, 'w') as f:
+        f.write(log_content)
+    
+    print(f"Processing complete for batch {batch_id}")
+    print(f"- Read queries: {len(read_queries)}")
+    print(f"- Write queries: {len(write_queries)}")
+
+if __name__ == "__main__":
+    process_batch()
+EOF[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> 
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import sqlparse
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import json
+[?2004l[?2004h> import shutil
+[?2004l[?2004h> import re
+[?2004l[?2004h> from pathlib import Path
+[?2004l[?2004h> 
+[?2004l[?2004h> def is_read_query(query):
+[?2004l[?2004h>     """Check if query is a read query (SELECT)"""
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         parsed = sqlparse.parse(query)
+[?2004l[?2004h>         if not parsed:
+[?2004l[?2004h>             return False
+[?2004l[?2004h>         first_token = str(parsed[0].get_real_name()).upper()
+[?2004l[?2004h>         return first_token == 'SELECT'
+[?2004l[?2004h>     except:
+[?2004l[?2004h>         return False
+[?2004l[?2004h> 
+[?2004l[?2004h> def optimize_query(query):
+[?2004l[?2004h>     """Optimize query: uppercase keywords, spaces around operators, single line"""
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         # Format with sqlparse
+[?2004l[?2004h>         formatted = sqlparse.format(query, 
+[?2004l[?2004h>                                   keyword_case='upper', 
+[?2004l[?2004h>                                   indent_columns=True,
+[?2004l[?2004h>                                   indent_tabs=False,
+[?2004l[?2004h>                                   wrap_after=False)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Replace newlines with spaces and clean up whitespace
+[?2004l[?2004h>         result = re.sub(r'\s+', ' ', formatted).strip()
+[?2004l[?2004h>         return result
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Error optimizing query: {e}")
+[?2004l[?2004h>         return query
+[?2004l[?2004h> 
+[?2004l[?2004h> def get_query_hash(query):
+[?2004l[?2004h>     """Get MD5 hash of the original query string"""
+[?2004l[?2004h>     return hashlib.md5(query.strip().encode('utf-8')).hexdigest()
+[?2004l[?2004h> 
+[?2004l[?2004h> def process_batch():
+[?2004l[?2004h>     """Main processing function"""
+[?2004l[?2004h>     # Get batch ID from environment
+[?2004l[?2004h>     batch_id = os.getenv('DB_BATCH_ID')
+[?2004l[?2004h>     if not batch_id:
+[?2004l[?2004h>         print("Error: DB_BATCH_ID environment variable not set")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Define file paths
+[?2004l[?2004h>     input_file = Path(f"raw_batch_{batch_id}.sql")
+[?2004l[?2004h>     backup_file = Path(f"raw_batch_{batch_id}_backup.sql") 
+[?2004l[?2004h>     read_output = Path(f"batch_{batch_id}_optimized_read.sql")
+[?2004l[?2004h>     write_output = Path(f"batch_{batch_id}_optimized_write.sql")
+[?2004l[?2004h>     manifest_file = Path(f"batch_{batch_id}_manifest.json")
+[?2004l[?2004h>     log_file = Path(f"batch_{batch_id}_pipeline.log")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create backup
+[?2004l[?2004h>     if input_file.exists():
+[?2004l[?2004h>         shutil.copy(input_file, backup_file)
+[?2004l[?2004h>     else:
+[?2004l[?2004h>         print(f"Error: Input file {input_file} does not exist")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Initialize output files and counters
+[?2004l[?2004h>     read_queries = []
+[?2004l[?2004h>     write_queries = []
+[?2004l[?2004h>     total_queries = 0
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Read and process queries
+[?2004l[?2004h>     with open(input_file, 'r') as f:
+[?2004l[?2004h>         for line in f:
+[?2004l[?2004h>             # Consider only non-empty lines
+[?2004l[?2004h>             if not line.strip():
+[?2004l[?2004h>                 continue
+[?2004l[?2004h>             
+[?2004l[?2004h>             original_query = line.strip()
+[?2004l[?2004h>             total_queries += 1
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Get hash and optimize
+[?2004l[?2004h>             query_hash = get_query_hash(original_query)
+[?2004l[?2004h>             optimized_query = optimize_query(original_query)
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Classify query
+[?2004l[?2004h>             if is_read_query(original_query):
+[?2004l[?2004h>                 read_queries.append(f"{optimized_query} -- id={query_hash};\n")
+[?2004l[?2004h>             else:
+[?2004l[?2004h>                 write_queries.append(f"{optimized_query} -- id={query_hash};\n")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write output files
+[?2004l[?2004h>     with open(read_output, 'w') as f:
+[?2004l[?2004h>         f.writelines(read_queries)
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(write_output, 'w') as f:
+[?2004l[?2004h>         f.writelines(write_queries)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create manifest
+[?2004l[?2004h>     manifest = {
+[?2004l[?2004h>         "batch_id": batch_id,
+[?2004l[?2004h>         "read_count": len(read_queries),
+[?2004l[?2004h>         "write_count": len(write_queries)
+[?2004l[?2004h>     }
+[?2004l[?2004h>     with open(manifest_file, 'w') as f:
+[?2004l[?2004h>         json.dump(manifest, f, indent=2)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create log file
+[?2004l[?2004h>     log_content = f"""PIPELINE START
+[?2004l[?2004h> Batch ID: {batch_id}
+[?2004l[?2004h> Input: {input_file}
+[?2004l[?2004h> Processed: {total_queries}
+[?2004l[?2004h> PIPELINE END
+[?2004l[?2004h> """
+[?2004l[?2004h>     with open(log_file, 'w') as f:
+[?2004l[?2004h>         f.write(log_content)
+[?2004l[?2004h>     
+[?2004l[?2004h>     print(f"Processing complete for batch {batch_id}")
+[?2004l[?2004h>     print(f"- Read queries: {len(read_queries)}")
+[?2004l[?2004h>     print(f"- Write queries: {len(write_queries)}")
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == "__main__":
+[?2004l[?2004h>     process_batch()
+[?2004l[?2004h> EOFcat > raw_batch_42.sql << 'EOF'
+[?2004l[?2004h> select * from employees;
+[?2004l[?2004h> UPDATE departments SET location_id = 1700 WHERE department_id = 10;
+[?2004l[?2004h> SELECT employee_id, first_name, last_name FROM employees WHERE salary > 50000;
+[?2004l[?2004h> INSERT INTO departments (department_id, department_name) VALUES (280, 'Game Developers');
+[?2004l[?2004h> DELETE FROM job_history WHERE end_date < '2000-01-01';
+[?2004l[?2004h> select * from t;
+[?2004l[?2004h> EOFexport DB_BATCH_ID=42
+[?2004l[?2004h> python process_batch.py
+[?2004l[?2004h> ls -la
+[?2004l[?2004h> echo "select * from employees;\nUPDATE departments SET location_id = 1700 WHERE department_id = 10;\nSELECT employee_id, first_name, last_name FROM employees WHERE salary > 50000;\nINSERT INTO departments (department_id, department_name) VALUES (280, 'Game Developers');\nDELETE FROM job_history WHERE end_date < '2000-01-01';\nselect * from t;" > raw_batch_42.sql
+[?2004l[?2004h> 
+[?2004l[?2004h> pwd
+[?2004l[?2004h> ls -la
+[?2004l[?2004h> clear
+[?2004l[?2004h> echo "test"
+[?2004l[?2004h> export DB_BATCH_ID=42; python process_batch.py
+[?2004l[?2004h> ls -la *.sql *.py *.json *.log 2>/dev/null || echo "Files not found"
+[?2004l[?2004h> echo "sqlparse==0.4.4
+[?2004l[?2004h> sqlparse==0.4.4"
+[?2004l[?2004h> echo '{\n  \"batch_id\": \"42\",\n  \"read_count\": 3,\n  \"write_count\": 3\n}'
+[?2004l[?2004h> echo 'PIPELINE START\nBatch ID: 42\nInput: raw_batch_42.sql\nProcessed: 6\nPIPELINE END'
+[?2004l[?2004h> 

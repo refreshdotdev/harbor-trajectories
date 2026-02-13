@@ -1,0 +1,262 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@e18e87cd-d242-4dd1-8ab5-bba6b7ab15c2:/home/user/query_optimization#  cat > analyze_and_optimize.py << 'EOF'
+> #!/home/user/query_optimization/env/bin/python3
+> """
+> SQL Query Log Analysis & Optimization Script
+> """
+> import argparse
+> import configparser
+> import csv
+> import hashlib
+> import os
+> import re
+> import sqlparse
+> import sys
+> from datetime import datetime
+> import json
+>
+> # Read configuration file
+> def load_config():
+>     config = configparser.ConfigParser()
+>     config.read('/home/user/db_tools/db_config.ini')
+>     return config['DEFAULT']
+>
+> # Parse log line function
+> def parse_log_line(line, date_str, min_duration_ms):
+>     parts = [p.strip() for p in line.split('|')]
+>     if len(parts) != 4:
+>         return None
+>
+>     timestamp_str, duration_str, level, message = parts
+>
+>     # Validate timestamp format
+>     try:
+>         timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+>         if timestamp.date().isoformat() != date_str:
+>             return None
+>     except ValueError:
+>         return None
+>
+>     # Validate level
+>     if level != '[QUERY]':
+>         return None
+>
+>     # Validate and parse duration
+>     try:
+>         duration_ms = float(duration_str.rstrip('ms'))
+>         if duration_ms < min_duration_ms:
+>             return None
+>     except ValueError:
+>         return None
+>
+>     return timestamp, duration_ms, message.strip()
+>
+> # Normalize SQL function
+> def normalize_sql(query_text):
+>     try:
+>         parsed = sqlparse.parse(query_text)[0]
+>         formatted = sqlparse.format(
+>             parsed,
+>             keyword_case='upper',
+>             strip_comments=True,
+>             reindent=False
+>         )
+>         # Remove trailing semicolon and whitespace
+>         return re.sub(r'[\\s;]+\\Z', '', formatted).strip()
+>     except Exception:
+>         return query_text
+>
+> # Extract table and columns from WHERE clause
+> def extract_index_info(normalized_sql):
+>     try:
+>         parsed = sqlparse.parse(normalized_sql)[0]
+>         # Find WHERE token
+>         where_token = None
+>         for token in parsed.tokens:
+>             if token.value.upper() == 'WHERE':
+>                 where_token = token
+>                 break
+>
+>         if not where_token:
+>             return None, None
+>
+>         # Get tokens after WHERE
+>         where_clause = ''
+>         next_token = where_token.next
+>         while next_token and next_token.value.upper() not in ['LIMIT', 'OFFSET', 'GROUP BY', 'ORDER BY', 'HAVING']:
+>             where_clause += str(next_token)
+>             next_token = next_token.next
+>
+>         # Extract table name and columns
+>         table_match = re.search(r'FROM\\s+(\\w+)', normalized_sql, re.IGNORECASE)
+>         if not table_match:
+>             return None, None
+>
+>         table_name = table_match.group(1)
+>
+>         # Extract column=value patterns
+>         conditions = re.findall(r'(\\w+)\\s*=\\s*[^\\s\''\"]+', where_clause, re.IGNORECASE)
+>         if not conditions:
+>             return None, None
+>
+>         columns = [cond[0] for cond in conditions]
+>
+>         return table_name, columns
+>     except Exception:
+>         return None, None
+>
+> # Main analysis function
+> def analyze_queries(log_path, date_str, min_duration_ms):
+>     raw_queries = []
+>
+>     # Read and parse log file
+>     try:
+>         with open(log_path, 'r', encoding='utf-8') as f:
+>             for line in f:
+>                 if not line.strip():
+>                     continue
+>                 parsed = parse_log_line(line, date_str, min_duration_ms)
+>                 if parsed:
+>                     raw_queries.append(parsed)
+>     except FileNotFoundError:
+>         print(f"Error: Log file {log_path} not found", file=sys.stderr)
+>         sys.exit(1)
+>
+>     if not raw_queries:
+>         print("No qualifying queries found")
+>         return None, []
+>
+>     # Prepare staging CSV data
+>     staging_data = []
+>     for timestamp, duration_ms, query_text in raw_queries:
+>         staging_data.append([
+>             timestamp.isoformat(),
+>             duration_ms,
+>             query_text
+>         ])
+>
+>     # Create staging directory
+>     os.makedirs('staging', exist_ok=True)
+>
+>     # Write staging CSV with specific encoding and line endings
+>     csv_path = os.path.join('staging', 'raw_extract.csv')
+>     try:
+>         with open(csv_path, 'w', encoding='ISO-8859-1', newline='') as f:
+>             writer = csv.writer(f, lineterminator='\\r\\n')
+>             writer.writerow(['timestamp', 'duration_ms', 'query_text'])
+>             writer.writerows(staging_data)
+>     except Exception as e:
+>         print(f"Error writing staging CSV: {e}", file=sys.stderr)
+>         sys.exit(1)
+>
+>     # Compute SHA-256 checksum of the CSV file
+>     sha256 = hashlib.sha256()
+>     try:
+>         with open(csv_path, 'rb') as f:
+>             sha256.update(f.read())
+>     except Exception as e:
+>         print(f"Error computing checksum: {e}", file=sys.stderr)
+>         sys.exit(1)
+>
+>     checksum = sha256.hexdigest()
+>
+>     # Process queries: normalize, deduplicate, and generate suggestions
+>     query_data = {}
+>     for timestamp, duration_ms, query_text in raw_queries:
+>         normalized = normalize_sql(query_text)
+>
+>         if normalized not in query_data:
+>             table_name, columns = extract_index_info(normalized)
+>             if table_name and columns:
+>                 # Format columns for index name and definition
+>                 col_str_name = '_'.join(columns)
+>                 col_str_def = ', '.join(columns)
+>                 index_suggestion = f"CREATE INDEX idx_{table_name}_{col_str_name} ON {table_name}({col_str_def});"
+>             else:
+>                 index_suggestion = None
+>
+>             query_data[normalized] = {
+>                 'first_timestamp': timestamp,
+>                 'count': 0,
+>                 'index_suggestion': index_suggestion
+>             }
+>
+>         query_data[normalized]['count'] += 1
+>
+>     # Prepare suggestions list sorted by first occurrence
+>     suggestions = []
+>     for normalized, data in query_data.items():
+>         if data['index_suggestion']:
+>             suggestions.append({
+>                 'id': data['first_timestamp'].isoformat(),
+>                 'normalized_sql': normalized,
+>                 'index_suggestion': data['index_suggestion']
+>             })
+>
+>     suggestions.sort(key=lambda x: x['id'])
+>
+>     return checksum, suggestions
+>
+> def main():
+>     # Parse command line arguments
+>     parser = argparse.ArgumentParser(description='SQL Query Log Analyzer')
+>     parser.add_argument('--date', required=True, help='Date to analyze in YYYY-MM-DD format')
+>     args = parser.parse_args()
+>
+>     # Validate date format
+>     try:
+>         datetime.fromisoformat(args.date.replace('-', ''))
+>     except ValueError:
+>         print("Invalid date format. Use YYYY-MM-DD", file=sys.stderr)
+>         sys.exit(1)
+>
+>     # Load configuration
+>     config = load_config()
+>     log_path = config.get('log_file_path')
+>     min_duration_ms = config.getfloat('min_duration_ms', fallback=0.0)
+>
+>     if not log_path:
+>         print("log_file_path not found in config", file=sys.stderr)
+>         sys.exit(1)
+>
+>     # Perform analysis
+>     checksum, suggestions = analyze_queries(log_path, args.date, min_duration_ms)
+>     if checksum is None:
+>         return
+>
+>     # Prepare report data
+>     total_queries = sum(data['count'] for data in query_data.values())
+>     unique_patterns = len(query_data)
+>
+>     report_data = {
+>         'meta': {
+>             'date_analyzed': args.date,
+>             'staging_file_sha256': checksum
+>         },
+>         'stats': {
+>             'total_queries_extracted': total_queries,
+>             'unique_patterns': unique_patterns
+>         },
+>         'suggestions': suggestions
+>     }
+>
+>     # Write report JSON
+>     report_path = 'report.json'
+>     try:
+>         with open(report_path, 'w', encoding='utf-8', newline='') as f:
+>             json.dump(report_data, f, indent=2)
+>     except Exception as e:
+>         print(f"Error writing report: {e}", file=sys.stderr)
+>         sys.exit(1)
+>
+>     # Print report to stdout as required
+>     print(json.dumps(report_data, indent=2))
+>
+> if __name__ == '__main__':
+>     main()
+> EOF

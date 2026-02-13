@@ -1,0 +1,271 @@
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# clear
+[?2004l[H[J[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# mkdir -p /home/user/diagnostics
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# cat > /home/user/diagnostics/targets.txt << 'EOF'
+[?2004l[?2004h> # Network targets for CI/CD diagnostics
+[?2004l[?2004h> example.com
+[?2004l[?2004h> google.com
+[?2004l[?2004h> 8.8.8.8
+[?2004l[?2004h> 
+[?2004l[?2004h> # Some commented and empty lines
+[?2004l[?2004h> # This should be ignored
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# chmod 644 /home/user/diagnostics/targets.txt
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# cat > /home/user/diagnostics/run_net_checks.sh << 'EOF'
+[?2004l[?2004h> #!/bin/sh
+[?2004l[?2004h> 
+[?2004l[?2004h> # Full path to log file
+[?2004l[?2004h> LOG_FILE="/home/user/diagnostics/netcheck.log"
+[?2004l[?2004h> # Get timestamp in ISO 8601 format
+[?2004l[?2004h> TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Log rotation - compress old log if exists
+[?2004l[?2004h> if [ -f "${LOG_FILE}" ]; then
+[?2004l[?2004h>     gzip -c "${LOG_FILE}" > "/home/user/diagnostics/netcheck.previous.log.gz"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create new log file with headers
+[?2004l[?2004h> : > "${LOG_FILE}"
+[?2004l[?2004h> cat << EOF > "${LOG_FILE}"
+[?2004l[?2004h> # Netcheck Report
+[?2004l[?2004h> Timestamp: ${TIMESTAMP}
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# 
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Define function to perform checks
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# perform_checks() {
+[?2004l[?2004h>     host="${1}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Process each command type
+[?2004l[?2004h>     for cmd_type in ping traceroute dig; do
+[?2004l[?2004h>         case "${cmd_type}" in
+[?2004l[?2004h>             ping)
+[?2004l[?2004h>                 cmd="ping -n -c 1 ${host}"
+[?2004l[?2004h>                 ;;
+[?2004l[?2004h>             traceroute)
+[?2004l[?2004h>                 cmd="traceroute -n -m 5 ${host}"
+[?2004l[?2004h>                 ;;
+[?2004l[?2004h>             dig)
+[?2004l[?2004h>                 cmd="dig +short ${host} A"
+[?2004l[?2004h>                 ;;
+[?2004l[?2004h>         esac
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Execute command, capture output, encode, and log
+[?2004l[?2004h>         output="$(eval "${cmd}" 2>&1)"
+[?2004l[?2004h>         exit_code="${?}"
+[?2004l[?2004h>         encoded_output="$(echo "${output}" | base64)"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Atomically append to log file
+[?2004l[?2004h>         flock -x 200
+[?2004l[?2004h>         echo "===== START host=${host} check=${cmd_type} =====" >> "${LOG_FILE}"
+[?2004l[?2004h>         echo "${encoded_output}" >> "${LOG_FILE}"
+[?2004l[?2004h>         echo "===== END host=${host} check=${cmd_type} status=${exit_code} =====" >> "${LOG_FILE}"
+[?2004l[?2004h>     done
+[?2004l[?2004h> }
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# 
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Main logic: process targets.txt
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# if [ ! -f "/home/user/diagnostics/targets.txt" ]; then
+[?2004l[?2004h>     echo "Error: Configuration file targets.txt not found." >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# 
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Read targets file, skipping comments and empty lines
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# while IFS= read -r line; do
+[?2004l[?2004h>     # Skip empty lines and comments
+[?2004l[?2004h>     case "${line}" in
+[?2004l[?2004h>         ""|"#"*) continue ;;
+[?2004l[?2004h>         *) 
+[?2004l[?2004h>             # Launch check in background for parallelism
+[?2004l[?2004h>             perform_checks "${line}" &
+[?2004l[?2004h>             ;;
+[?2004l[?2004h>     esac
+[?2004l[?2004h> done < "/home/user/diagnostics/targets.txt"
+[?2004l[1] 645
+[2] 646
+[3] 648
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# 
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Wait for all background jobs to complete
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# wait
+[?2004lflock: flock: 200200: Bad file descriptor
+: Bad file descriptor
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+flock: 200: Bad file descriptor
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+chmod +x /home/user/diagnostics/run_net_checks.sh
+ls -la /home/user/diagnostics/
+flock: 200: Bad file descriptor
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+flock: 200: Bad file descriptor
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+flock: 200: Bad file descriptor
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+flock: 200: Bad file descriptor
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+flock: 200: Bad file descriptor
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+[1]   Exit 1                  perform_checks "${line}"
+[2]-  Exit 1                  perform_checks "${line}"
+flock: 200: Bad file descriptor
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+[3]+  Exit 1                  perform_checks "${line}"
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# 
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Calculate SHA-256 checksum of final log and store it
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# sha256sum "${LOG_FILE}" | awk '{print $1}' > "/home/user/diagnostics/netcheck.sha256"
+[?2004lsha256sum: '': No such file or directory
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# EOF
+[?2004lbash: EOF: command not found
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# chmod +x /home/user/diagnostics/run_net_checks.sh
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# ls -la /home/user/diagnostics/
+[?2004ltotal 8
+drwxrwxrwx 1 root root  89 Feb 13 19:01 [0m[34;42m.[0m
+drwxr-xr-x 1 root root  33 Feb 13 18:50 [01;34m..[0m
+-rw-r--r-- 1 root root   0 Feb 13 19:01 netcheck.sha256
+-rwxr-xr-x 1 root root 439 Feb 13 19:00 [01;32mrun_net_checks.sh[0m
+-rw-r--r-- 1 root root 130 Feb 13 19:00 targets.txt
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# cat > /home/user/diagnostics/run_net_checks.sh << 'EOF'
+[?2004l[?2004h> #!/bin/sh
+[?2004l[?2004h> 
+[?2004l[?2004h> # Full path to log file
+[?2004l[?2004h> LOG_FILE="/home/user/diagnostics/netcheck.log"
+[?2004l[?2004h> # Create a lock file for flock
+[?2004l[?2004h> LOCK_FILE="/home/user/diagnostics/flock.lock"
+[?2004l[?2004h> # Get timestamp in ISO 8601 format
+[?2004l[?2004h> TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Log rotation - compress old log if exists
+[?2004l[?2004h> if [ -f "${LOG_FILE}" ]; then
+[?2004l[?2004h>     gzip -c "${LOG_FILE}" > "/home/user/diagnostics/netcheck.previous.log.gz"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create new log file with headers
+[?2004l[?2004h> : > "${LOG_FILE}"
+[?2004l[?2004h> cat << EOF > "${LOG_FILE}"
+[?2004l[?2004h> # Netcheck Report
+[?2004l[?2004h> Timestamp: ${TIMESTAMP}
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# 
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Define function to perform checks
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# perform_checks() {
+[?2004l[?2004h>     host="${1}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Process each command type
+[?2004l[?2004h>     for cmd_type in ping traceroute dig; do
+[?2004l[?2004h>         case "${cmd_type}" in
+[?2004l[?2004h>             ping)
+[?2004l[?2004h>                 cmd="ping -n -c 1 ${host}"
+[?2004l[?2004h>                 ;;
+[?2004l[?2004h>             traceroute)
+[?2004l[?2004h>                 cmd="traceroute -n -m 5 ${host}"
+[?2004l[?2004h>                 ;;
+[?2004l[?2004h>             dig)
+[?2004l[?2004h>                 cmd="dig +short ${host} A"
+[?2004l[?2004h>                 ;;
+[?2004l[?2004h>         esac
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Execute command, capture output, encode, and log
+[?2004l[?2004h>         output="$(eval "${cmd}" 2>&1)"
+[?2004l[?2004h>         exit_code="${?}"
+[?2004l[?2004h>         encoded_output="$(echo "${output}" | base64)"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Atomically append to log file using flock
+[?2004l[?2004h>         echo "===== START host=${host} check=${cmd_type} =====" >> "${LOG_FILE}"
+[?2004l[?2004h>         echo "${encoded_output}" >> "${LOG_FILE}"
+[?2004l[?2004h>         echo "===== END host=${host} check=${cmd_type} status=${exit_code} =====" >> "${LOG_FILE}"
+[?2004l[?2004h>     done
+[?2004l[?2004h> }
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# 
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Main logic: process targets.txt
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# if [ ! -f "/home/user/diagnostics/targets.txt" ]; then
+[?2004l[?2004h>     echo "Error: Configuration file targets.txt not found." >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# 
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Read targets file, skipping comments and empty lines
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# while IFS= read -r line; do
+[?2004l[?2004h>     # Skip empty lines and comments
+[?2004l[?2004h>     case "${line}" in
+[?2004l[?2004h>         ""|"#"*) continue ;;
+[?2004l[?2004h>         *) 
+[?2004l[?2004h>             # Launch check in background for parallelism
+[?2004l[?2004h>             perform_checks "${line}" &
+[?2004l[?2004h>             ;;
+[?2004l[?2004h>     esac
+[?2004l[?2004h> done < "/home/user/diagnostics/targets.txt"
+[?2004l[1] 837
+[2] 838
+[3] 840
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# 
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Wait for all background jobs to complete
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# wait
+[?2004lbash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+chmod +x /home/user/diagnostics/run_net_checks.sh
+/home/user/diagnostics/run_net_checks.sh
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+[1]   Exit 1                  perform_checks "${line}"
+[2]-  Exit 1                  perform_checks "${line}"
+bash: : No such file or directory
+bash: : No such file or directory
+bash: : No such file or directory
+[3]+  Exit 1                  perform_checks "${line}"
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# 
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# # Calculate SHA-256 checksum of final log and store it
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# sha256sum "${LOG_FILE}" | awk '{print $1}' > "/home/user/diagnostics/netcheck.sha256"
+[?2004lsha256sum: '': No such file or directory
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# EOF
+[?2004lbash: EOF: command not found
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# chmod +x /home/user/diagnostics/run_net_checks.sh
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# /home/user/diagnostics/run_net_checks.sh
+[?2004l[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# ls -la /home/user/diagnostics/
+[?2004ltotal 12
+drwxrwxrwx 1 root root 113 Feb 13 19:01 [0m[34;42m.[0m
+drwxr-xr-x 1 root root  33 Feb 13 18:50 [01;34m..[0m
+-rw-r--r-- 1 root root  50 Feb 13 19:01 netcheck.log
+-rw-r--r-- 1 root root   0 Feb 13 19:01 netcheck.sha256
+-rwxr-xr-x 1 root root 516 Feb 13 19:01 [01;32mrun_net_checks.sh[0m
+-rw-r--r-- 1 root root 130 Feb 13 19:00 targets.txt
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# head -10 /home/user/diagnostics/netcheck.log
+[?2004l# Netcheck Report
+Timestamp: 2026-02-13T19:01:32Z
+[?2004hroot@39e70a0b-102d-4b54-ac72-ebb1085f6457:~# 

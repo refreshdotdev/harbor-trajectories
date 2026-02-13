@@ -1,0 +1,50 @@
+New Terminal Output:
+
+root@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# cat > /tmp/backup_script.sh << 'EOF'
+> #!/bin/bash
+>
+> # Configuration & Setup
+> BACKUP_DEST="${BACKUP_DEST:-/home/user/archives}"
+> LOG_FILE="${LOG_FILE:-/home/user/backup_logs/backup.log}"
+>
+> # Create directories if they don't exist
+> mkdir -p "${BACKUP_DEST}" $(dirname "${LOG_FILE}")
+>
+> # Generate current date and archive name
+> CURRENT_DATE=$(date +%Y%m%d)
+> ARCHIVE_NAME="daily_${CURRENT_DATE}.tar.gz"
+> ARCHIVE_FULL_PATH="${BACKUP_DEST}/${ARCHIVE_NAME}"
+> CHECKSUM_FILE="${BACKUP_DEST}/daily_${CURRENT_DATE}.sha256"
+>
+> # Handle rotation
+> if [ -f "${ARCHIVE_FULL_PATH}" ]; then
+>     mv "${ARCHIVE_FULL_PATH}" "${ARCHIVE_FULL_PATH}.bak-$(date +%s)" 2>/dev/null || true
+> fi
+> if [ -f "${CHECKSUM_FILE}" ]; then
+>     mv "${CHECKSUM_FILE}" "${CHECKSUM_FILE}.bak-$(date +%s)" 2>/dev/null || true
+> fi
+>
+> # Archive Creation with Filtering & Normalization
+> # Exclude .tmp files and broken symlinks; set ownership to root:root and remove others' permissions
+> tar --exclude='*.tmp' \
+>     --exclude='*/*/*.tmp' \
+>     --exclude='broken-symlinks' \
+>     --owner=0 --group=0 --mode='g+rwx,o-rwx' \
+>     -czf "${ARCHIVE_FULL_PATH}" -C /home/user/data . 2>/dev/null
+>
+> # Checksum Generation
+> sha256sum "${ARCHIVE_FULL_PATH}" > "${CHECKSUM_FILE}"
+> sed -i 's|${ARCHIVE_FULL_PATH}|SHA256 ('${ARCHIVE_NAME}') =|' "${CHECKSUM_FILE}"
+>
+> # Logging with Header
+> LOG_HEADER="TIMESTAMP | ARCHIVE | STATUS"
+> if [ ! -f "${LOG_FILE}" ]; then
+>     echo "${LOG_HEADER}" > "${LOG_FILE}"
+> fi
+> HW_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+> echo "${HW_TIMESTAMP} - ${ARCHIVE_NAME} - OK" >> "${LOG_FILE}"
+>
+> echo "Backup completed successfully. Archive: ${ARCHIVE_NAME}"
+> EOF
+root@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# chmod +x /tmp/backup_script.sh
+root@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~#

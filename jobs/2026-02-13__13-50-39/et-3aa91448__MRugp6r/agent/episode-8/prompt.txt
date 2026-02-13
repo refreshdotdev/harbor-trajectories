@@ -1,0 +1,32 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# ACTIVE_IPS="192.168.1.100 10.0.0.99 203.0.113.55"
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# echo "Manually setting active threat IPs: ${ACTIVE_IPS}"
+Manually setting active threat IPs: 192.168.1.100 10.0.0.99 203.0.113.55
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# EXCLUSION_START="2024-01-15 02:00:00"
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# EXCLUSION_END="2024-01-15 04:00:00"
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# echo "Exclusion Window: ${EXCLUSION_START} to ${EXCLUSION_END}"
+Exclusion Window: 2024-01-15 02:00:00 to 2024-01-15 04:00:00
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# awk -F, -v ips="$ACTIVE_IPS" -v excl_start="$EXCLUSION_START" -v excl_end="$EXCLUSION_END" \
+> 'BEGIN {
+>   split(ips, ip_list, " ");
+>   for (i in ip_list) { active_ips[ip_list[i]] = 1; }
+> }
+>  active_ips[$1] && $2 == "IN" {
+>   if ($3 < excl_start || $3 > excl_end) {
+>     suspicious_count[$1]++;
+>   }
+> }
+> END {
+>   for (ip in suspicious_count) {
+>     printf "%%s,%%d\\n", ip, suspicious_count[ip];
+>   }
+> }' traffic.log > /tmp/suspicious_packets_count.csv_temp
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# echo "Parsed suspicious packet counts (temp):"; cat /tmp/suspicious_packets_count.csv_temp 2>/dev/nul
+l || echo "No suspicious packets found or temp awk failed.";
+Parsed suspicious packet counts (temp):
+%s,%d\n%s,%d\n%s,%d\nroot@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data#

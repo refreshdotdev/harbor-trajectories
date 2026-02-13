@@ -1,0 +1,433 @@
+[?2004hroot@4b82171f-a8ba-457c-b585-a005f0b516b1:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@4b82171f-a8ba-457c-b585-a005f0b516b1:~# clear
+[?2004l[H[J[?2004hroot@4b82171f-a8ba-457c-b585-a005f0b516b1:~# mkdir -p /home/user/policy/configs /home/user/policy/reports
+[?2004l[?2004hroot@4b82171f-a8ba-457c-b585-a005f0b516b1:~# cd /home/user
+[?2004l[?2004hroot@4b82171f-a8ba-457c-b585-a005f0b516b1:/home/user# cat > process_ini.sh << 'EOF'
+[?2004lxist
+    if grep -q "\[network\]" "$ini_file" && grep -q "^\s*trusted_hosts\s*=" "$ini_file"; then
+        local current_hosts=$(grep -oP "trusted_hosts\s*=\s*\K.*" "$ini_file" | tr -d '[:space:]')
+        network_was="$current_hosts"
+        
+        # Filter out non-compliant hosts
+        local filtered_hosts=$(echo "$current_hosts" | tr ',' '\n' | grep -E '\.corp\.local$' | tr '\n' ',' | sed 's/,$//')
+        network_after="$filtered_hosts"
+
+        if [[ "$current_hosts" != "$filtered_hosts" ]]; then
+            sed -i -E "s|^(\s*)trusted_hosts\s*=\s*.*|\1trusted_hosts = $filtered_hosts|" "$ini_file"
+            network_remediated="was=${network_was} -> ${network_after}"
+            final_status="REMEDIATED"
+        else
+            network_remediated="was=${network_was} -> ${network_after}"
+        fi
+    else
+        network_remediated="was=MISSING -> MISSING"
+    fi
+
+    # Create backup if remediation occurred
+    if [[ "$final_status" == "REMEDIATED" ]]; then
+        tmp_backup=$(create_backup "$ini_file")
+        # Keep only th[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to create backup with 0400 permissions
+[?2004l[?2004h> create_backup() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     local backup="$file.bak"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Save original ownership and permissions
+[?2004l[?2004h>     local orig_owner=$(stat -c "%u:%g" "$file")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create backup and set permissions
+[?2004l[?2004h>     cp "$file" "$backup"
+[?2004l[?2004h>     chmod 0400 "$backup"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Restore original ownership
+[?2004l[?2004h>     chown "$orig_owner" "$backup" >/dev/null 2>&1
+[?2004l[?2004h>     echo "$backup"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to get SHA256 hash of file content
+[?2004l[?2004h> get_sha256() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     sha256sum "$file" | awk '{print $1}'
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to process one INI file
+[?2004l[?2004h> process_one_ini() {
+[?2004l[?2004h>     local ini_file="$1"
+[?2004l[?2004h>     local tls_policy="${POLICY_TLS:-true}"
+[?2004l[?2004h>     local log_policy="${POLICY_LOG:-INFO}"
+[?2004l[?2004h>     local report_file="/home/user/policy/reports/after_remediation.log"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Initialize remediation status flags
+[?2004l[?2004h>     local security_remediated=""
+[?2004l[?2004h>     local logging_remediated=""
+[?2004l[?2004h>     local network_remediated=""
+[?2004l[?2004h>     local original_hash
+[?2004l[?2004h>     local final_status="NO_ACTION_REQUIRED"
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Create backup only if any remediation occurs, but we'll check compliance first
+[?2004l[?2004h>     # so we create a temporary backup and only keep it if remediation happens
+[?2004l[?2004h>     local tmp_backup
+[?2004l[?2004h>     original_hash=$(get_sha256 "$ini_file")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # --- Security Check ---
+[?2004l[?2004h>     local current_tls_value=$(grep -E "^\s*enforce_tls\s*=\s*" "$ini_file" | tr -d '[:space:]' | sed 's/enforce_tls=//I')
+[?2004l[?2004h>     local tls_was=$(echo -n "${current_tls_value:-MISSING}" | tr '[:upper:]' '[:lower:]')
+[?2004l[?2004h>     local tls_after=$(echo -n "$tls_policy" | tr '[:upper:]' '[:lower:]')
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [[ -z "$current_tls_value" || "$tls_was" != "$tls_after" ]]; then
+[?2004l[?2004h>         sed -i -E "s/^(\s*)enforce_tls\s*=\s*/\1enforce_tls = $tls_policy/I" "$ini_file"
+[?2004l[?2004h>         security_remediated="was=${tls_was:-MISSING} -> ${tls_after}"
+[?2004l[?2004h>         final_status="REMEDIATED"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         security_remediated="was=${tls_was:-MISSING} -> ${tls_after}"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # --- Logging Check ---
+[?2004l[?2004h>     local current_log_value=$(grep -E "^\s*level\s*=\s*" "$ini_file" | tr -d '[:space:]' | sed 's/level=//I')
+[?2004l[?2004h>     local log_was=$(echo -n "${current_log_value:-MISSING}" | tr '[:upper:]' '[:lower:]')
+[?2004l[?2004h>     local log_after=$(echo -n "$log_policy" | tr '[:upper:]' '[:lower:]')
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [[ -z "$current_log_value" ]]; then
+[?2004l[?2004h>         # Missing key - add it
+[?2004l[?2004h>         sed -i -E "\/\[logging\]/,/^[\[]/ {/[logging]$/a level = $log_policy\; d}" "$ini_file" || sed -i "1i [logging]\nlevel = $log_policy" "$ini_file"
+[?2004l[?2004h>         logging_remediated="was=MISSING -> ${log_after}"
+[?2004l[?2004h>         final_status="REMEDIATED"
+[?2004l[?2004h>     elif ! grep -qiE "^WARN|ERROR|FATAL|INFO" <<< "$log_was"; then
+[?2004l[?2004h>         # Wrong value - replace it
+[?2004l[?2004h>         sed -i -E "s/^(\s*)level\s*=\s*/\1level = $log_policy/I" "$ini_file"
+[?2004l[?2004h>         logging_remediated="was=${log_was} -> ${log_after}"
+[?2004l[?2004h>         final_status="REMEDIATED"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         logging_remediated="was=${log_was} -> ${log_after}"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # --- Network Check ---
+[?2004l[?2004h>     local network_was="MISSING"
+[?2004l[?2004h>     local network_after=""
+[?2004l[?2004h>     local network_remediated=""
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Check if section and key exist
+[?2004l[?2004h>     if grep -q "\[network\]" "$ini_file" && grep -q "^\s*trusted_hosts\s*=" "$ini_file"; then
+[?2004l[?2004h>         local current_hosts=$(grep -oP "trusted_hosts\s*=\s*\K.*" "$ini_file" | tr -d '[:space:]')
+[?2004l[?2004h>         network_was="$current_hosts"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Filter out non-compliant hosts
+[?2004l[?2004h>         local filtered_hosts=$(echo "$current_hosts" | tr ',' '\n' | grep -E '\.corp\.local$' | tr '\n' ',' | sed 's/,$//')
+[?2004l[?2004h>         network_after="$filtered_hosts"
+[?2004l[?2004h> 
+[?2004l[?2004h>         if [[ "$current_hosts" != "$filtered_hosts" ]]; then
+[?2004l[?2004h>             sed -i -E "s|^(\s*)trusted_hosts\s*=\s*.*|\1trusted_hosts = $filtered_hosts|" "$ini_file"
+[?2004l[?2004h>             network_remediated="was=${network_was} -> ${network_after}"
+[?2004l[?2004h>             final_status="REMEDIATED"
+[?2004l[?2004h>         else
+[?2004l[?2004h>             network_remediated="was=${network_was} -> ${network_after}"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     else
+[?2004l[?2004h>         network_remediated="was=MISSING -> MISSING"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Create backup if remediation occurred
+[?2004l[?2004h>     if [[ "$final_status" == "REMEDIATED" ]]; then
+[?2004l[?2004h>         tmp_backup=$(create_backup "$ini_file")
+[?2004l[?2004h>         # Keep only the backup file with correct permissions
+[?2004l[?2004h>         rm -f "$ini_file.bak" 2>/dev/null || true
+[?2004l[?2004h>         mv -f "$tmp_backup" "$ini_file.bak" 2>/dev/null
+[?2004l[?2004h>     fi
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Generate remediation block
+[?2004l[?2004h>     echo -e "FILE: $ini_file\nORIGINAL_HASH: $original_hash\nSECURITY_ENFORCED: ${security_remediated}\nLOG_LEVEL: ${logging_remediated}\nNETWORK_HOSTS: ${network_remediated}\nSTATUS: ${final_status}\n----" >> "$report_file.tmp"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> export -f process_one_ini create_backup get_sha256
+[?2004l[?2004h> export POLICY_TLS POLICY_LOG
+[?2004l[?2004h> 
+[?2004l[?2004h> # Find all INI files and process them concurrently
+[?2004l[?2004h> find /home/user/policy/configs -type f -name "*.ini" | parallel -j 0 -k process_one_ini {}
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort the remediation blocks alphabetically
+[?2004l[?2004h> sort -o "/home/user/policy/reports/after_remediation.log" "/home/user/policy/reports/after_remediation.log.tmp"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate summary
+[?2004l[?2004h> local scanned=0 remediated=0 compliant=0
+[?2004l[?2004h> local remediation_blocks
+[?2004l[?2004h> 
+[?2004l[?2004h> # Count files and remediation status
+[?2004l[?2004h> while IFS= read -r line; do
+[?2004l[?2004h>     if [[ "$line" == "FILE:"* ]]; then
+[?2004l[?2004h>         ((scanned++))
+[?2004l[?2004h>     elif [[ "$line" == "STATUS: REMEDIATED"* ]]; then
+[?2004l[?2004h>         ((remediated++))
+[?2004l[?2004h>     elif [[ "$line" == "STATUS: NO_ACTION_REQUIRED"* ]]; then
+[?2004l[?2004h>         ((compliant++))
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     remediation_blocks+="$line\n"
+[?2004l[?2004h> done < "/home/user/policy/reports/after_remediation.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Append summary to log
+[?2004l[?2004h> echo -e "Summary:\nFILES_SCANNED=$scanned\nREMEDIATED=$remediated\nCOMPLIANT=$compliant" >> "/home/user/policy/reports/after_remediation.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Clean up temporary files
+[?2004l[?2004h> rm -f "/home/user/policy/reports/after_remediation.log.tmp"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@4b82171f-a8ba-457c-b585-a005f0b516b1:/home/user# chmod +x process_ini.sh
+[?2004l[?2004hroot@4b82171f-a8ba-457c-b585-a005f0b516b1:/home/user# ./process_ini.sh
+[?2004l./process_ini.sh: line 118: parallel: command not found
+find: ‘standard output’: Broken pipe
+find: write error
+sort: cannot read: /home/user/policy/reports/after_remediation.log.tmp: No such file or directory
+./process_ini.sh: line 124: local: can only be used in a function
+./process_ini.sh: line 125: local: can only be used in a function
+./process_ini.sh: line 137: /home/user/policy/reports/after_remediation.log: No such file or directory
+[?2004hroot@4b82171f-a8ba-457c-b585-a005f0b516b1:/home/user# apt-get update && apt-get install -y parallel
+[?2004l0% [Working]            Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease
+0% [Waiting for headers]                        Hit:2 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+                        Hit:3 http://security.ubuntu.com/ubuntu jammy-security InRelease
+0% [Waiting for headers]                        Hit:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+                        0% [Working]0% [Working]0% [Working]0% [Working]20% [Working]             Reading package lists... 0%Reading package lists... 0%Reading package lists... 0%Reading package lists... 3%Reading package lists... 3%Reading package lists... 4%Reading package lists... 4%Reading package lists... 38%Reading package lists... 38%Reading package lists... 39%Reading package lists... 39%Reading package lists... 49%Reading package lists... 49%Reading package lists... 66%Reading package lists... 66%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 79%Reading package lists... 79%Reading package lists... 96%Reading package lists... 96%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... Done
+Reading package lists... 0%Reading package lists... 0%Reading package lists... 0%Reading package lists... 3%Reading package lists... 3%Reading package lists... 4%Reading package lists... 4%Reading package lists... 38%Reading package lists... 38%Reading package lists... 39%Reading package lists... 39%Reading package lists... 49%Reading package lists... 49%Reading package lists... 66%Reading package lists... 66%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 79%Reading package lists... 79%Reading package lists... 96%Reading package lists... 96%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... Done
+Building dependency tree... 0%Building dependency tree... 0%Building dependency tree... 50%Building dependency tree... 50%Building dependency tree... 53%Building dependency tree... Done
+Reading state information... 0% Reading state information... 4%Reading state information... Done
+The following additional packages will be installed:
+  dbus dmsetup gir1.2-glib-2.0 libapparmor1 libargon2-1 libcryptsetup12 libdbus-1-3 libdevmapper1.02.1 libgdbm-compat4 libgdbm6 libgirepository-1.0-1
+  libglib2.0-0 libglib2.0-data libicu70 libip4tc2 libjson-c5 libkmod2 libperl5.34 libsensors-config libsensors5 libxml2 netbase networkd-dispatcher perl
+  perl-modules-5.34 python3-dbus python3-gi shared-mime-info sysstat systemd systemd-timesyncd ucf xdg-user-dirs xz-utils
+Suggested packages:
+  default-dbus-session-bus | dbus-session-bus gdbm-l10n lm-sensors iw | wireless-tools ash csh fish ksh tcsh zsh perl-doc libterm-readline-gnu-perl
+  | libterm-readline-perl-perl make libtap-harness-archive-perl python-dbus-doc isag systemd-container libfido2-1 libtss2-esys-3.0.2-0 libtss2-mu0 libtss2-rc0
+  policykit-1
+The following NEW packages will be installed:
+  dbus dmsetup gir1.2-glib-2.0 libapparmor1 libargon2-1 libcryptsetup12 libdbus-1-3 libdevmapper1.02.1 libgdbm-compat4 libgdbm6 libgirepository-1.0-1
+  libglib2.0-0 libglib2.0-data libicu70 libip4tc2 libjson-c5 libkmod2 libperl5.34 libsensors-config libsensors5 libxml2 netbase networkd-dispatcher parallel
+  perl perl-modules-5.34 python3-dbus python3-gi shared-mime-info sysstat systemd systemd-timesyncd ucf xdg-user-dirs xz-utils
+0 upgraded, 35 newly installed, 0 to remove and 4 not upgraded.
+Need to get 30.1 MB of archives.
+After this operation, 121 MB of additional disk space will be used.
+0% [Working]            Get:1 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libapparmor1 amd64 3.0.4-2ubuntu2.5 [39.6 kB]
+0% [1 libapparmor1 0 B/39.6 kB 0%]                                  1% [Working]            Get:2 http://archive.ubuntu.com/ubuntu jammy/main amd64 libargon2-1 amd64 0~20171227-0.3 [19.5 kB]
+1% [2 libargon2-1 0 B/19.5 kB 0%]                                 1% [Working]            Get:3 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libdevmapper1.02.1 amd64 2:1.02.175-2.1ubuntu5 [139 kB]
+1% [3 libdevmapper1.02.1 0 B/139 kB 0%]                                       2% [Working]            Get:4 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libjson-c5 amd64 0.15-3~ubuntu1.22.04.2 [33.5 kB]
+2% [4 libjson-c5 10.0 kB/33.5 kB 30%]                                     3% [Working]            Get:5 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libcryptsetup12 amd64 2:2.4.3-1ubuntu1.3 [211 kB]
+3% [5 libcryptsetup12 0 B/211 kB 0%]                                    4% [Working]            Get:6 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libip4tc2 amd64 1.8.7-1ubuntu5.2 [19.9 kB]
+4% [6 libip4tc2 0 B/19.9 kB 0%]                               5% [Working]            Get:7 http://archive.ubuntu.com/ubuntu jammy/main amd64 libkmod2 amd64 29-1ubuntu1 [48.0 kB]
+5% [7 libkmod2 0 B/48.0 kB 0%]                              5% [Working]            Get:8 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 systemd amd64 249.11-0ubuntu3.17 [4583 kB]
+5% [8 systemd 0 B/4583 kB 0%]                             18% [Waiting for headers]                         Get:9 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 perl-modules-5.34 all 5.34.0-3ubuntu1.5 [2977 kB]
+18% [9 perl-modules-5.34 2318 B/2977 kB 0%]                                           27% [Waiting for headers]                         Get:10 http://archive.ubuntu.com/ubuntu jammy/main amd64 libgdbm6 amd64 1.23-1 [33.9 kB]
+27% [10 libgdbm6 33.9 kB/33.9 kB 100%]                                      27% [Working]             Get:11 http://archive.ubuntu.com/ubuntu jammy/main amd64 libgdbm-compat4 amd64 1.23-1 [6606 B]
+27% [11 libgdbm-compat4 6606 B/6606 B 100%]                                           28% [Working]             Get:12 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libperl5.34 amd64 5.34.0-3ubuntu1.5 [4797 kB]
+28% [12 libperl5.34 12.5 kB/4797 kB 0%]                                       41% [Waiting for headers]                         Get:13 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 perl amd64 5.34.0-3ubuntu1.5 [232 kB]
+41% [13 perl 51.9 kB/232 kB 22%]                                42% [Waiting for headers]                         Get:14 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libdbus-1-3 amd64 1.12.20-2ubuntu4.1 [189 kB]
+43% [14 libdbus-1-3 82.0 kB/189 kB 43%]                                       43% [Waiting for headers]                         Get:15 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 dbus amd64 1.12.20-2ubuntu4.1 [158 kB]
+44% [15 dbus 37.0 kB/158 kB 23%]                                44% [Waiting for headers]                         Get:16 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 dmsetup amd64 2:1.02.175-2.1ubuntu5 [81.7 kB]
+45% [16 dmsetup 62.4 kB/81.7 kB 76%]                                    45% [Working]             Get:17 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libglib2.0-0 amd64 2.72.4-0ubuntu2.9 [1467 kB]
+45% [17 libglib2.0-0 46.0 kB/1467 kB 3%]                                        50% [Waiting for headers]                         Get:18 http://archive.ubuntu.com/ubuntu jammy/main amd64 libgirepository-1.0-1 amd64 1.72.0-1 [55.6 kB]
+50% [18 libgirepository-1.0-1 55.6 kB/55.6 kB 100%]                                                   50% [Working]             Get:19 http://archive.ubuntu.com/ubuntu jammy/main amd64 gir1.2-glib-2.0 amd64 1.72.0-1 [164 kB]
+50% [19 gir1.2-glib-2.0 30.0 kB/164 kB 18%]                                           51% [Waiting for headers]                         Get:20 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libglib2.0-data all 2.72.4-0ubuntu2.9 [5088 B]
+                         Get:21 http://archive.ubuntu.com/ubuntu jammy/main amd64 libicu70 amd64 70.1-2 [10.6 MB]
+52% [21 libicu70 65.2 kB/10.6 MB 1%]                                    81% [Waiting for headers]                         Get:22 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libxml2 amd64 2.9.13+dfsg-1ubuntu0.11 [765 kB]
+81% [22 libxml2 99.8 kB/765 kB 13%]                                   83% [Waiting for headers]                         Get:23 http://archive.ubuntu.com/ubuntu jammy/main amd64 netbase all 6.3 [12.9 kB]
+84% [Waiting for headers]                         Get:24 http://archive.ubuntu.com/ubuntu jammy/main amd64 python3-dbus amd64 1.2.18-3build1 [99.5 kB]
+84% [24 python3-dbus 65.2 kB/99.5 kB 66%]                                         85% [Working]             Get:25 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 python3-gi amd64 3.42.1-0ubuntu1 [229 kB]
+85% [25 python3-gi 31.0 kB/229 kB 14%]                                      86% [Waiting for headers]                         Get:26 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 networkd-dispatcher all 2.1-2ubuntu0.22.04.2 [15.8 kB]
+87% [Waiting for headers]                         Get:27 http://archive.ubuntu.com/ubuntu jammy/main amd64 shared-mime-info amd64 2.1-2 [454 kB]
+87% [27 shared-mime-info 65.2 kB/454 kB 14%]                                            88% [Waiting for headers]                         Get:28 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 systemd-timesyncd amd64 249.11-0ubuntu3.17 [31.2 kB]
+88% [28 systemd-timesyncd 31.2 kB/31.2 kB 100%]                                               89% [Working]             Get:29 http://archive.ubuntu.com/ubuntu jammy/main amd64 ucf all 3.0043 [56.1 kB]
+89% [29 ucf 38.6 kB/56.1 kB 69%]                                90% [Waiting for headers]                         Get:30 http://archive.ubuntu.com/ubuntu jammy/main amd64 xdg-user-dirs amd64 0.17-2ubuntu4 [53.9 kB]
+90% [30 xdg-user-dirs 47.8 kB/53.9 kB 89%]                                          90% [Waiting for headers]                         Get:31 http://archive.ubuntu.com/ubuntu jammy/main amd64 xz-utils amd64 5.2.5-2ubuntu1 [84.8 kB]
+90% [31 xz-utils 24.1 kB/84.8 kB 28%]                                     91% [Waiting for headers]                         Get:32 http://archive.ubuntu.com/ubuntu jammy/main amd64 libsensors-config all 1:3.6.0-7ubuntu1 [5274 B]
+91% [32 libsensors-config 5274 B/5274 B 100%]                                             92% [Waiting for headers]                         Get:33 http://archive.ubuntu.com/ubuntu jammy/main amd64 libsensors5 amd64 1:3.6.0-7ubuntu1 [26.3 kB]
+92% [33 libsensors5 26.3 kB/26.3 kB 100%]                                         92% [Waiting for headers]                         Get:34 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 sysstat amd64 12.5.2-2ubuntu0.2 [487 kB]
+93% [34 sysstat 64.7 kB/487 kB 13%]                                   94% [Waiting for headers]                         Get:35 http://archive.ubuntu.com/ubuntu jammy/universe amd64 parallel all 20210822+ds-2 [1947 kB]
+94% [35 parallel 36.1 kB/1947 kB 2%]                                    100% [Working]              Fetched 30.1 MB in 0s (128 MB/s)
+debconf: delaying package configuration, since apt-utils is not installed
+Selecting previously unselected package libapparmor1:amd64.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 6856 files and directories currently installed.)
+Preparing to unpack .../00-libapparmor1_3.0.4-2ubuntu2.5_amd64.deb ...
+Unpacking libapparmor1:amd64 (3.0.4-2ubuntu2.5) ...
+Selecting previously unselected package libargon2-1:amd64.
+Preparing to unpack .../01-libargon2-1_0~20171227-0.3_amd64.deb ...
+Unpacking libargon2-1:amd64 (0~20171227-0.3) ...
+Selecting previously unselected package libdevmapper1.02.1:amd64.
+Preparing to unpack .../02-libdevmapper1.02.1_2%3a1.02.175-2.1ubuntu5_amd64.deb ...
+Unpacking libdevmapper1.02.1:amd64 (2:1.02.175-2.1ubuntu5) ...
+Selecting previously unselected package libjson-c5:amd64.
+Preparing to unpack .../03-libjson-c5_0.15-3~ubuntu1.22.04.2_amd64.deb ...
+Unpacking libjson-c5:amd64 (0.15-3~ubuntu1.22.04.2) ...
+Selecting previously unselected package libcryptsetup12:amd64.
+Preparing to unpack .../04-libcryptsetup12_2%3a2.4.3-1ubuntu1.3_amd64.deb ...
+Unpacking libcryptsetup12:amd64 (2:2.4.3-1ubuntu1.3) ...
+Selecting previously unselected package libip4tc2:amd64.
+Preparing to unpack .../05-libip4tc2_1.8.7-1ubuntu5.2_amd64.deb ...
+Unpacking libip4tc2:amd64 (1.8.7-1ubuntu5.2) ...
+Selecting previously unselected package libkmod2:amd64.
+Preparing to unpack .../06-libkmod2_29-1ubuntu1_amd64.deb ...
+Unpacking libkmod2:amd64 (29-1ubuntu1) ...
+Selecting previously unselected package systemd.
+Preparing to unpack .../07-systemd_249.11-0ubuntu3.17_amd64.deb ...
+Unpacking systemd (249.11-0ubuntu3.17) ...
+sed -i '124,126d' process_ini.sh
+Selecting previously unselected package perl-modules-5.34.
+Preparing to unpack .../08-perl-modules-5.34_5.34.0-3ubuntu1.5_all.deb ...
+Unpacking perl-modules-5.34 (5.34.0-3ubuntu1.5) ...
+sed -i '124i scanned=0' process_ini.sh
+Selecting previously unselected package libgdbm6:amd64.
+Preparing to unpack .../09-libgdbm6_1.23-1_amd64.deb ...
+Unpacking libgdbm6:amd64 (1.23-1) ...
+Selecting previously unselected package libgdbm-compat4:amd64.
+Preparing to unpack .../10-libgdbm-compat4_1.23-1_amd64.deb ...
+Unpacking libgdbm-compat4:amd64 (1.23-1) ...
+Selecting previously unselected package libperl5.34:amd64.
+Preparing to unpack .../11-libperl5.34_5.34.0-3ubuntu1.5_amd64.deb ...
+Unpacking libperl5.34:amd64 (5.34.0-3ubuntu1.5) ...
+sed -i '125i remediated=0' process_ini.sh
+sed -i '126i compliant=0' process_ini.sh
+sed -i '137c FILES_SCANNED=$scanned' process_ini.sh
+sed -i '138c REMEDIATED=$remediated' process_ini.sh
+Selecting previously unselected package perl.
+Preparing to unpack .../12-perl_5.34.0-3ubuntu1.5_amd64.deb ...
+Unpacking perl (5.34.0-3ubuntu1.5) ...
+Selecting previously unselected package libdbus-1-3:amd64.
+Preparing to unpack .../13-libdbus-1-3_1.12.20-2ubuntu4.1_amd64.deb ...
+Unpacking libdbus-1-3:amd64 (1.12.20-2ubuntu4.1) ...
+Selecting previously unselected package dbus.
+Preparing to unpack .../14-dbus_1.12.20-2ubuntu4.1_amd64.deb ...
+Unpacking dbus (1.12.20-2ubuntu4.1) ...
+Selecting previously unselected package dmsetup.
+Preparing to unpack .../15-dmsetup_2%3a1.02.175-2.1ubuntu5_amd64.deb ...
+Unpacking dmsetup (2:1.02.175-2.1ubuntu5) ...
+Selecting previously unselected package libglib2.0-0:amd64.
+Preparing to unpack .../16-libglib2.0-0_2.72.4-0ubuntu2.9_amd64.deb ...
+Unpacking libglib2.0-0:amd64 (2.72.4-0ubuntu2.9) ...
+sed -i '139c COMPLIANT=$compliant' process_ini.sh
+Selecting previously unselected package libgirepository-1.0-1:amd64.
+Preparing to unpack .../17-libgirepository-1.0-1_1.72.0-1_amd64.deb ...
+Unpacking libgirepository-1.0-1:amd64 (1.72.0-1) ...
+Selecting previously unselected package gir1.2-glib-2.0:amd64.
+Preparing to unpack .../18-gir1.2-glib-2.0_1.72.0-1_amd64.deb ...
+Unpacking gir1.2-glib-2.0:amd64 (1.72.0-1) ...
+Selecting previously unselected package libglib2.0-data.
+Preparing to unpack .../19-libglib2.0-data_2.72.4-0ubuntu2.9_all.deb ...
+Unpacking libglib2.0-data (2.72.4-0ubuntu2.9) ...
+Selecting previously unselected package libicu70:amd64.
+Preparing to unpack .../20-libicu70_70.1-2_amd64.deb ...
+Unpacking libicu70:amd64 (70.1-2) ...
+./process_ini.sh
+Selecting previously unselected package libxml2:amd64.
+Preparing to unpack .../21-libxml2_2.9.13+dfsg-1ubuntu0.11_amd64.deb ...
+Unpacking libxml2:amd64 (2.9.13+dfsg-1ubuntu0.11) ...
+Selecting previously unselected package netbase.
+Preparing to unpack .../22-netbase_6.3_all.deb ...
+Unpacking netbase (6.3) ...
+Selecting previously unselected package python3-dbus.
+Preparing to unpack .../23-python3-dbus_1.2.18-3build1_amd64.deb ...
+Unpacking python3-dbus (1.2.18-3build1) ...
+Selecting previously unselected package python3-gi.
+Preparing to unpack .../24-python3-gi_3.42.1-0ubuntu1_amd64.deb ...
+Unpacking python3-gi (3.42.1-0ubuntu1) ...
+Selecting previously unselected package networkd-dispatcher.
+Preparing to unpack .../25-networkd-dispatcher_2.1-2ubuntu0.22.04.2_all.deb ...
+Unpacking networkd-dispatcher (2.1-2ubuntu0.22.04.2) ...
+Selecting previously unselected package shared-mime-info.
+Preparing to unpack .../26-shared-mime-info_2.1-2_amd64.deb ...
+Unpacking shared-mime-info (2.1-2) ...
+Selecting previously unselected package systemd-timesyncd.
+Preparing to unpack .../27-systemd-timesyncd_249.11-0ubuntu3.17_amd64.deb ...
+Unpacking systemd-timesyncd (249.11-0ubuntu3.17) ...
+Selecting previously unselected package ucf.
+Preparing to unpack .../28-ucf_3.0043_all.deb ...
+Moving old data out of the way
+Unpacking ucf (3.0043) ...
+Selecting previously unselected package xdg-user-dirs.
+Preparing to unpack .../29-xdg-user-dirs_0.17-2ubuntu4_amd64.deb ...
+Unpacking xdg-user-dirs (0.17-2ubuntu4) ...
+Selecting previously unselected package xz-utils.
+Preparing to unpack .../30-xz-utils_5.2.5-2ubuntu1_amd64.deb ...
+Unpacking xz-utils (5.2.5-2ubuntu1) ...
+Selecting previously unselected package libsensors-config.
+Preparing to unpack .../31-libsensors-config_1%3a3.6.0-7ubuntu1_all.deb ...
+Unpacking libsensors-config (1:3.6.0-7ubuntu1) ...
+Selecting previously unselected package libsensors5:amd64.
+Preparing to unpack .../32-libsensors5_1%3a3.6.0-7ubuntu1_amd64.deb ...
+Unpacking libsensors5:amd64 (1:3.6.0-7ubuntu1) ...
+Selecting previously unselected package sysstat.
+Preparing to unpack .../33-sysstat_12.5.2-2ubuntu0.2_amd64.deb ...
+Unpacking sysstat (12.5.2-2ubuntu0.2) ...
+Selecting previously unselected package parallel.
+Preparing to unpack .../34-parallel_20210822+ds-2_all.deb ...
+Adding 'diversion of /usr/bin/parallel to /usr/bin/parallel.moreutils by parallel'
+Adding 'diversion of /usr/share/man/man1/parallel.1.gz to /usr/share/man/man1/parallel.moreutils.1.gz by parallel'
+Unpacking parallel (20210822+ds-2) ...
+Setting up libip4tc2:amd64 (1.8.7-1ubuntu5.2) ...
+Setting up libapparmor1:amd64 (3.0.4-2ubuntu2.5) ...
+Setting up xdg-user-dirs (0.17-2ubuntu4) ...
+Setting up libglib2.0-0:amd64 (2.72.4-0ubuntu2.9) ...
+No schema files found: doing nothing.
+Setting up libargon2-1:amd64 (0~20171227-0.3) ...
+Setting up libsensors-config (1:3.6.0-7ubuntu1) ...
+Setting up perl-modules-5.34 (5.34.0-3ubuntu1.5) ...
+Setting up libglib2.0-data (2.72.4-0ubuntu2.9) ...
+Setting up libdbus-1-3:amd64 (1.12.20-2ubuntu4.1) ...
+Setting up dbus (1.12.20-2ubuntu4.1) ...
+Setting up xz-utils (5.2.5-2ubuntu1) ...
+update-alternatives: using /usr/bin/xz to provide /usr/bin/lzma (lzma) in auto mode
+update-alternatives: warning: skip creation of /usr/share/man/man1/lzma.1.gz because associated file /usr/share/man/man1/xz.1.gz (of link group lzma) doesn't exist
+update-alternatives: warning: skip creation of /usr/share/man/man1/unlzma.1.gz because associated file /usr/share/man/man1/unxz.1.gz (of link group lzma) doesn't exist
+update-alternatives: warning: skip creation of /usr/share/man/man1/lzcat.1.gz because associated file /usr/share/man/man1/xzcat.1.gz (of link group lzma) doesn't exist
+update-alternatives: warning: skip creation of /usr/share/man/man1/lzmore.1.gz because associated file /usr/share/man/man1/xzmore.1.gz (of link group lzma) doesn't exist
+update-alternatives: warning: skip creation of /usr/share/man/man1/lzless.1.gz because associated file /usr/share/man/man1/xzless.1.gz (of link group lzma) doesn't exist
+update-alternatives: warning: skip creation of /usr/share/man/man1/lzdiff.1.gz because associated file /usr/share/man/man1/xzdiff.1.gz (of link group lzma) doesn't exist
+update-alternatives: warning: skip creation of /usr/share/man/man1/lzcmp.1.gz because associated file /usr/share/man/man1/xzcmp.1.gz (of link group lzma) doesn't exist
+update-alternatives: warning: skip creation of /usr/share/man/man1/lzgrep.1.gz because associated file /usr/share/man/man1/xzgrep.1.gz (of link group lzma) doesn't exist
+update-alternatives: warning: skip creation of /usr/share/man/man1/lzegrep.1.gz because associated file /usr/share/man/man1/xzegrep.1.gz (of link group lzma) doesn't exist
+update-alternatives: warning: skip creation of /usr/share/man/man1/lzfgrep.1.gz because associated file /usr/share/man/man1/xzfgrep.1.gz (of link group lzma) doesn't exist
+Setting up ucf (3.0043) ...
+debconf: unable to initialize frontend: Dialog
+debconf: (No usable dialog-like program is installed, so the dialog based frontend cannot be used. at /usr/share/perl5/Debconf/FrontEnd/Dialog.pm line 78.)
+debconf: falling back to frontend: Readline
+Setting up libsensors5:amd64 (1:3.6.0-7ubuntu1) ...
+Setting up libdevmapper1.02.1:amd64 (2:1.02.175-2.1ubuntu5) ...
+Setting up dmsetup (2:1.02.175-2.1ubuntu5) ...
+Setting up libgirepository-1.0-1:amd64 (1.72.0-1) ...
+Setting up netbase (6.3) ...
+Setting up libjson-c5:amd64 (0.15-3~ubuntu1.22.04.2) ...
+Setting up sysstat (12.5.2-2ubuntu0.2) ...
+debconf: unable to initialize frontend: Dialog
+debconf: (No usable dialog-like program is installed, so the dialog based frontend cannot be used. at /usr/share/perl5/Debconf/FrontEnd/Dialog.pm line 78.)
+debconf: falling back to frontend: Readline
+
+Creating config file /etc/default/sysstat with new version
+update-alternatives: using /usr/bin/sar.sysstat to provide /usr/bin/sar (sar) in auto mode
+update-alternatives: warning: skip creation of /usr/share/man/man1/sar.1.gz because associated file /usr/share/man/man1/sar.sysstat.1.gz (of link group sar) doesn't exist
+Created symlink /etc/systemd/system/sysstat.service.wants/sysstat-collect.timer → /lib/systemd/system/sysstat-collect.timer.
+Created symlink /etc/systemd/system/sysstat.service.wants/sysstat-summary.timer → /lib/systemd/system/sysstat-summary.timer.
+Created symlink /etc/systemd/system/multi-user.target.wants/sysstat.service → /lib/systemd/system/sysstat.service.
+Setting up libkmod2:amd64 (29-1ubuntu1) ...
+Setting up libgdbm6:amd64 (1.23-1) ...
+Setting up libicu70:amd64 (70.1-2) ...
+Setting up python3-dbus (1.2.18-3build1) ...
+Setting up libgdbm-compat4:amd64 (1.23-1) ...
+Setting up gir1.2-glib-2.0:amd64 (1.72.0-1) ...
+Setting up libcryptsetup12:amd64 (2:2.4.3-1ubuntu1.3) ...
+Setting up libxml2:amd64 (2.9.13+dfsg-1ubuntu0.11) ...
+Setting up libperl5.34:amd64 (5.34.0-3ubuntu1.5) ...
+Setting up systemd (249.11-0ubuntu3.17) ...
+Created symlink /etc/systemd/system/getty.target.wants/getty@tty1.service → /lib/systemd/system/getty@.service.
+Created symlink /etc/systemd/system/multi-user.target.wants/remote-fs.target → /lib/systemd/system/remote-fs.target.
+Created symlink /etc/systemd/system/dbus-org.freedesktop.resolve1.service → /lib/systemd/system/systemd-resolved.service.
+Created symlink /etc/systemd/system/multi-user.target.wants/systemd-resolved.service → /lib/systemd/system/systemd-resolved.service.
+ln: failed to create symbolic link '/etc/resolv.conf': Device or resource busy
+Created symlink /etc/systemd/system/sysinit.target.wants/systemd-pstore.service → /lib/systemd/system/systemd-pstore.service.
+Initializing machine ID from D-Bus machine ID.
+Setting up perl (5.34.0-3ubuntu1.5) ...
+Setting up python3-gi (3.42.1-0ubuntu1) ...
+Setting up shared-mime-info (2.1-2) ...
+Setting up systemd-timesyncd (249.11-0ubuntu3.17) ...
+Created symlink /etc/systemd/system/dbus-org.freedesktop.timesync1.service → /lib/systemd/system/systemd-timesyncd.service.
+Created symlink /etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service → /lib/systemd/system/systemd-timesyncd.service.
+Setting up parallel (20210822+ds-2) ...
+Setting up networkd-dispatcher (2.1-2ubuntu0.22.04.2) ...
+Created symlink /etc/systemd/system/multi-user.target.wants/networkd-dispatcher.service → /lib/systemd/system/networkd-dispatcher.service.
+Processing triggers for libc-bin (2.35-0ubuntu3.11) ...
+[?2004hroot@4b82171f-a8ba-457c-b585-a005f0b516b1:/home/user# 

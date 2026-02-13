@@ -1,0 +1,143 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# mkdir -p /home/user/configs
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# mkdir -p /home/user/backups
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# mkdir -p /home/user/backup_logs
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# echo "v1.2-2023" > /home/user/backup_id
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cat > /home/user/configs/app.conf << 'EOF'
+> # Application Configuration
+> host=localhost
+> port=8080
+> EOF
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cat > /home/user/configs/subdir/my\ config.yml << 'EOF'
+> ---
+> database:
+>   host: db.example.com
+>   user: admin
+> EOF
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cat > /home/user/configs/another.conf << 'EOF'
+> [settings]
+> log_level=INFO
+> max_connections=100
+> EOF
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cat > /home/user/configs/test.conf << 'EOF'
+> # This file should be excluded
+> exclude=true
+> EOF
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# dd if=/dev/zero of=/home/user/configs/large.yml bs=1 count=513 status=none
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cp /home/user/configs/app.conf /home/user/configs/duplicate\_name.conf
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# cat > /home/user/backup_configurations.sh << 'EOF'
+> #!/bin/bash
+>
+> # Exit on any error
+> set -e
+>
+> # Define directories and backup ID
+> BASE_CONFIG_PATH="/home/user/configs"
+> BACKUP_DIR="/home/user/backups"
+> LOG_DIR="/home/user/backup_logs"
+> BACKUP_ID_FILE="/home/user/backup_id"
+>
+> # Read backup ID, trim whitespace
+> BACKUP_ID=$(cat "$BACKUP_ID_FILE")
+> BACKUP_ID="${BACKUP_ID//[^[:alnum:].-]/}"  # Sanitize ID
+>
+> # Ensure directories exist
+> mkdir -p "$BACKUP_DIR"
+> mkdir -p "$LOG_DIR"
+>
+> # Function to create individual archives
+> create_individual_archive() {
+>   local filepath="$1"
+>   local rel_path="${filepath#$BASE_CONFIG_PATH/}"
+>   local filename="$(basename "${filepath#*/}")"
+>   local basename="${filename%.*}"
+>   local ext="${filename##*.}"
+>
+>   # Determine compression based on extension
+>   local archive_ext=""
+>   local tar_option=""
+>   if [ "$ext" == "conf" ]; then
+>     archive_ext="tar.gz"
+>     tar_option="z"
+>   elif [ "$ext" == "yml" ]; then
+>     archive_ext="tar.bz2"
+>     tar_option="j"
+>   else
+>     echo "ERROR: Unknown extension $ext for file $filepath" >&2
+>     return 1
+>   fi
+>
+>   local archive_name="${basename}_${BACKUP_ID}.${archive_ext}"
+>   local archive_path="${BACKUP_DIR}/${archive_name}"
+>
+>   # Create archive, preserving relative path
+>   # -C /home/user/configs creates archive with path relative to configs
+>   # -h is for dereferencing symlinks (if any), not strictly needed here
+>   tar -c${tar_option}h -f "${archive_path}" -C "${BASE_CONFIG_PATH}" "${rel_path}"
+>
+> echo "Created archive: ${archive_path}"
+> }
+>
+> # Function to log file details
+> log_file_details() {
+>   local filepath="$1"
+>   local rel_path="${filepath#$BASE_CONFIG_PATH/}"
+>   local filename="$(basename "${filepath#*/}")"
+>   local basename="${filename%.*}"
+>   local ext="${filename##*.}"
+>
+>   local archive_name="${basename}_${BACKUP_ID}"
+>   if [ "$ext" == "conf" ]; then
+>     archive_name+=".tar.gz"
+>   elif [ "$ext" == "yml" ]; then
+>     archive_name+=".tar.bz2"
+>   fi
+>
+>   local sha256="$(sha256sum "$filepath" | awk '{print $1}')"
+>   local size="$(wc -c < "$filepath" | tr -d ' \n')"
+>
+>   echo "${rel_path}|${archive_name}|${sha256}|${size}"
+> }
+>
+> # Find valid files and process in parallel
+> find "$BASE_CONFIG_PATH" -type f \( -name "*.conf" -o -name "*.yml" \) -not -name "test.conf" -size -512c -print0 | \
+> while IFS= read -r -d '' filepath; do
+>
+>   # Create archive in background
+>   create_individual_archive "$filepath" &
+>
+>   # Log details
+>   log_file_details "$filepath"
+> done > "${LOG_DIR}/file_details_${BACKUP_ID}.tmp"
+>
+> # Wait for all background jobs to finish
+> wait
+>
+> # Create log file header and sort content
+> # Ensure temporary log file has unique lines first (if any duplicates from different basenames)
+> sort -u -k1,1 -t'|' "${LOG_DIR}/file_details_${BACKUP_ID}.tmp" | \
+> sort -k3,3 > "${LOG_DIR}/backup_${BACKUP_ID}.log"
+>
+> # Add header to the log file
+> sed -i '1i\REL_PATH|ARCHIVE_NAME|SHA256|SIZE' "${LOG_DIR}/backup_${BACKUP_ID}.log"
+>
+> # Clean up temporary file
+> rm "${LOG_DIR}/file_details_${BACKUP_ID}.tmp"
+>
+> # Create full archive
+> full_archive_name="configs_full_${BACKUP_ID}.tar.xz"
+> full_archive_path="${BACKUP_DIR}/${full_archive_name}"
+> tar -cJ -f "${full_archive_path}" -C "$(dirname "$BASE_CONFIG_PATH")" "$(basename "$BASE_CONFIG_PATH")"
+>
+> echo "Created full archive: ${full_archive_path}"
+> echo "Backup process complete. Log file: ${LOG_DIR}/backup_${BACKUP_ID}.log"
+>
+> exit 0
+> EOF
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~# chmod +x /home/user/backup_configurations.sh
+root@984af9b5-0321-4e94-8ca7-9cd47d38a120:~#

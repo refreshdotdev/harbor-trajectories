@@ -1,0 +1,147 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are a forensic data analyst working on a post-incident review. A legacy Windows server was compromised, and the incident response team has dumped a raw archive of the relevant logs and configuration snippets.
+
+Your task is to process this archive, extract specific log entries, merge them, and generate a sanitized report for the legal department. The legal department uses an ancient document viewer, so strict adherence to encoding and formatting constraints is critical.
+
+### Current Situation
+
+*   **Directory**: `/home/user/incident_response`
+*   **Input File**: `/home/user/incident_response/evidence.zip`
+    *   This archive contains multiple files in a directory structure.
+    *   You must extract it to process the contents.
+
+### Processing Requirements
+
+1.  **Configuration Discovery**:
+    *   Inside the archive, locate a configuration file named `redaction.conf`.
+    *   This file contains a single line of text (e.g., `REDACTED_BY_SEC_TEAM`). You must use this *exact* string for all redactions.
+
+2.  **Log Merging and Filtering**:
+    *   The archive contains two log files: `server_app.log` and `server_sys.log`.
+    *   **Encoding Trap**: `server_app.log` is UTF-16LE (with BOM). `server_sys.log` is Windows-1252 (CP1252).
+    *   **Content**: Both files contain lines starting with a timestamp in the format `[DD/MM/YYYY HH:MM:SS]`, followed by a severity level and a message.
+    *   **Filtering**: You must exclude any log lines where the severity level is `DEBUG` or `TRACE`. Keep `INFO`, `WARN`, and `ERROR`.
+    *   **Redaction**: Replace any IPv4 address (pattern `X.X.X.X`) found in the messages with the string found in `redaction.conf`.
+
+3.  **Sorting (The "Chronological" Requirement)**:
+    *   Merge the valid lines from both files into a single list.
+    *   Sort the merged list by **Timestamp Descending** (Newest first).
+    *   *Note*: A simple lexicographical sort will fail because the date format is Day-First (`DD/MM/YYYY`). You must parse the dates to sort correctly.
+
+4.  **Header Generation**:
+    *   The archive contains a binary file `signature.bin`.
+    *   The first line of your output report must be the **MD5 hash** of this binary file.
+
+5.  **Report Formatting (Strict)**:
+    *   **Output Path**: `/home/user/incident_response/final_report.txt`
+    *   **Encoding**: The output file must be encoded in **ISO-8859-1** (Latin-1). Ensure all characters in the logs are compatible or replaced with `?`.
+    *   **Line Endings**: The file must use Windows-style CRLF (`\r\n`) line endings for *every* line, including the header.
+    *   **Structure**:
+        Line 1: `<MD5_HASH_OF_SIGNATURE_BIN>`
+        Line 2+: `<Timestamp> <Severity> <Redacted_Message>`
+
+6.  **Manifest Generation**:
+    *   Create a JSON manifest at `/home/user/incident_response/manifest.json`.
+    *   It must contain exactly these keys:
+        *   `processed_date`: The current date in ISO format (YYYY-MM-DD).
+        *   `total_lines_reported`: Integer count of log lines in the final report (excluding the header).
+        *   `redaction_string`: The string used for redaction.
+        *   `report_sha256`: The SHA256 hash of the generated `final_report.txt`.
+    *   The JSON must be formatted with an indentation of 2 spaces.
+
+### Verification
+
+The grading script checks specific byte sequences. If your line endings are LF instead of CRLF, or if the sort order is wrong (e.g., `01/02/2023` appearing before `02/01/2023` in a descending sort), or if the encoding is UTF-8 instead of ISO-8859-1, the task will fail.
+
+Current terminal state:
+Current Terminal Screen:
+root@c9fc9e2e-d5a8-4618-9f7d-4b3e4b982314:/home/user#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

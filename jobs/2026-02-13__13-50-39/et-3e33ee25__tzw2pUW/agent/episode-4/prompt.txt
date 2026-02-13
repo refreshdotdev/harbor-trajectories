@@ -1,0 +1,168 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+> EOFcat > /home/user/reports/run_security_scan.sh << 'EOF'
+> #!/bin/bash
+>
+> # Enterprise Security Baseline Automation (SOP-992)
+> # Ticket SEC-4022: Automate daily infrastructure snapshot report
+>
+> set -eo pipefail
+>
+> # Configuration
+> OUTPUT_DIR="/home/user/reports"
+> SAMPLE_DATA_DIR="/home/user/sample_data"
+> CONFIG_DIR="/home/user/config"
+>
+> tmp_dir="$(mktemp -d)"
+> UID_LIMIT=1000
+>
+> # Cleanup function for temporary files
+>  cleanup() {
+>     rm -rf "${tmp_dir}"
+> }
+>
+> # Register cleanup function
+>  trap cleanup EXIT
+>
+> # Function to extract port from netstat line
+>  get_port() {
+>     echo "$1" | awk -F'[ :]' '{for(i=1; i<=NF; i++) {if($i ~ /^\d+\/tcp$/ || $i ~ /^\d+\/udp$/) {split($i, a, "/"); print a[1]; break}}}'
+> }
+>
+> # Function to classify scope
+>  classify_scope() {
+>     local addr="${1}"
+>     local proto="${2}"
+>
+>     if [[ "${addr}" == "0.0.0.0:*" || "${addr}" == "0.0.0.0" ]]; then
+>         echo "public-${proto}"
+>     elif [[ "${addr}" == "127.0.0.1:*" || "${addr}" == "127.0.0.1" ]]; then
+>         echo "local-${proto}"
+>     else
+>         echo "${proto}"
+>     fi
+> }
+>
+> # Function to enrich process name
+>  enrich_process() {
+>     local process="${1}"
+>     local port_proto="${2}"
+>     local service_name="${3}"
+>
+>     if [[ -n "${service_name}" ]]; then
+>         echo "${process} (${service_name})"
+>     else
+>         echo "${process}"
+>     fi
+> }
+>
+> # Job 1: Network Exposure Analysis
+>  analyze_network() {
+>     local netstat_file="${SAMPLE_DATA_DIR}/mock_netstat.txt"
+>     local service_file="${SAMPLE_DATA_DIR}/service_names.csv"
+>     local output_file="${tmp_dir}/network_results.txt"
+>
+>     # Strip BOM from service file
+>     local service_file_clean="${tmp_dir}/service_names_clean.csv"
+>     tail -c +4 "${service_file}" > "${service_file_clean}"
+>
+>     grep -E 'LISTEN|udp' "${netstat_file}" | awk '{print $1,$4,$6}' |
+>     while read -r proto local_addr state; do
+>         port="$(get_port "${local_addr}")"
+>         service_name="$(grep -E "^${port}/${proto}," "${service_file_clean}" | cut -d',' -f2)"
+>
+>         classified_proto="$(classify_scope "${local_addr}" "${proto}")"
+>
+>         # Extract process name from netstat (last column)
+>         grep "${local_addr}" "${netstat_file}" | awk '{print $NF}' | sort -u |
+>         while read -r process; do
+>             enriched_process="$(enrich_process "${process}" "${port_proto}" "${service_name}")"
+>             echo -e "${port}\t${classified_proto}\t${enriched_process}"
+>         done
+>     done | sort -k1,1n > "${output_file}"
+>
+>     echo "${output_file}"
+> }
+>
+> # Job 2: User Audit
+>  analyze_users() {
+>     local passwd_file="${SAMPLE_DATA_DIR}/mock_passwd"
+>     local blacklist_file="${CONFIG_DIR}/user_blacklist.txt"
+>     local output_file="${tmp_dir}/user_results.txt"
+>
+>     grep -v ':/bin/false:$' "${passwd_file}" |
+>     awk -F':' -v uid_limit="${UID_LIMIT}" -v blacklist_file="${CONFIG_DIR}/user_blacklist.txt" '{
+>         if($3 < uid_limit && $3 != 0) {
+>             if(!system("grep -qx \""$1"\" \""blacklist_file"\"")) {
+>                 print $1
+>             }
+>         }
+>     }' | sort > "${output_file}"
+>
+>     echo "${output_file}"
+> }
+>
+> # Generate reports
+>  generate_reports() {
+>     local start_epoch="${1}"
+>     local end_epoch="${2}"
+>     local network_results="${3}"
+>     local user_results="${4}"
+>
+>     # Calculate input hash
+>     local input_hash="$((cat "${SAMPLE_DATA_DIR}/mock_netstat.txt" "${SAMPLE_DATA_DIR}/mock_passwd" | \
+>         md5sum | cut -d' ' -f1))"
+>
+>     # Generate YAML report (ISO-8859-1 encoded)
+>     local yaml_file="${OUTPUT_DIR}/infra_security_report.yml"
+>
+>     {
+>         echo "---"
+>         echo "meta:"
+>         echo "  input_hash: ${input_hash}"
+>         echo "insecure_users:"
+>         while read -r user; do
+>             echo "  - ${user}"
+>         done < "${user_results}"
+>         echo "open_ports:"
+>         while read -r line; do
+>             port="$(echo "${line}" | cut -f1)"
+>             protocol="$(echo "${line}" | cut -f2)"
+>             process="$(echo "${line}" | cut -f3)"
+>             echo "  - port: ${port}"
+>             echo "    protocol: ${protocol}"
+>             echo "    process: ${process}"
+>         done < "${network_results}"
+>     } | iconv -t ISO-8859-1 > "${yaml_file}"
+>
+>     # Generate CSV report (CRLF line endings)
+>     local csv_file="${OUTPUT_DIR}/scan_exec_time.log"
+>     local duration="$((${end_epoch} - ${start_epoch}))"
+>     echo -e "${start_epoch},${end_epoch},${duration}" | \
+>         sed 's/$/\r/' > "${csv_file}"
+> }
+>
+> # Main script execution
+>  start_epoch=$$(date +%s)
+>
+> # Run jobs in parallel
+>  network_output=$$(analyze_network &)
+>  user_output=$$(analyze_users &)
+>
+> # Wait for background jobs to complete
+>  wait
+>
+>  end_epoch=$$(date +%s)
+>
+> # Generate final reports
+>  generate_reports "${start_epoch}" "${end_epoch}" "${network_output}" "${user_output}"
+>
+> # Set executable permission
+>  chmod +x "${OUTPUT_DIR}/run_security_scan.sh"
+>
+> echo "Security scan completed successfully"
+> EOF

@@ -1,0 +1,217 @@
+Current terminal state:
+New Terminal Output:
+
+root@d7c403a5-81da-4214-a1f2-4e537365267b:~# cd /home/user
+root@d7c403a5-81da-4214-a1f2-4e537365267b:/home/user# ls -la db_backups/ .config/
+.config/:
+total 4
+drwxrwxrwx 1 root root 40 Feb 12 23:59 .
+drwxr-xr-x 1 root root 51 Feb 12 23:59 ..
+-rwxrwxrwx 1 root root 14 Feb 12 23:59 backup_system.conf
+
+db_backups/:
+total 24
+drwxrwxrwx 1 root root 10 Feb 12 23:59  .
+drwxr-xr-x 1 root root 51 Feb 12 23:59  ..
+-r--r--r-- 1 root root 12 Feb 12 23:59  archived.sql
+-rw-r--r-- 1 root root 15 Feb 12 23:59  batch_config.txt
+-rw-r--r-- 1 root root 71 Feb 12 23:59  customers.sql
+-rw-r--r-- 1 root root  9 Feb 12 23:59  inventory-2023.sql
+-rw-r--r-- 1 root root  9 Feb 12 23:59  inventory_2023.sql
+-rw-r--r-- 1 root root 50 Feb 12 23:59 ' orders.sql'
+root@d7c403a5-81da-4214-a1f2-4e537365267b:/home/user# mkdir -p backup_logs
+root@d7c403a5-81da-4214-a1f2-4e537365267b:/home/user# cat .config/backup_system.conf
+BID-PROD-8821
+root@d7c403a5-81da-4214-a1f2-4e537365267b:/home/user# python3 - <<'EOF'
+> #!/usr/bin/env python3
+]} | MD5: {record['md5']}"
+        file_> import os
+> import sys
+> import gzip
+> import shutil
+> import hashlib
+> import json
+> import re
+>
+> # Step 1: Read Batch ID from config file
+> batch_id = None
+> try:
+>     with open('/home/user/.config/backup_system.conf', 'r', encoding='utf-8') as f:
+>         config_content = f.read().strip()
+>         # Extract Batch ID (assume it's a simple value, trim newlines)
+>         batch_id = config_content.strip()
+>     if not batch_id:
+>         raise FileNotFoundError("Batch ID not found")
+> except FileNotFoundError:
+>     print(f"Error: Cannot find or read batch_system.conf", file=sys.stderr)
+>     sys.exit(1)
+> except Exception as e:
+>     print(f"Error reading batch_system.conf: {e}", file=sys.stderr)
+>     sys.exit(1)
+>
+> print(f"Batch ID: {batch_id}")
+>
+> # Step 2: Process SQL files in backup directory
+> backup_dir = '/home/user/db_backups'
+> manifest_data = {}
+> file_records = []
+> processed_files = []
+>
+> # Find all .sql files (case-insensitive)
+> for item in os.listdir(backup_dir):
+>     if item.lower().endswith('.sql'):
+>         file_path = os.path.join(backup_dir, item)
+>         if os.path.isfile(file_path):
+>             processed_files.append(item)
+>
+> print(f"Found {len(processed_files)} .sql files to process")
+>
+> for filename in sorted(processed_files, key=lambda x: re.sub(r'[\_\-]', '', x, flags=re.IGNORECASE)):
+>     file_path = os.path.join(backup_dir, filename)
+>     print(f"Processing: {filename}")
+>
+>     # Read file content
+>     try:
+>         with open(file_path, 'rb') as f:
+>             content_bytes = f.read()
+>     except Exception as e:
+>         print(f"Error reading {filename}: {e}", file=sys.stderr)
+>         continue
+>
+>     # Remove UTF-8 BOM (if present)
+>     normalized_content = content_bytes
+>     if normalized_content.startswith(b'\xef\xbb\xbf'):
+>         normalized_content = normalized_content[3:]
+>
+>     # Trim trailing whitespace from each line
+>     lines = normalized_content.splitlines()
+>     trimmed_lines = [line.rstrip() for line in lines]
+>     normalized_content = b'\n'.join(trimmed_lines) + b'\n'
+>
+>     # Get normalized size
+>     n_size = len(normalized_content)
+>     manifest_data[filename] = n_size
+>
+>     # Generate MD5 hash of normalized content
+>     md5_hash = hashlib.md5(normalized_content).hexdigest()
+>
+>     # Compress normalized content
+>     output_file = filename + '.gz'
+>     output_path = os.path.join(backup_dir, output_file)
+>
+>     try:
+>         with gzip.open(output_path, 'wb') as f_out:
+>             f_out.write(normalized_content)
+>     except Exception as e:
+>         print(f"Error compressing {filename}: {e}", file=sys.stderr)
+>         continue
+>
+>     # Get compressed file size
+>     gz_size = os.path.getsize(output_path)
+>
+>     # Set modification time to current time
+>     current_time = os.path.getmtime(file_path)
+>     os.utime(output_path, (current_time, current_time))
+>
+>     # Remove original .sql file
+>     try:
+>         os.remove(file_path)
+>     except Exception as e:
+>         print(f"Error removing {filename}: {e}", file=sys.stderr)
+>         continue
+>
+>     # Store record for compliance report
+>     file_records.append({
+>         'filename': filename,
+>         'n_size': n_size,
+>         'gz_size': gz_size,
+>         'md5': md5_hash
+>     })
+>     print(f"Processed: {filename} -> {output_file}")
+>
+> # Step 3: Generate manifest.json
+> manifest_path = '/home/user/backup_logs/manifest.json'
+> try:
+>     with open(manifest_path, 'w', encoding='utf-8') as f:
+>         json.dump(manifest_data, f, indent=2)
+>     print(f"Generated manifest: {manifest_path}")
+> except Exception as e:
+>     print(f"Error generating manifest.json: {e}", file=sys.stderr)
+>     sys.exit(1)
+>
+> # Step 4: Generate compliance_report.log
+> report_path = '/home/user/backup_logs/compliance_report.log'
+> try:
+>     # Generate manifest SHA256 for footer
+>     with open(manifest_path, 'rb') as f:
+>         manifest_sha256 = hashlib.sha256(f.read()).hexdigest()
+>
+>     # Prepare report lines (Unicode strings)
+>     header = f"BATCH: {batch_id}"
+>
+>     file_lines = []
+>     for record in file_records:
+>         line = f"FILE: {record['filename']} | N_SIZE: {record['n_size']} | GZ_SIZE: {record['gz_size']} | MD5: {record['md5']}"
+>         file_lines.append(line)
+>
+>     footer = f"MANIFEST_SHA256: {manifest_sha256}"
+>
+>     # Encode and join with CRLF
+>     report_content = (header + '\r\n') + \
+>         ( '\r\n'.join(file_lines) + '\r\n' ) + footer
+>
+>     # Write to file with Latin-1 encoding
+>     with open(report_path, 'w', encoding='iso-8859-1') as f:
+>         f.write(report_content)
+>
+>     print(f"Generated compliance report: {report_path}")
+>
+> except Exception as e:
+>     print(f"Error generating compliance_report.log: {e}", file=sys.stderr)
+>     sys.exit(1)
+>
+> print("Backup processing complete")
+> EOF
+Batch ID: BID-PROD-8821
+Found 5 .sql files to process
+Processing:  orders.sql
+Processed:  orders.sql ->  orders.sql.gz
+Processing: archived.sql
+Processed: archived.sql -> archived.sql.gz
+Processing: customers.sql
+Processed: customers.sql -> customers.sql.gz
+Processing: inventory_2023.sql
+Processed: inventory_2023.sql -> inventory_2023.sql.gz
+Processing: inventory-2023.sql
+Processed: inventory-2023.sql -> inventory-2023.sql.gz
+Generated manifest: /home/user/backup_logs/manifest.json
+Generated compliance report: /home/user/backup_logs/compliance_report.log
+Backup processing complete
+root@d7c403a5-81da-4214-a1f2-4e537365267b:/home/user# ls -la db_backups/ backup_logs/
+backup_logs/:
+total 8
+drwxr-xr-x 2 root root  68 Feb 13 19:09 .
+drwxr-xr-x 1 root root  55 Feb 13 19:09 ..
+-rw-r--r-- 1 root root 548 Feb 13 19:09 compliance_report.log
+-rw-r--r-- 1 root root 122 Feb 13 19:09 manifest.json
+
+db_backups/:
+total 28
+drwxrwxrwx 1 root root 4096 Feb 13 19:09  .
+drwxr-xr-x 1 root root   55 Feb 13 19:09  ..
+-rw-r--r-- 1 root root   45 Feb 12 23:59  archived.sql.gz
+-rw-r--r-- 1 root root   15 Feb 12 23:59  batch_config.txt
+-rw-r--r-- 1 root root   90 Feb 12 23:59  customers.sql.gz
+-rw-r--r-- 1 root root   48 Feb 12 23:59  inventory-2023.sql.gz
+-rw-r--r-- 1 root root   48 Feb 12 23:59  inventory_2023.sql.gz
+-rw-r--r-- 1 root root   78 Feb 12 23:59 ' orders.sql.gz'
+root@d7c403a5-81da-4214-a1f2-4e537365267b:/home/user# wc -l backup_logs/manifest.json
+6 backup_logs/manifest.json
+root@d7c403a5-81da-4214-a1f2-4e537365267b:/home/user# head -3 backup_logs/compliance_report.log
+BATCH: BID-PROD-8821
+FILE:  orders.sql | N_SIZE: 50 | GZ_SIZE: 78 | MD5: 3e35d3ba594271c5b9bb8d636137d8d6
+FILE: archived.sql | N_SIZE: 12 | GZ_SIZE: 45 | MD5: 5409beca8d95e96d60fcfee12fdd5c10
+root@d7c403a5-81da-4214-a1f2-4e537365267b:/home/user#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

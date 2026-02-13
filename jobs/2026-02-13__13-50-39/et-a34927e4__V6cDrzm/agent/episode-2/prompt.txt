@@ -1,0 +1,227 @@
+New Terminal Output:
+
+root@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test# cat > process_solver_data.py << 'EOF'
+> #!/usr/bin/env python3
+> """
+> Optimization Audit & Consolidation Task Solver
+> Author: Hermes AI
+> Task: Processes solver output files, generates an audit manifest, and a final report.
+> """
+> import os
+> import json
+> import csv
+> import argparse
+> import re
+> import hashlib
+> import datetime
+> from pathlib import Path
+> import sys
+>
+> # --- Configuration ---
+> RESPONSES_DIR = Path("responses")
+> PROCESSED_DIR = Path("processed")
+> MANIFEST_FILE = PROCESSED_DIR / "manifest.csv"
+> REPORT_FILE = Path("optimization_report.log")
+> SETTINGS_FILE = Path("settings.yaml") # Assuming local copy for ease, or use /opt
+> # For this script, let's assume we need to access the actual system-wide one
+> # The problem states /opt/solver/settings.yaml. We'll use that.
+> SYSTEM_SETTINGS_FILE = Path("/opt/solver/settings.yaml")
+>
+> # --- Helper Functions ---
+>
+> def load_settings(settings_file_path: Path) -> dict:
+>     """Load YAML settings. For simplicity, assuming flat key-value YAML like 'key: value'."""
+>     settings = {}
+>     if settings_file_path.exists():
+>         try:
+>             with open(settings_file_path, 'r', encoding='utf-8') as f:
+>                 for line in f:
+>                     line = line.strip()
+>                     if line and ':' in line:
+>                         key, value = line.split(':', 1)
+>                         key = key.strip()
+>                         value = value.strip()
+>                         # Try to convert value to int/float if possible
+>                         try:
+>                             value = int(value)
+>                         except ValueError:
+>                             try:
+>                                 value = float(value)
+>                             except ValueError:
+>                                 pass # Keep as string
+>                         settings[key] = value
+>         except Exception as e:
+>             print(f"Warning: Could not fully load settings from {settings_file_path}: {e}")
+>             # Fallback to an empty settings dict or partial settings
+>     return settings
+>
+> def strip_comments_iso8859_1(content: bytes, chunk_size: int = 1024) -> str:
+>     """Strip C-style // comments from ISO-8859-1 encoded byte string."""
+>     # Read byte by byte or line by line to handle comments
+>     # For simplicity, we'll decode to string first (assuming no undecodable bytes for now)
+>     # If file is large, this might need to be stream-based.
+>     try:
+>         decoded_content = content.decode('iso-8859-1')
+>     except UnicodeDecodeError as e:
+>         print(f"Error decoding ISO-8859-1 content: {e}")
+>         return ""
+>
+>     lines = []
+>     for line in decoded_content.splitlines():
+>         # Remove C-style // comments
+>         comment_pos = line.find('//')
+>         if comment_pos != -1:
+>             line = line[:comment_pos].strip()
+>         if line: # Add non-empty lines
+>             lines.append(line)
+>     return '\n'.join(lines)
+>
+> def parse_json_content(content_bytes: bytes, encoding: str = 'utf-8') -> dict:
+>     """Parse JSON content from bytes, handling specified encoding."""
+>     try:
+>         content_str = content_bytes.decode(encoding)
+>         data = json.loads(content_str)
+>         return data
+>     except json.JSONDecodeError as e:
+>         print(f"Error parsing JSON (encoding: {encoding}): {e}")
+>         return {}
+>     except UnicodeDecodeError as e:
+>         print(f"Error decoding content with {encoding}: {e}")
+>         return {}
+>
+> def is_optimal_run(data: dict, status_field_key: str = 'status') -> bool:
+>     """Check if a run is optimal."""
+>     if not data:
+>         return False
+>     status = data.get(status_field_key, '').lower()
+>     return status == 'optimal'
+>
+t> def get_key_fields(data: dict, id_key: str = 'id', objective_key: str = 'objective_value', timestamp_key: str = 'timestamp') -> tuple:
+>     """Get key fields from parsed data."""
+>     run_id = data.get(id_key)
+>     objective_value = data.get(objective_key)
+>     timestamp = data.get(timestamp_key)
+>     return run_id, objective_value, timestamp
+>
+> def generate_manifest(valid_runs: list, manifest_file_path: Path):
+>     """Generate the audit manifest CSV."""
+>     if not valid_runs:
+>         print("No valid optimal runs found to generate manifest.")
+>         return False
+>
+>     # Sort by timestamp descending
+>     try:
+>         valid_runs.sort(key=lambda x: x['timestamp'], reverse=True)
+>     except TypeError as e:
+>         print(f"Error sorting runs by timestamp: {e}")
+>         # Fallback: sort by ID or skip sorting if type error persists
+>         valid_runs.sort(key=lambda x: str(x.get('timestamp', '')), reverse=True)
+>
+>     # Columns: id,objective,timestamp (no header)
+>     # CRLF line endings
+>     try:
+>         with open(manifest_file_path, 'wb') as f: # Open in binary mode for CRLF
+>
+[... output limited to 10000 bytes; 70 interior bytes omitted ...]
+         # Legacy Solver Outputs (ISO-8859-1, strip comments)
+>                     try:
+>                         # Strip comments first
+>                         stripped_content = strip_comments_iso8859_1(content_bytes)
+>                         if stripped_content:
+>                             # Try parsing as UTF-8 after stripping comments, as ISO-8859-1
+>                             # is a subset of Unicode for common characters.
+>                             # If this fails, the original problem implies it should be parsable
+>                             # after stripping.
+>                             data = parse_json_content(stripped_content.encode('utf-8'), encoding='utf-8')
+>                             is_valid_json = bool(data)
+>                         else:
+>                             print(f"  No content after stripping comments from {item_path.name}")
+>                     except Exception as e:
+>                         print(f"  Error processing legacy file {item_path.name}: {e}")
+>                         data = {}
+>
+>                 if is_valid_json and is_optimal_run(data):
+>                     run_id, objective_value, timestamp = get_key_fields(data)
+>                     if run_id is not None and objective_value is not None and timestamp is not None:
+>                         valid_optimal_runs.append({
+>                             'id': run_id,
+>                             'objective_value': objective_value,
+>                             'timestamp': timestamp,
+>                             # Store original data for winner's x array later
+>                             'original_data': data
+>                         })
+>                         print(f"  Added valid optimal run from {item_path.name}: ID {run_id}")
+>                     else:
+>                         print(f"  Run from {item_path.name} is optimal but missing required fields (id, objective_value, timestamp). Skipping.")
+>                 elif is_valid_json:
+>                     print(f"  Run from {item_path.name} is not optimal. Skipping.")
+>                 else:
+>                     print(f"  Could not parse valid JSON from {item_path.name}. Skipping.")
+>             except IOError as e:
+>                 print(f"  Error reading file {item_path.name}: {e}")
+>
+>     # Stage 2: The Audit Manifest
+>     print("\nStage 2: Generating Audit Manifest...")
+>     manifest_generated = generate_manifest(valid_optimal_runs, MANIFEST_FILE)
+>
+>     # Stage 3: Winner Selection
+>     print("\nStage 3: Winner Selection...")
+>     winner = select_winner(valid_optimal_runs, settings)
+>
+>     # Stage 4: Final Report
+>     print("\nStage 4: Generating Final Report...")
+>     if winner:
+>         audit_date = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+>         manifest_sha256 = calculate_manifest_sha256(MANIFEST_FILE)
+>         manifest_line = find_winner_line_in_manifest(winner['id'], MANIFEST_FILE)
+>
+>         # Get 'x' array from winner's original_data
+>         x_array = winner['original_data'].get('x', [])
+>         variables_str = format_variables(x_array, variable_threshold)
+>
+>         report_generated = generate_report(
+>             audit_date,
+>             winner['id'],
+>             manifest_sha256,
+>             manifest_line,
+>             variables_str,
+>             REPORT_FILE
+>         )
+>         if report_generated:
+>             print("All stages completed successfully.")
+>             print("Deliverables:")
+>             print(f"- {MANIFEST_FILE.relative_to(Path.cwd())}")
+>             print(f"- {REPORT_FILE.relative_to(Path.cwd())}")
+>     else:
+>         print("No winner was selected. Report generation skipped.")
+>         # Optionally, create an empty or error report if required
+>
+>
+> if __name__ == '__main__':
+>     main()
+> EOF
+root@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test# chmod +x process_solver_data.py
+root@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test# python3 process_solver_data.py
+Starting Optimization Audit & Consolidation Task...
+Loading system settings...
+Loaded settings: variable_threshold=0.001, tie_breaker='latest'
+Stage 1: Ingestion & Normalization...
+Processing file: run_a.json
+Error parsing JSON (encoding: utf-8): Expecting value: line 1 column 1 (char 0)
+  Could not parse valid JSON from run_a.json. Skipping.
+Processing file: run_b.json
+Error parsing JSON (encoding: utf-8): Expecting value: line 1 column 1 (char 0)
+  Could not parse valid JSON from run_b.json. Skipping.
+Processing file: run_d.json
+Error parsing JSON (encoding: utf-8): Expecting value: line 1 column 1 (char 0)
+  Could not parse valid JSON from run_d.json. Skipping.
+
+Stage 2: Generating Audit Manifest...
+No valid optimal runs found to generate manifest.
+
+Stage 3: Winner Selection...
+No valid runs to select a winner from.
+
+Stage 4: Generating Final Report...
+No winner was selected. Report generation skipped.
+root@f312d888-9b84-42f1-8fed-f1a46401093d:/home/user/api_test#

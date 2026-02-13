@@ -1,0 +1,149 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are a systems administrator responsible for a legacy file storage server. You need to write a script to perform a maintenance routine on the directory `/home/user/storage`.
+
+This system has accumulated clutter in the `incoming/` directory, and specific retention policies must be enforced. Unlike modern systems, this server uses a mix of configuration files and strict legacy encoding requirements that you must adhere to exactly.
+
+### 1. Configuration
+The cleanup parameters are not hardcoded. You must read them from `/home/user/storage/params.conf`. This file uses a simple `key = value` format. Lines starting with `#` are comments and must be ignored. You need to extract two integer values:
+- `cutoff_days`: The minimum age (in days) for a text file to be considered "old".
+- `max_bak_kb`: The maximum allowed size (in Kilobytes, where 1 KB = 1024 bytes) for a backup file.
+
+### 2. Phase One: Pruning
+Scan the `/home/user/storage/incoming/` directory tree for files ending in `.bak`.
+- If a `.bak` file is strictly larger than `max_bak_kb`, it should be deleted.
+- **Crucial Exception:** Any filename beginning with an underscore (`_`) is a "System Hold" file. These must **NEVER** be deleted, regardless of their size or age.
+- **Note:** Symbolic links must be ignored entirely during this phase.
+
+### 3. Phase Two: Archival
+Identify all `.txt` files in `/home/user/storage/incoming/` that were modified more than `cutoff_days` ago.
+- Before moving any file, you must verify its content integrity. The system expects all text files to be valid UTF-8.
+- **If a file contains invalid UTF-8 byte sequences:** It is considered corrupt. Do **not** move it. Instead, rename the file by appending `.corrupt` to its current name (e.g., `data.txt` becomes `data.txt.corrupt`) and leave it in `incoming/`.
+- **If a file is valid UTF-8:** Move it to `/home/user/storage/archive/`, preserving the original filename.
+
+### 4. Phase Three: Manifest Generation
+After the archival step is complete, you must generate a manifest of the `/home/user/storage/archive/` directory. Create a file named `manifest.csv` inside that directory.
+- The CSV must list **every** file currently in `archive/` (both newly moved files and files that were already there).
+- Columns: `Filename,Size,MD5`
+- **Ordering:** The rows must be sorted by the **MD5 hash** of the file contents in ascending order.
+- **Format:** Use standard CSV formatting (quote filenames if necessary). **CRITICAL:** The file must use Windows-style **CRLF** (`\r\n`) line endings.
+
+### 5. Phase Four: Audit Report
+Finally, produce a machine-readable summary at `/home/user/storage/summary.xml`. This file must be encoded in **ISO-8859-1** (Latin-1) and match the following structure exactly:
+
+```xml
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<audit>
+    <deleted_bytes>TOTAL_BYTES_OF_DELETED_BAK_FILES</deleted_bytes>
+    <corrupt_files>COUNT_OF_FILES_RENAMED_TO_CORRUPT</corrupt_files>
+    <manifest_sha1>SHA1_HASH_OF_THE_GENERATED_MANIFEST_CSV</manifest_sha1>
+</audit>
+```
+
+- `deleted_bytes`: Integer sum of the sizes of all `.bak` files deleted in Phase One.
+- `corrupt_files`: Number of text files found to be invalid UTF-8.
+- `manifest_sha1`: The SHA-1 hash of the *exact* `manifest.csv` file you created in Phase Three.
+
+### Final Cleanup
+Once all operations are complete, remove any empty directories remaining under `/home/user/storage/incoming/`.
+
+**Summary of Constraints:**
+- No super-user privileges.
+- Use the provided `params.conf` for thresholds.
+- Respect the `_` prefix exception.
+- Handle invalid UTF-8 files by renaming.
+- Ensure `manifest.csv` has CRLF line endings.
+- Ensure `summary.xml` is ISO-8859-1 encoded.
+- Ensure `summary.xml` contains the checksum of `manifest.csv`.
+
+Current terminal state:
+Current Terminal Screen:
+root@76919ff6-ef93-4008-8d59-03856ccca262:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

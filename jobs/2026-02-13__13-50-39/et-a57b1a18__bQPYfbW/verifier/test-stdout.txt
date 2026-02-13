@@ -1,0 +1,95 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 4 items
+
+../../tests/test_final_state.py::test_schema_logic FAILED                [ 25%]
+../../tests/test_final_state.py::test_validation_log_format_and_encoding FAILED [ 50%]
+../../tests/test_final_state.py::test_valid_users_artifacts FAILED       [ 75%]
+../../tests/test_final_state.py::test_summary_file FAILED                [100%]
+
+=================================== FAILURES ===================================
+______________________________ test_schema_logic _______________________________
+
+    def test_schema_logic():
+        assert SCHEMA_FILE.is_file(), "Schema file missing"
+        try:
+            schema = read_json(SCHEMA_FILE)
+        except json.JSONDecodeError:
+            pytest.fail("Schema is not valid JSON")
+    
+        # Basic checks
+        for k, v in EXPECTED_SCHEMA_SUBSETS.items():
+            assert schema.get(k) == v, f"Schema key {k} mismatch"
+    
+        # Check Manager Logic (Conditional on isActive)
+        # This is complex to check by structure alone, but we expect some if/then/else
+        # or anyOf/oneOf structure handling 'role' and 'isActive'.
+        # We trust the validation tests to catch logic errors, but basic sanity check:
+>       assert "if" in schema or "allOf" in schema or "oneOf" in schema, "Schema missing conditional logic structures"
+E       AssertionError: Schema missing conditional logic structures
+E       assert ('if' in {'additionalProperties': False, 'properties': {'email': {'format': 'email', 'type': 'string'}, 'id': {'type': 'integer'}, 'isActive': {'type': 'boolean'}, 'name': {'type': 'string'}, ...}, 'required': ['id', 'name', 'email', 'isActive', 'role'], 'type': 'object'} or 'allOf' in {'additionalProperties': False, 'properties': {'email': {'format': 'email', 'type': 'string'}, 'id': {'type': 'integer'}, 'isActive': {'type': 'boolean'}, 'name': {'type': 'string'}, ...}, 'required': ['id', 'name', 'email', 'isActive', 'role'], 'type': 'object'} or 'oneOf' in {'additionalProperties': False, 'properties': {'email': {'format': 'email', 'type': 'string'}, 'id': {'type': 'integer'}, 'isActive': {'type': 'boolean'}, 'name': {'type': 'string'}, ...}, 'required': ['id', 'name', 'email', 'isActive', 'role'], 'type': 'object'})
+
+/tests/test_final_state.py:58: AssertionError
+___________________ test_validation_log_format_and_encoding ____________________
+
+    def test_validation_log_format_and_encoding():
+        assert VALIDATION_LOG.is_file()
+    
+        # 1. Check Encoding: Must be ISO-8859-1
+        # If we read as utf-8, it *might* work if chars are simple, but we should strictly check
+        # that the file was written as requested.
+        # A strict check: The instruction implies the system *requires* it.
+        # We verify it doesn't crash existing tools, but mainly we check content.
+        raw_bytes = read_bytes(VALIDATION_LOG)
+    
+        # 2. Check Content & Prefix
+        try:
+            content = raw_bytes.decode("iso-8859-1")
+        except UnicodeDecodeError:
+            pytest.fail("validation.log is not valid ISO-8859-1")
+    
+        lines = [l for l in content.splitlines() if l.strip()]
+    
+        # We expect 6 processed files (1, 2, 3, 4, 5, 7).
+        # user6_link.json should be ignored.
+>       assert len(lines) == 6, f"Expected 6 log lines (ignoring symlink), found {len(lines)}"
+E       AssertionError: Expected 6 log lines (ignoring symlink), found 1
+E       assert 1 == 6
+E        +  where 1 = len(['user1.json - VALID\\nuser2.json - VALID\\nuser3.json - VALID\\nuser4_bom.json - VALID\\nuser5.json - INVALID: Active manager must have department\\nuser7.json - INVALID: JSON syntax error'])
+
+/tests/test_final_state.py:80: AssertionError
+__________________________ test_valid_users_artifacts __________________________
+
+    def test_valid_users_artifacts():
+        assert VALID_USERS_JSON.is_file()
+    
+        # 1. Check No Trailing Newline
+        raw_bytes = read_bytes(VALID_USERS_JSON)
+        assert not raw_bytes.endswith(b"\n"), "valid_users.json must NOT have a trailing newline"
+>       assert raw_bytes.endswith(b"]" ), "valid_users.json must end with closing bracket"
+E       AssertionError: valid_users.json must end with closing bracket
+E       assert False
+E        +  where False = <built-in method endswith of bytes object at 0x7cac035d5a50>(b']')
+E        +    where <built-in method endswith of bytes object at 0x7cac035d5a50> = b'[\n  {\n    "email": "admin@example.com",\n    "id": 1,\n    "role": "ADMIN"\n  },\n  {\n    "email": "mgr1@example.com",\n    "id": 2,\n    "role": "MANAGER"\n  },\n  {\n    "email": "mgr2@example.com",\n    "id": 3,\n    "role": "MANAGER"\n  },\n  {\n    "email": "bom@test.com",\n    "id": 4,\n    "role": "USER"\n  }\n]\\n'.endswith
+
+/tests/test_final_state.py:98: AssertionError
+______________________________ test_summary_file _______________________________
+
+    def test_summary_file():
+        assert SUMMARY_TXT.is_file()
+    
+        # 1. Check CRLF
+        raw_bytes = read_bytes(SUMMARY_TXT)
+>       assert b"\r\n" in raw_bytes, "summary.txt must use CRLF line endings"
+E       AssertionError: summary.txt must use CRLF line endings
+E       assert b'\r\n' in b'Files: 6\\r\\nPassed: 4\\r\\nLog Checksum: 893e52cc34fdf1306b9d11ba63d81a16\\r\\n'
+
+/tests/test_final_state.py:120: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_schema_logic - AssertionError: S...
+FAILED ../../tests/test_final_state.py::test_validation_log_format_and_encoding
+FAILED ../../tests/test_final_state.py::test_valid_users_artifacts - Assertio...
+FAILED ../../tests/test_final_state.py::test_summary_file - AssertionError: s...
+============================== 4 failed in 0.03s ===============================

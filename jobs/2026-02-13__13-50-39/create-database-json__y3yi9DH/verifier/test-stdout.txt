@@ -1,0 +1,92 @@
+Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Hit:4 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.81.0-1ubuntu1.21).
+0 upgraded, 0 newly installed, 0 to remove and 3 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading cpython-3.12.12-linux-x86_64-gnu (download) (31.1MiB)
+ Downloading cpython-3.12.12-linux-x86_64-gnu (download)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 5 packages in 23ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/S3WEOscmfzmtLt5enYCCd/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 5 items
+
+../../tests/test_final_state.py::test_environment_packages FAILED        [ 20%]
+../../tests/test_final_state.py::test_staging_file_existence_and_encoding PASSED [ 40%]
+../../tests/test_final_state.py::test_staging_file_content FAILED        [ 60%]
+../../tests/test_final_state.py::test_report_structure_and_hash PASSED   [ 80%]
+../../tests/test_final_state.py::test_suggestions_logic FAILED           [100%]
+
+=================================== FAILURES ===================================
+__________________________ test_environment_packages ___________________________
+
+    def test_environment_packages():
+        venv_pip = BASE_DIR / "env/bin/pip"
+        assert venv_pip.exists(), "Virtual environment not found"
+    
+        # Check installed packages
+        import subprocess
+        res = subprocess.run([str(venv_pip), "list", "--format=json"], capture_output=True, text=True)
+        pkgs = {p["name"]: p["version"] for p in json.loads(res.stdout)}
+    
+>       assert pkgs.get("sqlparse") == "0.4.4"
+E       AssertionError: assert '0.4.3' == '0.4.4'
+E         
+E         - 0.4.4
+E         ?     ^
+E         + 0.4.3
+E         ?     ^
+
+/tests/test_final_state.py:44: AssertionError
+__________________________ test_staging_file_content ___________________________
+
+    def test_staging_file_content():
+        # Read with correct encoding and newline handling
+        with open(STAGING_FILE, "r", encoding="iso-8859-1", newline="") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+    
+        assert rows[0] == ["timestamp", "duration_ms", "query_text"], "CSV Header mismatch"
+        data_rows = rows[1:]
+>       assert len(data_rows) == 3, f"Expected 3 rows, got {len(data_rows)}"
+E       AssertionError: Expected 3 rows, got 7
+E       assert 7 == 3
+E        +  where 7 = len([[], ['2023-03-15T08:00:00Z', '45', 'SELECT * FROM users WHERE id = 100;'], [], ['2023-03-15T08:01:00Z', '20', "SELECT * FROM products WHERE category = 'books';"], [], ['2023-03-15T08:03:00Z', '150', "SELECT * FROM employees WHERE name = 'Renée';"], ...])
+
+/tests/test_final_state.py:70: AssertionError
+____________________________ test_suggestions_logic ____________________________
+
+    def test_suggestions_logic():
+        with open(REPORT_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    
+        suggs = data["suggestions"]
+>       assert len(suggs) == 3
+E       assert 0 == 3
+E        +  where 0 = len([])
+
+/tests/test_final_state.py:94: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_environment_packages - Assertion...
+FAILED ../../tests/test_final_state.py::test_staging_file_content - Assertion...
+FAILED ../../tests/test_final_state.py::test_suggestions_logic - assert 0 == 3
+========================= 3 failed, 2 passed in 0.28s ==========================

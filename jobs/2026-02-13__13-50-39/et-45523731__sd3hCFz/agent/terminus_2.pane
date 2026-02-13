@@ -1,0 +1,140 @@
+[?2004hroot@03c3bd67-f762-4fe7-af54-eb5047a32724:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@03c3bd67-f762-4fe7-af54-eb5047a32724:~# clear
+[?2004l[H[J[?2004hroot@03c3bd67-f762-4fe7-af54-eb5047a32724:~# mkdir -p /home/user/diagnostics
+[?2004l[?2004hroot@03c3bd67-f762-4fe7-af54-eb5047a32724:~# cat > /home/user/diagnostics/run_net_checks.sh << 'EOF'
+[?2004l[?2004h> #!/bin/sh
+[?2004l[?2004h> 
+[?2004l[?2004h> # Script for diagnosing network glitches in CI/CD jobs
+[?2004l[?2004h> # Requires: base64, gzip, flock, ping, traceroute, dig
+[?2004l[?2004h> 
+[?2004l[?2004h> set -eu
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration
+[?2004l[?2004h> LOG_DIR="/home/user/diagnostics"
+[?2004l[?2004h> LOG_FILE="${LOG_DIR}/netcheck.log"
+[?2004l[?2004h> LOG_PREVIOUS="${LOG_DIR}/netcheck.previous.log.gz"
+[?2004l[?2004h> TARGETS_FILE="${LOG_DIR}/targets.txt"
+[?2004l[?2004h> LOCK_FILE="${LOG_DIR}/.netcheck.lock"
+[?2004l[?2004h> 
+[?2004l[?2004h> # 1. Configuration & Input Validation
+[?2004l[?2004h> if [ ! -f "${TARGETS_FILE}" ]; then
+[?2004l[?2004h>     echo "ERROR: Configuration file ${TARGETS_FILE} does not exist" >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read targets, skipping comments and empty lines
+[?2004l[?2004h> hosts=$(grep -v '^#' "${TARGETS_FILE}" | grep -v '^$')
+[?2004l[?2004h> if [ -z "$hosts" ]; then
+[?2004l[?2004h>     echo "WARNING: No valid targets found in ${TARGETS_FILE}" >&2
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # 2. Log Rotation
+[?2004l[?2004h> # Compress and archive previous log if it exists
+[?2004l[?2004h> if [ -f "${LOG_FILE}" ]; then
+[?2004l[?2004h>     gzip -c "${LOG_FILE}" > "${LOG_PREVIOUS}" || {
+[?2004l[?2004h>         echo "ERROR: Failed to compress previous log file" >&2
+[?2004l[?2004h>         exit 1
+[?2004l[?2004h>     }
+[?2004l[?2004h>     # If previous archive exists, overwrite it
+[?2004l[?2004h>     rm -f "${LOG_PREVIOUS}.backup"
+[?2004l[?2004h>     mv -f "${LOG_PREVIOUS}" "${LOG_PREVIOUS}.backup" 2>/dev/null || true
+[?2004l[?2004h>     mv -f "${LOG_PREVIOUS}" "${LOG_PREVIOUS}" 2>/dev/null || true
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create new empty log file
+[?2004l[?2004h> : > "${LOG_FILE}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write header with timestamp
+[?2004l[?2004h> timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+[?2004l[?2004h> echo "# Netcheck Report" >> "${LOG_FILE}"
+[?2004l[?2004h> echo "Timestamp: ${timestamp}" >> "${LOG_FILE}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # 3. Execution & Output Format
+[?2004l[?2004h> # Function to run a single check
+[?2004l[?2004h> run_check() {
+[?2004l[?2004h>     local host="$1"
+[?2004l[?2004h>     local cmd="$2"
+[?2004l[?2004h>     local cmd_name="$3"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Execute command, capture stdout and stderr together
+[?2004l[?2004h>     # Use temp file to avoid command injection issues with eval
+[?2004l[?2004h>     local output_file="${LOG_DIR}/.tmp_output.$$"
+[?2004l[?2004h>     rm -f "${output_file}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Run command and capture both stdout and stderr
+[?2004l[?2004h>     $cmd > "${output_file}" 2>&1
+[?2004l[?2004h>     status=$?
+[?2004l[?2004h>     
+[?2004l[?2004h>     # If output file empty, create it to avoid encoding errors
+[?2004l[?2004h>     [ -s "${output_file}" ] || echo -n > "${output_file}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Base64 encode the combined output
+[?2004l[?2004h>     encoded_output=$(base64 "${output_file}" | tr -d '\n')
+[?2004l[?2004h>     rm -f "${output_file}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write to log with file locking for atomicity
+[?2004l[?2004h>     exec 9>"${LOCK_FILE}"
+[?2004l[?2004h>     if ! flock -n 9; then
+[?2004l[?2004h>         echo "ERROR: Could not acquire lock for log file" >&2
+[?2004l[?2004h>         return 1
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "===== START host=${host} check=${cmd_name} =====" >> "${LOG_FILE}"
+[?2004l[?2004h>     echo "${encoded_output}" >> "${LOG_FILE}"
+[?2004l[?2004h>     echo "===== END host=${host} check=${cmd_name} status=${status} =====" >> "${LOG_FILE}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     flock -u 9
+[?2004l[?2004h>     return 0
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to run all checks for a host in background
+[?2004l[?2004h> run_host_checks() {
+[?2004l[?2004h>     local host="$1"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Ping check
+[?2004l[?2004h>     run_check "$host" "ping -n -c 1 $host" "ping" &
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Traceroute check
+[?2004l[?2004h>     run_check "$host" "traceroute -n -m 5 $host" "traceroute" &
+[?2004l[?2004h>     
+[?2004l[?2004h>     # DNS check
+[?2004l[?2004h>     run_check "$host" "dig +short $host A" "dig" &
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main execution - run checks in parallel for all hosts
+[?2004l[?2004h> for host in $hosts; do
+[?2004l[?2004h>     run_host_checks "$host" &
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Wait for all background jobs to complete
+[?2004l[?2004h> wait
+[?2004l[?2004h> 
+[?2004l[?2004h> # 4. Header & Checksum
+[?2004l[?2004h> # Compute SHA-256 checksum of the final log file
+[?2004l[?2004h> if [ -s "${LOG_FILE}" ]; then
+[?2004l[?2004h>     sha256sum "${LOG_FILE}" | cut -d' ' -f1 > "${LOG_DIR}/netcheck.sha256"
+[?2004l[?2004h> else
+[?2004l[?2004h>     echo "ERROR: Log file ${LOG_FILE} is empty" >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Clean up lock file if exists
+[?2004l[?2004h> rm -f "${LOCK_FILE}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Script completed successfully
+[?2004l[?2004h> exit 0
+[?2004l[?2004h> EOFchmod +x /home/user/diagnostics/run_net_checks.sh
+[?2004l[?2004h> cat > /home/user/diagnostics/targets.txt << 'EOF'
+[?2004l[?2004h> # Example target hosts
+[?2004l[?2004h> example.com
+[?2004l[?2004h> # This is a comment
+[?2004l[?2004h> google.com
+[?2004l[?2004h> 
+[?2004l[?2004h> 8.8.8.8
+[?2004l[?2004h> EOFls -la /home/user/diagnostics/
+[?2004l[?2004h> head -5 /home/user/diagnostics/run_net_checks.sh
+[?2004l[?2004h> cat /home/user/diagnostics/targets.txt
+[?2004l[?2004h> chmod go-rwx /home/user/diagnostics/run_net_checks.sh
+[?2004l[?2004h> 

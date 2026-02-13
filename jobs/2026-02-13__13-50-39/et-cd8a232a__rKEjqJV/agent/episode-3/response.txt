@@ -1,0 +1,13 @@
+```json
+{
+  "analysis": "The script has been created with the basic structure including argument validation, output directory creation, and header writing. Now I need to implement the core log filtering functionality with multi-line handling.",
+  "plan": "I will implement an awk-based solution that can handle multi-line log entries. The awk script will track whether we're in a critical section and collect all continuation lines (lines not starting with a timestamp) after a matching timestamped line. I'll append to the critical_errors.log file.",
+  "commands": [
+    {
+      "keystrokes": "cat >> filter_errors.sh << 'EOF'\n\n# Process log file with multi-line handling\nawk -v critical_log=\"$critical_log\" '\n    BEGIN {\n        in_critical = 0;\n        entry = \"\";\n    }\n    /^\[[0-9]{4}-[0-9]{2}-[0-9]{2}/ {\n        if (in_critical) {\n            # Save previous complete entry\n            print entry > critical_log;\n            entry = \"\";\n        }\n        in_critical = 0;\n        \n        # Check if this line matches critical patterns\n        if ($0 ~ /ERROR/ || $0 ~ /FATAL/ || $0 ~ /HTTP\\/1\\.1 5[0-9]{2}/) {\n            in_critical = 1;\n        }\n    }\n    {\n        if (in_critical) {\n            entry = entry $0 \"\\n\";\n        }\n    }\n    END {\n        if (in_critical && entry != \"\") {\n            print entry > critical_log;\n        }\n    }' \"$input_log\" > /tmp/filtered.log\n\n# Append filtered content to critical log file (skip header)\nsed '1d' /tmp/filtered.log >> \"$critical_log\"\nrm /tmp/filtered.log\nEOF\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}
+```

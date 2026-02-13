@@ -1,0 +1,226 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@b482f734-1188-432f-ace5-8ff61d828115:/home/user# rm process_experiments.py
+root@b482f734-1188-432f-ace5-8ff61d828115:/home/user# cat > process_experiments.py << 'EOF'
+             root_name = deprecated_file.stem.lower()
+                self.deprecated_set.add(root_name)
+
+    def load_status_overrides(self, experiment_dir):
+        """Load status overrides for an experiment"""
+        override_file = experiment_dir / 'status_override.map'
+        if override_file.exists():
+            with open(override_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and '=' in line:
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        self.status_overrides[experiment_dir.name][key] = value
+
+    def detect_encoding(self, file_path):
+        """Detect file encoding"""
+        with open(file_path, 'rb') as f:
+            raw_data = f.read(1024)
+            result = chardet.detect(raw_data)
+            return result['encoding']
+
+    def process_line(self, line, file_path, experiment_dir):
+        """Process a single line and return processed data if valid"""
+        line = line.rstrip('\r\n')
+        trailing_spaces = len(line) - len(line.rstrip(' '))
+        if trailing_spaces % 2 != 0:
+            absolute_path = file_path.resolve()
+            self.corrupted_lines.append(f"{absolute_path}:{line}\n")
+            return None
+        parts = line.split('|')
+        if len(parts) < 2:
+            absolute_path = file_path.resolve()
+            self.corrupted_lines.append(f"{absolute_path}:{line}\n")
+            return None
+        artifact_name = parts[0].strip()
+        status = parts[1].strip()
+        if experiment_dir.name in self.status_overrides:
+            if artifact_name in self.status_overrides[experiment_dir.name]:
+                status = self.status_overrides[experiment_dir.name][artifact_name]
+        if status != 'READY':
+            return None
+        return artifact_name
+
+    def process_file(self, file_path, experiment_dir):
+        """Process a single artifacts file"""
+        encoding = self.detect_encoding(file_path)
+        try:
+            with open(file_path, 'r', encoding=encoding) as f:
+                for line_number, line in enumerate(f, 1):
+                    result = self.process_line(line, file_path, experiment_dir)
+                    if result:
+                        artifact_name = result
+                        self.artifact_locations[artifact_name].add(experiment_dir.name)
+        except UnicodeDecodeError:
+            with open(file_path, 'r', encoding='latin-1') as f:
+                for line_number, line in enumerate(f, 1):
+                    result = self.process_line(line, file_path, experiment_dir)
+                    if result:
+                        artifact_name = result
+                        self.artifact_locations[artifact_name].add(experiment_dir.name)
+
+    def process_experiment_dir(self, experiment_dir):
+        """Process all artifacts files in an experiment directory"""
+        self.load_status_overrides(experiment_dir)
+        artifacts_txt = experiment_dir / 'artifacts.txt'
+     > #!/usr/bin/env python3
+> import os
+> import re
+> import hashlib
+> import glob
+> import chardet
+> from collections import defaultdict
+> from pathlib import Path
+> import yaml
+> from datetime import datetime
+> import sys
+>
+> # Configuration
+> BASE_DIR = Path('/home/user/mlops')
+> EXPERIMENTS_DIR = BASE_DIR / 'experiments'
+> DEPRECATED_DIR = BASE_DIR / 'deprecated'
+> SUMMARY_DIR = BASE_DIR / 'summary'
+>
+> CORRUPTION_REPORT = SUMMARY_DIR / 'corruption_report.txt'
+> INVENTORY_CSV = SUMMARY_DIR / 'inventory.csv'
+> MANIFEST_YAML = SUMMARY_DIR / 'manifest.yaml'
+>
+> class ArtifactProcessor:
+>     def __init__(self):
+>         self.corrupted_lines = []
+>         self.final_inventory = []
+>         self.deprecated_set = set()
+>         self.status_overrides = defaultdict(dict)
+>         self.artifact_locations = defaultdict(set)
+>
+>     def load_deprecated_assets(self):
+>         """Load deprecated asset root names (case-insensitive)"""
+>         for deprecated_file in DEPRECATED_DIR.glob('*'):
+>             if deprecated_file.is_file():
+>                 root_name = deprecated_file.stem.lower()
+>                 self.deprecated_set.add(root_name)
+>
+>     def load_status_overrides(self, experiment_dir):
+>         """Load status overrides for an experiment"""
+>         override_file = experiment_dir / 'status_override.map'
+>         if override_file.exists():
+>             with open(override_file, 'r', encoding='utf-8') as f:
+>                 for line in f:
+>                     line = line.strip()
+>                     if line and '=' in line:
+>                         key, value = line.split('=', 1)
+>                         key = key.strip()
+>                         value =
+[... output limited to 10000 bytes; 70 interior bytes omitted ...]
+       status = parts[1].strip()
+>         if experiment_dir.name in self.status_overrides:
+>             if artifact_name in self.status_overrides[experiment_dir.name]:
+>                 status = self.status_overrides[experiment_dir.name][artifact_name]
+>         if status != 'READY':
+>             return None
+>         return artifact_name
+>
+>     def process_file(self, file_path, experiment_dir):
+>         """Process a single artifacts file"""
+>         encoding = self.detect_encoding(file_path)
+>         try:
+>             with open(file_path, 'r', encoding=encoding) as f:
+>                 for line_number, line in enumerate(f, 1):
+>                     result = self.process_line(line, file_path, experiment_dir)
+>                     if result:
+>                         artifact_name = result
+>                         self.artifact_locations[artifact_name].add(experiment_dir.name)
+>         except UnicodeDecodeError:
+>             with open(file_path, 'r', encoding='latin-1') as f:
+>                 for line_number, line in enumerate(f, 1):
+>                     result = self.process_line(line, file_path, experiment_dir)
+>                     if result:
+>                         artifact_name = result
+>                         self.artifact_locations[artifact_name].add(experiment_dir.name)
+>
+>     def process_experiment_dir(self, experiment_dir):
+>         """Process all artifacts files in an experiment directory"""
+>         self.load_status_overrides(experiment_dir)
+>         artifacts_txt = experiment_dir / 'artifacts.txt'
+>         if artifacts_txt.exists():
+>             self.process_file(artifacts_txt, experiment_dir)
+>         artifacts_log = experiment_dir / 'artifacts.log'
+>         if artifacts_log.exists():
+>             self.process_file(artifacts_log, experiment_dir)
+>
+>     def generate_inventory(self):
+>         """Generate the final sorted inventory"""
+>         SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
+>         if self.corrupted_lines:
+>             with open(CORRUPTION_REPORT, 'w', encoding='utf-8') as f:
+>                 f.writelines(self.corrupted_lines)
+>         inventory_data = []
+>         for artifact_name, locations in self.artifact_locations.items():
+>             if artifact_name:
+>                 artifact_root = artifact_name.split('.')[0].lower()
+>                 if artifact_root in self.deprecated_set:
+>                     continue
+>                 name_hash = hashlib.md5(artifact_name.encode('utf-8')).hexdigest()
+>                 location_str = ';'.join(sorted(locations))
+>                 inventory_data.append({
+>                     'artifact': artifact_name,
+>                     'name_hash': name_hash,
+>                     'locations': location_str
+>                 })
+>         inventory_data.sort(key=lambda x: x['artifact'])
+>         with open(INVENTORY_CSV, 'w', encoding='utf-8') as f:
+>             f.write("Artifact|NameHash|Locations\n")
+>             for item in inventory_data:
+>                 f.write(f"{item['artifact']}|{item['name_hash']}|{item['locations']}\n")
+>         return inventory_data
+>
+>     def generate_manifest(self, inventory_data):
+>         """Generate the verification manifest"""
+>         inventory_hash = hashlib.sha256()
+>         with open(INVENTORY_CSV, 'rb') as f:
+>             inventory_hash.update(f.read())
+>         manifest_data = {
+>             'total_artifacts': len(inventory_data),
+>             'inventory_hash': inventory_hash.hexdigest(),
+>             'generated_at': datetime.utcnow().strftime('%Y-%m-%d')
+>         }
+>         with open(MANIFEST_YAML, 'w', encoding='utf-8') as f:
+>             yaml.safe_dump(manifest_data, f, default_flow_style=False)
+>
+>     def run(self):
+>         """Main processing function"""
+>         print("Loading deprecated assets...")
+>         self.load_deprecated_assets()
+>         print(f"Loaded {len(self.deprecated_set)} deprecated assets")
+>         experiment_dirs = [d for d in EXPERIMENTS_DIR.iterdir() if d.is_dir()]
+>         print(f"Processing {len(experiment_dirs)} experiment directories...")
+>         for experiment_dir in experiment_dirs:
+>             print(f"Processing {experiment_dir.name}...")
+>             self.process_experiment_dir(experiment_dir)
+>         print("Generating inventory...")
+>         inventory_data = self.generate_inventory()
+>         print("Generating manifest...")
+>         self.generate_manifest(inventory_data)
+>         print(f"Processing complete. Total artifacts: {len(inventory_data)}")
+>         print(f"Corrupted lines: {len(self.corrupted_lines)}")
+>
+> if __name__ == '__main__':
+>     processor = ArtifactProcessor()
+>     processor.run()
+> EOF
+root@b482f734-1188-432f-ace5-8ff61d828115:/home/user# python3 process_experiments.py
+Traceback (most recent call last):
+  File "/home/user/process_experiments.py", line 6, in <module>
+    import chardet
+ModuleNotFoundError: No module named 'chardet'
+root@b482f734-1188-432f-ace5-8ff61d828115:/home/user#

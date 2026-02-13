@@ -1,0 +1,65 @@
+Current terminal state:
+New Terminal Output:
+
+root@6e95a9e8-0beb-48a6-b4e0-00edf3be1c28:/home/user/hardening_test# cat > apply_hardening.sh << 'EOF'
+> #!/bin/sh
+>
+> # POSIX-compliant script for hardening configuration files
+>
+> set -e
+>
+> # Initialize empty log file
+> > hardening.log
+>
+> # Process each rule from rules.txt
+> while IFS="|" read -r filename search_pattern enforced_line; do
+>     # Trim whitespace from variables
+>     filename=$(echo "$filename" | xargs)
+>     search_pattern=$(echo "$search_pattern" | xargs)
+>     enforced_line=$(echo "$enforced_line" | xargs)
+>
+>     # Skip empty lines
+>     if [ -z "$filename" ] || [ -z "$search_pattern" ] || [ -z "$enforced_line" ]; then
+>         continue
+>     fi
+>
+>     # Create backup if it doesn't exist
+>     if [ ! -f "${filename}.bak" ]; then
+>         cp "$filename" "${filename}.bak"
+>     fi
+>
+>     # Check if enforced_line already exists exactly
+>     if grep -q -F -x "$enforced_line" "$filename" 2>/dev/null; then
+>         # Line already exists - skip processing
+>         echo "${filename}:SKIPPED" >> hardening.log
+>     else
+>         # Try to repair by replacing matching line
+>         if grep -q -E "^${search_pattern}$" "$filename" 2>/dev/null; then
+>             # Repair by replacing the matching line
+>             sed -i -E "s|^${search_pattern}|${enforced_line}|" "$filename"
+>             echo "${filename}:REPAIRED" >> hardening.log
+>         else
+>             # Append new line if pattern not found
+>             echo "$enforced_line" >> "$filename"
+>             echo "${filename}:APPENDED" >> hardening.log
+>         fi
+>     fi
+>
+>     # Set appropriate permissions
+>     if [ "$filename" = "sshd_config" ]; then
+>         chmod 0600 "$filename"
+>     else
+>         chmod 0644 "$filename"
+>     fi
+>
+> done < rules.txt
+>
+> # Sort the log file alphabetically by filename
+> sort -o hardening.log hardening.log
+>
+> # Final confirmation message
+> echo "Hardening completed"
+> EOF
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

@@ -1,0 +1,140 @@
+Hit:1 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.81.0-1ubuntu1.21).
+0 upgraded, 0 newly installed, 0 to remove and 4 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading cpython-3.12.12-linux-x86_64-gnu (download) (31.1MiB)
+ Downloading cpython-3.12.12-linux-x86_64-gnu (download)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 5 packages in 20ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/nZFUIvsP3_JVBOGNWWVBf/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 5 items
+
+../../tests/test_final_state.py::test_step1_normalization PASSED         [ 20%]
+../../tests/test_final_state.py::test_step2_batch_id FAILED              [ 40%]
+../../tests/test_final_state.py::test_step3_high_spend_logic FAILED      [ 60%]
+../../tests/test_final_state.py::test_step4_csv_encoding_and_content FAILED [ 80%]
+../../tests/test_final_state.py::test_validation_log PASSED              [100%]
+
+=================================== FAILURES ===================================
+_____________________________ test_step2_batch_id ______________________________
+
+    def test_step2_batch_id():
+        assert BATCH_ID_FILE.is_file(), "Batch ID file missing"
+    
+        # Calculate expected hash from the normalized file on disk
+        norm_bytes = NORMALIZED_FILE.read_bytes()
+        expected_hash = hashlib.sha256(norm_bytes).hexdigest()
+    
+        actual_hash = BATCH_ID_FILE.read_text().strip()
+        assert actual_hash == expected_hash, "Batch ID does not match SHA256 of normalized file"
+>       assert "\n" not in BATCH_ID_FILE.read_text(), "Batch ID file should not have trailing newline"
+E       AssertionError: Batch ID file should not have trailing newline
+E       assert '\n' not in '0cf9ddfd859...784dacf377\n'
+E         
+E         '\n' is contained here:
+E           0cf9ddfd859de40aaf593073df50ba34e9e02e741dcfa116a6e0d6784dacf377
+E         ?                                                                 +
+
+/tests/test_final_state.py:75: AssertionError
+_________________________ test_step3_high_spend_logic __________________________
+
+    def test_step3_high_spend_logic():
+        assert HIGH_SPEND_JSON_FILE.is_file()
+>       data = json.loads(HIGH_SPEND_JSON_FILE.read_text(encoding="utf-8"))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/tests/test_final_state.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/json/__init__.py:346: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <json.decoder.JSONDecoder object at 0x79cc64b08a70>
+s = '{\n  "account_id": "acct-002",\n  "batch_id": "0cf9ddfd859de40aaf593073df50ba34e9e02e741dcfa116a6e0d6784dacf377",\n  ...e741dcfa116a6e0d6784dacf377",\n  "cost": 876.5,\n  "cost_in_usd": 876.5,\n  "currency": "USD",\n  "service": "S3"\n}\n'
+_w = <built-in method match of re.Pattern object at 0x79cc64819970>
+
+    def decode(self, s, _w=WHITESPACE.match):
+        """Return the Python representation of ``s`` (a ``str`` instance
+        containing a JSON document).
+    
+        """
+        obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+        end = _w(s, end).end()
+        if end != len(s):
+>           raise JSONDecodeError("Extra data", s, end)
+E           json.decoder.JSONDecodeError: Extra data: line 9 column 1 (char 199)
+
+/root/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/json/decoder.py:341: JSONDecodeError
+_____________________ test_step4_csv_encoding_and_content ______________________
+
+    def test_step4_csv_encoding_and_content():
+        assert SUMMARY_CSV_FILE.is_file()
+    
+        # 1. Verify Encoding is Latin-1 (ISO-8859-1)
+        try:
+            content = SUMMARY_CSV_FILE.read_text(encoding="iso-8859-1")
+        except Exception as e:
+            pytest.fail(f"Could not read CSV as ISO-8859-1: {e}")
+    
+        lines = content.splitlines()
+        header = lines[0]
+        assert header == "ACCOUNT_ID,USD_COST,Original_Currency", "CSV Header mismatch or case error"
+    
+        # Verify sort order (descending) and content
+        rows = lines[1:]
+        costs = []
+    
+        # Load JSON for content verification
+>       json_data = json.loads(HIGH_SPEND_JSON_FILE.read_text(encoding="utf-8"))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/tests/test_final_state.py:122: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/json/__init__.py:346: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <json.decoder.JSONDecoder object at 0x79cc64b08a70>
+s = '{\n  "account_id": "acct-002",\n  "batch_id": "0cf9ddfd859de40aaf593073df50ba34e9e02e741dcfa116a6e0d6784dacf377",\n  ...e741dcfa116a6e0d6784dacf377",\n  "cost": 876.5,\n  "cost_in_usd": 876.5,\n  "currency": "USD",\n  "service": "S3"\n}\n'
+_w = <built-in method match of re.Pattern object at 0x79cc64819970>
+
+    def decode(self, s, _w=WHITESPACE.match):
+        """Return the Python representation of ``s`` (a ``str`` instance
+        containing a JSON document).
+    
+        """
+        obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+        end = _w(s, end).end()
+        if end != len(s):
+>           raise JSONDecodeError("Extra data", s, end)
+E           json.decoder.JSONDecodeError: Extra data: line 9 column 1 (char 199)
+
+/root/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/json/decoder.py:341: JSONDecodeError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_step2_batch_id - AssertionError:...
+FAILED ../../tests/test_final_state.py::test_step3_high_spend_logic - json.de...
+FAILED ../../tests/test_final_state.py::test_step4_csv_encoding_and_content
+========================= 3 failed, 2 passed in 0.05s ==========================

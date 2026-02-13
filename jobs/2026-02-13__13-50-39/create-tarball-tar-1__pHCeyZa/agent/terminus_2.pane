@@ -1,0 +1,165 @@
+[?2004hroot@49573271-cd29-43f5-ba0c-59db462adeb9:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@49573271-cd29-43f5-ba0c-59db462adeb9:~# clear
+[?2004l[H[J[?2004hroot@49573271-cd29-43f5-ba0c-59db462adeb9:~# cat > ~/backup_configs.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Set strict error handling
+[?2004l[?2004h> set -euo pipefail
+[?2004l[?2004h> 
+[?2004l[?2004h> # Define paths
+[?2004l[?2004h> readonly CONFIGS_DIR="/home/user/configs"
+[?2004l[?2004h> readonly BACKUPS_DIR="/home/user/backups"
+[?2004l[?2004h> readonly BACKUP_LOGS_DIR="/home/user/backup_logs"
+[?2004l[?2004h> readonly BACKUP_ID_FILE="/home/user/backup_id"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read and trim backup ID
+[?2004l[?2004h> readonly BACKUP_ID=$(cat "$BACKUP_ID_FILE" | tr -d '[:space:]')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Ensure backup directories exist
+[?2004l[?2004h> mkdir -p "$BACKUPS_DIR"
+[?2004l[?2004h> mkdir -p "$BACKUP_LOGS_DIR"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Log file path
+[?2004l[?2004h> readonly LOG_FILE="$BACKUP_LOGS_DIR/backup_${BACKUP_ID}.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Header for the log file
+[?2004l[?2004h> readonly LOG_HEADER="REL_PATH|ARCHIVE_NAME|SHA256|SIZE"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Temporary files for logging individual file details
+[?2004l[?2004h> readonly INTERMEDIATE_LOG_FILE="${LOG_FILE}.tmp_lines"
+[?2004l[?2004h> readonly SORTED_LOG_FILE="${LOG_FILE}.tmp_sorted"
+[?2004l[?2004h> 
+[?2004l[?2004h> # 1. Identify and Filter Files
+[?2004l[?2004h> # Find files recursively in CONFIGS_DIR:
+[?2004l[?2004h> # - Name ending in .conf or .yml
+[?2004l[?2004h> # - Size <= 512 bytes
+[?2004l[?2004h> # - Not named test.conf (path-aware exclusion)
+[?2004l[?2004h> # - Print full path
+[?2004l[?2004h> FIND_CMD=(
+[?2004l[?2004h>   find "$CONFIGS_DIR" -type f \
+[?2004l[?2004h>     \( -name "*.conf" -or -name "*.yml" \) \
+[?2004l[?2004h>     -size -512c \
+[?2004l[?2004h>     ! -name "test.conf" \
+[?2004l[?2004h>     -print
+[?2004l[?2004h> )
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process each found file
+[?2004l[?2004h> # Use a temporary array to store background PIDs
+[?2004l[?2004h> declare -a background_pids
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create intermediate log file and add header
+[?2004l[?2004h> echo "$LOG_HEADER" > "$INTERMEDIATE_LOG_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Iterate through each file found by find
+[?2004l[?2004h> while IFS= read -r file_path; do
+[?2004l[?2004h>   # 2. Create Individual Archives (Parallel)
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Get filename and extension
+[?2004l[?2004h>   filename=$(basename "$file_path")
+[?2004l[?2004h>   extension="${filename##*.}"
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Get basename (filename without extension), handle spaces
+[?2004l[?2004h>   basename="${filename%.*}"
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Determine compression based on extension
+[?2004l[?2004h>   if [ "$extension" = "conf" ]; then
+[?2004l[?2004h>     archive_ext="tar.gz"
+[?2004l[?2004h>     tar_compress_flag="z"
+[?2004l[?2004h>   elif [ "$extension" = "yml" ]; then
+[?2004l[?2004h>     archive_ext="tar.bz2"
+[?2004l[?2004h>     tar_compress_flag="j"
+[?2004l[?2004h>   else
+[?2004l[?2004h>     # Should not happen due to find criteria, but as a safeguard
+[?2004l[?2004h>     echo "Warning: Unknown file type for $filename, skipping." >&2
+[?2004l[?2004h>     continue
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Construct archive name: <basename>_<BACKUP_ID>.tar.<ext>
+[?2004l[?2004h>   archive_name="${basename}_${BACKUP_ID}.tar.${archive_ext}"
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Target archive path
+[?2004l[?2004h>   target_archive_path="${BACKUPS_DIR}/${archive_name}"
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Path of the file relative to CONFIGS_DIR (for tar and log)
+[?2004l[?2004h>   # Remove CONFIGS_DIR prefix and ensure no leading slash or './'
+[?2004l[?2004h>   rel_path="${file_path#${CONFIGS_DIR}/}"
+[?2004l[?2004h>   if [ "${rel_path:0:1}" = "/" ]; then
+[?2004l[?2004h>     rel_path="${rel_path:1}"
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   if [ "${rel_path:0:2}" = "./" ]; then
+[?2004l[?2004h>     rel_path="${rel_path:2}"
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Calculate SHA256 checksum of the original source file
+[?2004l[?2004h>   file_sha256=$(sha256sum "$file_path" | awk '{print $1}')
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Get file size in bytes
+[?2004l[?2004h>   file_size=$(stat -c%s "$file_path")
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Add details to intermediate log (will be sorted later)
+[?2004l[?2004h>   echo "${rel_path}|${archive_name}|${file_sha256}|${file_size}" >> "$INTERMEDIATE_LOG_FILE"
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Create the archive in the background
+[?2004l[?2004h>   # tar -C <parent_of_item> -${tar_compress_flag}vf <archive_path> <item_relative_to_parent>
+[?2004l[?2004h>   # Example: tar -C /home/user/configs -zvf /home/user/backups/app_v1.2.tar.gz subdir/app.conf
+[?2004l[?2004h>   # This means we need to cd into $CONFIGS_DIR first, then tar the relative path
+[?2004l[?2004h>   
+[?2004l[?2004h>   # Construct command for background job
+[?2004l[?2004h>   # tar is run from CONFIGS_DIR so paths are relative
+[?2004l[?2004h>   ( 
+[?2004l[?2004h>     cd "$CONFIGS_DIR" || exit 1
+[?2004l[?2004h>     tar -C "$CONFIGS_DIR" -${tar_compress_flag}cf "$target_archive_path" "${rel_path}" 
+[?2004l[?2004h>   ) &
+[?2004l[?2004h>   background_pids+=($!)
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Wait for all background jobs to finish
+[?2004l[?2004h> # Check if any background_pids were actually spawned
+[?2004l[?2004h> if [ ${#background_pids[@]} -eq 0 ]; then
+[?2004l[?2004h>   echo "No files matching criteria found for individual backups. Proceeding to full archive." >&2
+[?2004l[?2004h> else
+[?2004l[?2004h>   echo "Waiting for ${#background_pids[@]} background archiving jobs to complete..."
+[?2004l[?2004h>   for pid in "${background_pids[@]}"; do
+[?2004l[?2004h>     wait "$pid" || {
+[?2004l[?2004h>       echo "Error: Background job (PID $pid) exited with a non-zero status." >&2
+[?2004l[?2004h>       # Propagate error if any background job fails
+[?2004l[?2004h>       false 
+[?2004l[?2004h>     }
+[?2004l[?2004h>   done
+[?2004l[?2004h>   echo "All background archiving jobs completed."
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # 3. Create Full Archive
+[?2004l[?2004h> # Path: /home/user/backups/configs_full_<BACKUP_ID>.tar.xz
+[?2004l[?2004h> full_archive_name="configs_full_${BACKUP_ID}.tar.xz"
+[?2004l[?2004h> full_archive_path="${BACKUPS_DIR}/${full_archive_name}"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Creating full archive: ${full_archive_path}..."
+[?2004l[?2004h> tar -C "$(dirname "$CONFIGS_DIR")" -Jcf "$full_archive_path" "$(basename "$CONFIGS_DIR")"
+[?2004l[?2004h> 
+[?2004l[?2004h> # 4. Generate Log File
+[?2004l[?2004h> # Sort intermediate log file by SHA256 column
+[?2004l[?2004h> # Sort options:
+[?2004l[?2004h> # -k4,4: Sort by 4th field (SHA256)
+[?2004l[?2004h> # -t'|': Use pipe as delimiter
+[?2004l[?2004h> # -o: Specify output file
+[?2004l[?2004h> sort -k4,4 -t'|' -o "$SORTED_LOG_FILE" "$INTERMEDIATE_LOG_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Move sorted log to final log file name
+[?2004l[?2004h> mv "$SORTED_LOG_FILE" "$LOG_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Backup process completed successfully."
+[?2004l[?2004h> echo "Log file: $LOG_FILE"
+[?2004l[?2004h> echo "Individual archives are in: $BACKUPS_DIR"
+[?2004l[?2004h> echo "Full archive: $full_archive_path"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Clean up temporary files (if any, though mv handles this)
+[?2004l[?2004h> # rm -f "$INTERMEDIATE_LOG_FILE" "$SORTED_LOG_FILE" # Not strictly needed if mv is used
+[?2004l[?2004h> 
+[?2004l[?2004h> # Exit successfully
+[?2004l[?2004h> exit 0
+[?2004l[?2004h> EOFchmod +x ~/backup_configs.sh
+[?2004l[?2004h> echo "Script created: ~/backup_configs.sh"
+[?2004l[?2004h> 

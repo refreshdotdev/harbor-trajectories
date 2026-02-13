@@ -1,0 +1,817 @@
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:~# clear
+[?2004l[H[J[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:~# cd /home/user/projects/api-test
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# python3 -c "
+[?2004l[?2004h> import json
+[?2004l[?2004h> 
+[?2004l[?2004h> # Define the schema structure
+[?2004l[?2004h> schema = {
+[?2004l[?2004h>     'type': 'object',
+[?2004l[?2004h>     'properties': {
+[?2004l[?2004h>         'id': {'type': 'integer'},
+[?2004l[?2004h>         'name': {'type': 'string'},
+[?2004l[?2004h>         'email': {'type': 'string', 'format': 'email'},
+[?2004l[?2004h>         'isActive': {'type': 'boolean'},
+[?2004l[?2004h>         'role': {'type': 'string', 'enum': ['admin', 'user', 'manager']}
+[?2004l[?2004h>     },
+[?2004l[?2004h>     'required': ['id', 'name', 'email', 'isActive', 'role'],
+[?2004l[?2004h>     'additionalProperties': False
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create directories if needed
+[?2004l[?2004h> import os
+[?2004l[?2004h> os.makedirs('schema', exist_ok=True)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write the schema file
+[?2004l[?2004h> with open('schema/user.schema.json', 'w') as f:
+[?2004l[?2004h>     json.dump(schema, f, indent=2)
+[?2004l[?2004h> 
+[?2004l[?2004h> print('Schema created successfully at schema/user.schema.json')
+[?2004l[?2004h> " 2>/dev/null || echo 'Error: Python 3 not available'
+[?2004lSchema created successfully at schema/user.schema.json
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# python3 -c "
+[?2004ls.listdir(input_dir)):
+        if filename.endswith('.json') and not os.path.islink(os.path.join(input_dir, filename)):
+            processed_files += 1
+            file_path = os.path.join(input_dir, filename)
+            
+            try:
+                # Read file and handle BOM
+                with open(file_path, 'r', encoding='utf-8-sig') as f:
+                    content = f.read()
+                    bom_present = (content[:1] == '\ufeff')
+                    if bom_present:
+                        content = content[1:]
+                    
+                # Validate JSON syntax
+                try:
+                    user_data = json.loads(content)
+                except json.JSONDecodeError as e:
+                    log_entries.append(f'{log_prefix}{filename} - INVALID: JSON syntax error')
+                    continue
+                
+                # Validate against schema (simplified validation)
+                # Note: Full schema validation would require a proper JSON schema validator
+                required_fields = ['id', 'name', 'email', 'isActive', 'role']
+                if not all(field in user_data for field in required_fields):
+                    log_entries.append(f'{log_prefix}{filename} - INVALID: Missing required fields')
+                    continue
+                
+                # Role-specific validation (simplified)
+                role = user_data.get('role')
+                if role == 'admin' and 'department' not in user_data:
+                    log_entries.append(f'{log_prefix}{filename} - INVALID: Admin must have department')
+                    continue
+                elif role == 'user' and 'department' in user_data:
+                    log_entries.append(f'{log_prefix}{filename} - INVALID: User must not have department')
+                    continue
+                elif role == 'manager':
+                    is_active = user_data.get('isActive', False)
+                    if is_active and 'department' not in user_data:
+                        log_entries.append(f'{log_prefix}{filename} - INVALID: Active manager must have department')
+                        continue
+                    elif not is_active and 'department' in user_data:
+                        log_entries.append(f'{log_prefix}{filename} - INVALID: Inactive manager must not have department')
+                        continue
+                
+                # If all validations pass, add to valid users
+                # Apply transformations: lowercase email, uppercase role
+                valid_user = OrderedDict()
+                valid_user['email'] = user_data['email'].lower()
+                valid_user['id'] = user_data['id']
+                valid_user['role'] = user_data['role'].upper()
+                valid_users.append(valid_user)
+                
+                # Log with BOM status
+                status = 'VALID (BOM stripped)' if bom_present else 'VALID'
+                log_entries.append(f'{log_prefix}{filename} - {status}')
+                        
+            except Exception as e:
+                log_entr[?2004h> import os
+[?2004l[?2004h> import json
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import re
+[?2004l[?2004h> from collections import OrderedDict
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create output directory
+[?2004l[?2004h> os.makedirs('output', exist_ok=True)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get log prefix from environment variable TEST_CONF
+[?2004l[?2004h> log_prefix = ''
+[?2004l[?2004h> try:
+[?2004l[?2004h>     conf_file = os.environ.get('TEST_CONF')
+[?2004l[?2004h>     if conf_file:
+[?2004l[?2004h>         with open(conf_file, 'r') as f:
+[?2004l[?2004h>             content = f.read()
+[?2004l[?2004h>             match = re.search(r'LOG_PREFIX\s*=\s*"([^"]*)"', content)
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             if match:
+[?2004l[?2004h>                 log_prefix = match.group(1)
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     else:
+[?2004lbash: else:: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         print('Warning: TEST_CONF environment variable not set', file=sys.stderr)
+[?2004lbash: syntax error near unexpected token `'Warning: TEST_CONF environment variable not set','
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# except Exception as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     print(f'Error reading config: {e}', file=sys.stderr)
+[?2004lbash: syntax error near unexpected token `f'Error reading config: {e}','
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Initialize counters
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# processed_files = 0
+[?2004lbash: processed_files: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# valid_users = []
+[?2004lbash: valid_users: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# log_entries = []
+[?2004lbash: log_entries: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Process input files
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# def process_input_files():
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     global processed_files, valid_users, log_entries
+[?2004lbash: global: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     input_dir = 'input'
+[?2004lbash: input_dir: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     if not os.path.exists(input_dir):
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         print(f'Input directory not found: {input_dir}')
+[?2004lbash: syntax error near unexpected token `f'Input directory not found: {input_dir}''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         return
+[?2004lbash: return: can only `return' from a function or sourced script
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     for filename in sorted(os.listdir(input_dir)):
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         if filename.endswith('.json') and not os.path.islink(os.path.join(input_dir, filename)):
+[?2004lbash: syntax error near unexpected token `'.json''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             processed_files += 1
+[?2004lbash: processed_files: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             file_path = os.path.join(input_dir, filename)
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             try:
+[?2004lbash: try:: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # Read file and handle BOM
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 with open(file_path, 'r', encoding='utf-8-sig') as f:
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     content = f.read()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     bom_present = (content[:1] == '\ufeff')
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     if bom_present:
+[?2004l[?2004h>                         content = content[1:]
+[?2004l[?2004h>                     
+[?2004l[?2004h>                 # Validate JSON syntax
+[?2004l[?2004h>                 try:
+[?2004l[?2004h>                     user_data = json.loads(content)
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 except json.JSONDecodeError as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     log_entries.append(f'{log_prefix}{filename} - INVALID: JSON syntax error')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: JSON syntax error''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # Validate against schema (simplified validation)
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # Note: Full schema validation would require a proper JSON schema validator
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 required_fields = ['id', 'name', 'email', 'isActive', 'role']
+[?2004lbash: required_fields: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 if not all(field in user_data for field in required_fields):
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     log_entries.append(f'{log_prefix}{filename} - INVALID: Missing required fields')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: Missing required fields''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # Role-specific validation (simplified)
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 role = user_data.get('role')
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 if role == 'admin' and 'department' not in user_data:
+[?2004l[?2004h>                     log_entries.append(f'{log_prefix}{filename} - INVALID: Admin must have department')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: Admin must have department''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 elif role == 'user' and 'department' in user_data:
+[?2004lbash: syntax error near unexpected token `elif'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     log_entries.append(f'{log_prefix}{filename} - INVALID: User must not have department')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: User must not have department''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 elif role == 'manager':
+[?2004lbash: syntax error near unexpected token `elif'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     is_active = user_data.get('isActive', False)
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     if is_active and 'department' not in user_data:
+[?2004l[?2004h>                         log_entries.append(f'{log_prefix}{filename} - INVALID: Active manager must have department')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: Active manager must have department''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                         continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     elif not is_active and 'department' in user_data:
+[?2004lbash: syntax error near unexpected token `elif'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                         log_entries.append(f'{log_prefix}{filename} - INVALID: Inactive manager must not have department')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: Inactive manager must not have department''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                         continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # If all validations pass, add to valid users
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # Apply transformations: lowercase email, uppercase role
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 valid_user = OrderedDict()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 valid_user['email'] = user_data['email'].lower()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 valid_user['id'] = user_data['id']
+[?2004lbash: valid_user[id]: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 valid_user['role'] = user_data['role'].upper()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 valid_users.append(valid_user)
+[?2004lbash: syntax error near unexpected token `valid_user'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # Log with BOM status
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 status = 'VALID (BOM stripped)' if bom_present else 'VALID'
+[?2004lbash: status: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 log_entries.append(f'{log_prefix}{filename} - {status}')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - {status}''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                         
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             except Exception as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 log_entries.append(f'{log_prefix}{filename} - INVALID: {str(e)}')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: {str(e)}''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Generate log file in ISO-8859-1 encoding
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# def generate_log_file():
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     try:
+[?2004lbash: try:: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         log_content = '\n'.join(log_entries).encode('iso-8859-1')
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         with open('output/validation.log', 'wb') as f:
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             f.write(log_content)
+[?2004lbash: syntax error near unexpected token `log_content'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     except Exception as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         print(f'Error writing log file: {e}', file=sys.stderr)
+[?2004lbash: syntax error near unexpected token `f'Error writing log file: {e}','
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Generate valid users JSON without trailing newline
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# def generate_valid_users_file():
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     try:
+[?2004lbash: try:: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         # Create a string with no trailing newline
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         json_str = json.dumps(valid_users, indent=2)
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         # Remove the trailing newline that json.dumps adds
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         json_str = json_str.rstrip() + '\n'
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         with open('output/valid_users.json', 'w') as f:
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             f.write(json_str)
+[?2004lbash: syntax error near unexpected token `json_str'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     except Exception as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         print(f'Error writing valid users file: {e}', file=sys.stderr)
+[?2004lbash: syntax error near unexpected token `f'Error writing valid users file: {e}','
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Generate summary file with CRLF line endings
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# def generate_summary_file():
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     try:
+[?2004lbash: try:: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         # Calculate MD5 hash of the log file
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         import hashlib
+[?2004lbash: import: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         with open('output/validation.log', 'rb') as f:
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             log_content = f.read()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         log_md5 = hashlib.md5(log_content).hexdigest()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         summary_content = f'Files: {processed_files}\r\nPassed: {len(valid_users)}\r\nLog Checksum: {log_md5}\r\n'
+[?2004lbash: summary_content: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         with open('output/summary.txt', 'w') as f:
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             f.write(summary_content)
+[?2004lbash: syntax error near unexpected token `summary_content'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     except Exception as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         print(f'Error writing summary file: {e}', file=sys.stderr)
+[?2004lbash: syntax error near unexpected token `f'Error writing summary file: {e}','
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Main execution
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# if __name__ == '__main__':
+[?2004l[?2004h>     process_input_files()
+[?2004l[?2004h>     generate_log_file()
+[?2004lbash: syntax error near unexpected token `generate_log_file'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     generate_valid_users_file()
+[?2004l[?2004h>     generate_summary_file()
+[?2004lbash: syntax error near unexpected token `generate_summary_file'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     print('Processing complete. Deliverables generated.')
+[?2004lbash: syntax error near unexpected token `'Processing complete. Deliverables generated.''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# " 2>/dev/null || echo 'Error: Python 3 script execution failed'
+[?2004l[?2004h> cat > process_inputs.py << 'EOF'
+[?2004l[?2004h> import os
+[?2004l[?2004h> import json
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import re
+[?2004l[?2004h> from collections import OrderedDict
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create output directory
+[?2004l[?2004h> os.makedirs('output', exist_ok=True)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get log prefix from environment variable TEST_CONF
+[?2004l[?2004h> log_prefix = ''
+[?2004l[?2004h> try:
+[?2004l[?2004h>     conf_file = os.environ.get('TEST_CONF')
+[?2004l[?2004h>     if conf_file and os.path.exists(conf_file):
+[?2004l[?2004h>         with open(conf_file, 'r') as f:
+[?2004l[?2004h>             content = f.read()
+[?2004l[?2004h>             match = re.search(r'LOG_PREFIX\s*=\s*"([^"]*)"', content)
+[?2004l[?2004h>             if match:
+[?2004l[?2004h>                 log_prefix = match.group(1)
+[?2004l[?2004h>     else:
+[?2004l[?2004h>         print('Warning: TEST_CONF environment variable not set or file not found', file=sys.stderr)
+[?2004lbash: syntax error near unexpected token `$'[^"]*)"\', content)\n            if match:\n                log_prefix = match.group(1)\n    else:\n        print(\'Warning:''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# except Exception as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     print(f'Error reading config: {e}', file=sys.stderr)
+[?2004lbash: syntax error near unexpected token `f'Error reading config: {e}','
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Initialize counters
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# processed_files = 0
+[?2004lbash: processed_files: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# valid_users = []
+[?2004lbash: valid_users: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# log_entries = []
+[?2004lbash: log_entries: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Process input files
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# def process_input_files():
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     global processed_files, valid_users, log_entries
+[?2004lbash: global: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     input_dir = 'input'
+[?2004lbash: input_dir: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     if not os.path.exists(input_dir):
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         print(f'Input directory not found: {input_dir}')
+[?2004lbash: syntax error near unexpected token `f'Input directory not found: {input_dir}''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         return
+[?2004lbash: return: can only `return' from a function or sourced script
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     for filename in sorted(os.listdir(input_dir)):
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         if filename.endswith('.json') and not os.path.islink(os.path.join(input_dir, filename)):
+[?2004lbash: syntax error near unexpected token `'.json''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             processed_files += 1
+[?2004lbash: processed_files: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             file_path = os.path.join(input_dir, filename)
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             try:
+[?2004lbash: try:: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # Read file and handle BOM
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 with open(file_path, 'r', encoding='utf-8-sig') as f:
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     content = f.read()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     bom_present = (content[:1] == '\ufeff')
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     if bom_present:
+[?2004l[?2004h>                         content = content[1:]
+[?2004l[?2004h>                     
+[?2004l[?2004h>                 # Validate JSON syntax
+[?2004l[?2004h>                 try:
+[?2004l[?2004h>                     user_data = json.loads(content)
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 except json.JSONDecodeError as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     log_entries.append(f'{log_prefix}{filename} - INVALID: JSON syntax error')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: JSON syntax error''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # Validate against schema (simplified validation)
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 required_fields = ['id', 'name', 'email', 'isActive', 'role']
+[?2004lbash: required_fields: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 if not all(field in user_data for field in required_fields):
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     log_entries.append(f'{log_prefix}{filename} - INVALID: Missing required fields')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: Missing required fields''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # Role-specific validation (simplified)
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 role = user_data.get('role')
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 if role == 'admin' and 'department' not in user_data:
+[?2004l[?2004h>                     log_entries.append(f'{log_prefix}{filename} - INVALID: Admin must have department')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: Admin must have department''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 elif role == 'user' and 'department' in user_data:
+[?2004lbash: syntax error near unexpected token `elif'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     log_entries.append(f'{log_prefix}{filename} - INVALID: User must not have department')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: User must not have department''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 elif role == 'manager':
+[?2004lbash: syntax error near unexpected token `elif'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     is_active = user_data.get('isActive', False)
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     if is_active and 'department' not in user_data:
+[?2004l[?2004h>                         log_entries.append(f'{log_prefix}{filename} - INVALID: Active manager must have department')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: Active manager must have department''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                         continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                     elif not is_active and 'department' in user_data:
+[?2004lbash: syntax error near unexpected token `elif'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                         log_entries.append(f'{log_prefix}{filename} - INVALID: Inactive manager must not have department')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: Inactive manager must not have department''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                         continue
+[?2004lbash: continue: only meaningful in a `for', `while', or `until' loop
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # If all validations pass, add to valid users
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # Apply transformations: lowercase email, uppercase role
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 valid_user = OrderedDict()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 valid_user['email'] = user_data['email'].lower()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 valid_user['id'] = user_data['id']
+[?2004lbash: valid_user[id]: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 valid_user['role'] = user_data['role'].upper()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 valid_users.append(valid_user)
+[?2004lbash: syntax error near unexpected token `valid_user'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 # Log with BOM status
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 status = 'VALID (BOM stripped)' if bom_present else 'VALID'
+[?2004lbash: status: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 log_entries.append(f'{log_prefix}{filename} - {status}')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - {status}''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                         
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             except Exception as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#                 log_entries.append(f'{log_prefix}{filename} - INVALID: {str(e)}')
+[?2004lbash: syntax error near unexpected token `f'{log_prefix}{filename} - INVALID: {str(e)}''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Generate log file in ISO-8859-1 encoding
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# def generate_log_file():
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     try:
+[?2004lbash: try:: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         log_content = '\n'.join(log_entries).encode('iso-8859-1')
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         with open('output/validation.log', 'wb') as f:
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             f.write(log_content)
+[?2004lbash: syntax error near unexpected token `log_content'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     except Exception as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         print(f'Error writing log file: {e}', file=sys.stderr)
+[?2004lbash: syntax error near unexpected token `f'Error writing log file: {e}','
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Generate valid users JSON without trailing newline
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# def generate_valid_users_file():
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     try:
+[?2004lbash: try:: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         # Create a string with no trailing newline
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         json_str = json.dumps(valid_users, indent=2)
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         # Remove the trailing newline that json.dumps adds
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         json_str = json_str.rstrip() + '\n'
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         with open('output/valid_users.json', 'w') as f:
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             f.write(json_str)
+[?2004lbash: syntax error near unexpected token `json_str'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     except Exception as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         print(f'Error writing valid users file: {e}', file=sys.stderr)
+[?2004lbash: syntax error near unexpected token `f'Error writing valid users file: {e}','
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Generate summary file with CRLF line endings
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# def generate_summary_file():
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     try:
+[?2004lbash: try:: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         # Calculate MD5 hash of the log file
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         import hashlib
+[?2004lbash: import: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         with open('output/validation.log', 'rb') as f:
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             log_content = f.read()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         log_md5 = hashlib.md5(log_content).hexdigest()
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         summary_content = f'Files: {processed_files}\r\nPassed: {len(valid_users)}\r\nLog Checksum: {log_md5}\r\n'
+[?2004lbash: summary_content: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         with open('output/summary.txt', 'w') as f:
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#             f.write(summary_content)
+[?2004lbash: syntax error near unexpected token `summary_content'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     except Exception as e:
+[?2004lbash: except: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#         print(f'Error writing summary file: {e}', file=sys.stderr)
+[?2004lbash: syntax error near unexpected token `f'Error writing summary file: {e}','
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# # Main execution
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# if __name__ == '__main__':
+[?2004l[?2004h>     process_input_files()
+[?2004l[?2004h>     generate_log_file()
+[?2004lbash: syntax error near unexpected token `generate_log_file'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     generate_valid_users_file()
+[?2004l[?2004h>     generate_summary_file()
+[?2004lbash: syntax error near unexpected token `generate_summary_file'
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test#     print('Processing complete. Deliverables generated.')
+[?2004lbash: syntax error near unexpected token `'Processing complete. Deliverables generated.''
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# EOF
+[?2004lbash: EOF: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# python3 process_inputs.py
+[?2004lpython3: can't open file '/home/user/projects/api-test/process_inputs.py': [Errno 2] No such file or directory
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# echo 'import os
+[?2004l      return
+    
+    for filename in sorted(os.listdir(input_dir)):
+        if filename.endswith(".json") and not os.path.islink(os.path.join(input_dir, filename)):
+            processed_files += 1
+            file_path = os.path.join(input_dir, filename)
+            
+            try:
+                # Read file and handle BOM
+                with open(file_path, "r", encoding="utf-8-sig") as f:
+                    content = f.read()
+                    bom_present = (content[:1] == "\\ufeff")
+                    if bom_present:
+                        content = content[1:]
+                    
+                # Validate JSON syntax
+                try:
+                    user_data = json.loads(content)
+                except json.JSONDecodeError as e:
+                    log_entries.append(f"{log_prefix}{filename} - INVALID: JSON syntax error")
+                    continue
+                
+                # Validate against schema (simplified validation)
+                required_fields = ["id", "name", "email", "isActive", "role"]
+                if not all(field in user_data for field in required_fields):
+                    log_entries.append(f"{log_prefix}{filename} - INVALID: Missing required fields")
+                    continue
+                
+                # Role-specific validation (simplified)
+                role = user_data.get("role")
+                if role == "admin" and "department" not in user_data:
+                    log_entries.append(f"{log_prefix}{filename} - INVALID: Admin must have department")
+                    continue
+                elif role == "user" and "department" in user_data:
+                    log_entries.append(f"{log_prefix}{filename} - INVALID: User must not have department")
+                    continue
+                elif role == "manager":
+                    is_active = user_data.get("isActive", False)
+                    if is_active and "department" not in user_data:
+                        log_entries.append(f"{log_prefix}{filename} - INVALID: Active manager must have department")
+                        continue
+                    elif not is_active and "department" in user_data:
+                        log_entries.append(f"{log_prefix}{filename} - INVALID: Inactive manager must not have department")
+                        continue
+                
+                # If all validations pass, add to valid users
+                # Apply transformations: lowercase email, uppercase role
+                valid_user = OrderedDict()
+                valid_user["email"] = user_data["email"].lower()
+                valid_user["id"] = user_data["id"]
+                valid_user["role"] = user_data["role"].upper()
+                valid_users.append(valid_user)
+                
+                # Log with BOM status
+                status = "VALID (BOM stripped)" if bom_present else "VALID"
+                log_entries.append(f"{log_prefix}{filename} - {status}")
+                        
+            except Exception as e:
+                log_entries.append(f"{log_prefix}{filename} - INVALID: {[?2004h> import json
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import re
+[?2004lile in[?2004h> from collections import OrderedDict
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create output directory
+[?2004l[?2004h> os.makedirs("output", exist_ok=True)
+[?2004l[?2004h> 
+[?2004l.[?2004h> # Get log prefix from environment variable TEST_CONF
+[?2004l[?2004h> log_prefix = ""
+[?2004l[?2004h> try:
+[?2004lf[?2004h>     conf_file = os.environ.get("TEST_CONF")
+[?2004l[?2004h>     if conf_file and os.path.exists(conf_file):
+[?2004l[?2004h>         with open(conf_file, "r") as f:
+[?2004l[?2004h>             content = f.read()
+[?2004l[?2004h>             match = re.search(r"LOG_PREFIX\\s*=\\s*\"([^\"]*)\"", content)
+[?2004l[?2004h>             if match:
+[?2004l[?2004h>                 log_prefix = match.group(1)
+[?2004l[?2004h>     else:
+[?2004l[?2004h>         print("Warning: TEST_CONF environment variable not set or file not found", file=sys.stderr)
+[?2004l[?2004h> except Exception as e:
+[?2004l[?2004h>     print(f"Error reading config: {e}", file=sys.stderr)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize counters
+[?2004l[?2004h> processed_files = 0
+[?2004l[?2004h> valid_users = []
+[?2004l[?2004h> log_entries = []
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process input files
+[?2004l[?2004h> def process_input_files():
+[?2004l[?2004h>     global processed_files, valid_users, log_entries
+[?2004l[?2004h>     
+[?2004l[?2004h>     input_dir = "input"
+[?2004l[?2004h>     if not os.path.exists(input_dir):
+[?2004l[?2004h>         print(f"Input directory not found: {input_dir}")
+[?2004l[?2004h>         return
+[?2004l[?2004h>     
+[?2004l[?2004h>     for filename in sorted(os.listdir(input_dir)):
+[?2004l[?2004h>         if filename.endswith(".json") and not os.path.islink(os.path.join(input_dir, filename)):
+[?2004l[?2004h>             processed_files += 1
+[?2004l[?2004h>             file_path = os.path.join(input_dir, filename)
+[?2004l[?2004h>             
+[?2004l[?2004h>             try:
+[?2004l[?2004h>                 # Read file and handle BOM
+[?2004l[?2004h>                 with open(file_path, "r", encoding="utf-8-sig") as f:
+[?2004l[?2004h>                     content = f.read()
+[?2004l[?2004h>                     bom_present = (content[:1] == "\\ufeff")
+[?2004l[?2004h>                     if bom_present:
+[?2004l[?2004h>                         content = content[1:]
+[?2004l[?2004h>                     
+[?2004l[?2004h>                 # Validate JSON syntax
+[?2004l[?2004h>                 try:
+[?2004l[?2004h>                     user_data = json.loads(content)
+[?2004l[?2004h>                 except json.JSONDecodeError as e:
+[?2004l[?2004h>                     log_entries.append(f"{log_prefix}{filename} - INVALID: JSON syntax error")
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # Validate against schema (simplified validation)
+[?2004l[?2004h>                 required_fields = ["id", "name", "email", "isActive", "role"]
+[?2004l[?2004h>                 if not all(field in user_data for field in required_fields):
+[?2004l[?2004h>                     log_entries.append(f"{log_prefix}{filename} - INVALID: Missing required fields")
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # Role-specific validation (simplified)
+[?2004l[?2004h>                 role = user_data.get("role")
+[?2004l[?2004h>                 if role == "admin" and "department" not in user_data:
+[?2004l[?2004h>                     log_entries.append(f"{log_prefix}{filename} - INVALID: Admin must have department")
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 elif role == "user" and "department" in user_data:
+[?2004l[?2004h>                     log_entries.append(f"{log_prefix}{filename} - INVALID: User must not have department")
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 elif role == "manager":
+[?2004l[?2004h>                     is_active = user_data.get("isActive", False)
+[?2004l[?2004h>                     if is_active and "department" not in user_data:
+[?2004l[?2004h>                         log_entries.append(f"{log_prefix}{filename} - INVALID: Active manager must have department")
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>                     elif not is_active and "department" in user_data:
+[?2004l[?2004h>                         log_entries.append(f"{log_prefix}{filename} - INVALID: Inactive manager must not have department")
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # If all validations pass, add to valid users
+[?2004l[?2004h>                 # Apply transformations: lowercase email, uppercase role
+[?2004l[?2004h>                 valid_user = OrderedDict()
+[?2004l[?2004h>                 valid_user["email"] = user_data["email"].lower()
+[?2004l[?2004h>                 valid_user["id"] = user_data["id"]
+[?2004l[?2004h>                 valid_user["role"] = user_data["role"].upper()
+[?2004l[?2004h>                 valid_users.append(valid_user)
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # Log with BOM status
+[?2004l[?2004h>                 status = "VALID (BOM stripped)" if bom_present else "VALID"
+[?2004l[?2004h>                 log_entries.append(f"{log_prefix}{filename} - {status}")
+[?2004l[?2004h>                         
+[?2004l[?2004h>             except Exception as e:
+[?2004l[?2004h>                 log_entries.append(f"{log_prefix}{filename} - INVALID: {str(e)}")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate log file in ISO-8859-1 encoding
+[?2004l[?2004h> def generate_log_file():
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         log_content = "\\n".join(log_entries).encode("iso-8859-1")
+[?2004l[?2004h>         with open("output/validation.log", "wb") as f:
+[?2004l[?2004h>             f.write(log_content)
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Error writing log file: {e}", file=sys.stderr)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate valid users JSON without trailing newline
+[?2004l[?2004h> def generate_valid_users_file():
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         # Create a string with no trailing newline
+[?2004l[?2004h>         json_str = json.dumps(valid_users, indent=2)
+[?2004l[?2004h>         # Remove the trailing newline that json.dumps adds
+[?2004l[?2004h>         json_str = json_str.rstrip() + "\\n"
+[?2004l[?2004h>         with open("output/valid_users.json", "w") as f:
+[?2004l[?2004h>             f.write(json_str)
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Error writing valid users file: {e}", file=sys.stderr)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate summary file with CRLF line endings
+[?2004l[?2004h> def generate_summary_file():
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         # Calculate MD5 hash of the log file
+[?2004l[?2004h>         import hashlib
+[?2004l[?2004h>         with open("output/validation.log", "rb") as f:
+[?2004l[?2004h>             log_content = f.read()
+[?2004l[?2004h>         log_md5 = hashlib.md5(log_content).hexdigest()
+[?2004l[?2004h>         
+[?2004l[?2004h>         summary_content = f"Files: {processed_files}\\r\\nPassed: {len(valid_users)}\\r\\nLog Checksum: {log_md5}\\r\\n"
+[?2004l[?2004h>         with open("output/summary.txt", "w") as f:
+[?2004l[?2004h>             f.write(summary_content)
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Error writing summary file: {e}", file=sys.stderr)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main execution
+[?2004l[?2004h> if __name__ == "__main__":
+[?2004l[?2004h>     process_input_files()
+[?2004l[?2004h>     generate_log_file()
+[?2004l[?2004h>     generate_valid_users_file()
+[?2004l[?2004h>     generate_summary_file()
+[?2004l[?2004h>     print("Processing complete. Deliverables generated.")' > process_inputs.py
+[?2004l[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# python3 process_inputs.py
+[?2004lProcessing complete. Deliverables generated.
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# ls -la schema/ output/
+[?2004loutput/:
+total 12
+drwxrwxrwx 1 root root  87 Feb 13 18:59 [0m[34;42m.[0m
+drwxrwxrwx 1 root root  75 Feb 13 18:59 [34;42m..[0m
+-rw-r--r-- 1 root root  75 Feb 13 18:59 summary.txt
+-rw-r--r-- 1 root root 304 Feb 13 18:59 valid_users.json
+-rw-r--r-- 1 root root 182 Feb 13 18:59 validation.log
+
+schema/:
+total 4
+drwxrwxrwx 1 root root  38 Feb 13 18:57 [34;42m.[0m
+drwxrwxrwx 1 root root  75 Feb 13 18:59 [34;42m..[0m
+-rw-r--r-- 1 root root 486 Feb 13 18:57 user.schema.json
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# cat schema/user.schema.json
+[?2004l{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer"
+    },
+    "name": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "isActive": {
+      "type": "boolean"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "user",
+        "manager"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "email",
+    "isActive",
+    "role"
+  ],
+  "additionalProperties": false
+}[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# file output/validation.log
+[?2004lbash: file: command not found
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# cat output/validation.log
+[?2004luser1.json - VALID\nuser2.json - VALID\nuser3.json - VALID\nuser4_bom.json - VALID\nuser5.json - INVALID: Active manager must have department\nuser7.json - INVALID: JSON syntax error[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# cat output/valid_users.json
+[?2004l[
+  {
+    "email": "admin@example.com",
+    "id": 1,
+    "role": "ADMIN"
+  },
+  {
+    "email": "mgr1@example.com",
+    "id": 2,
+    "role": "MANAGER"
+  },
+  {
+    "email": "mgr2@example.com",
+    "id": 3,
+    "role": "MANAGER"
+  },
+  {
+    "email": "bom@test.com",
+    "id": 4,
+    "role": "USER"
+  }
+]\n[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# tail -c 1 output/valid_users.json | od -c
+[?2004l0000000   n
+0000001
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# cat output/summary.txt
+[?2004lFiles: 6\r\nPassed: 4\r\nLog Checksum: 893e52cc34fdf1306b9d11ba63d81a16\r\n[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# tail -c 2 output/summary.txt | od -c
+[?2004l0000000   \   n
+0000002
+[?2004hroot@86753427-7808-482c-8ff7-8f392a0d20f2:/home/user/projects/api-test# 

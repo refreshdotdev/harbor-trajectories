@@ -1,0 +1,58 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 3 items
+
+../../tests/test_final_state.py::test_corruption_report FAILED           [ 33%]
+../../tests/test_final_state.py::test_inventory_content FAILED           [ 66%]
+../../tests/test_final_state.py::test_manifest_file FAILED               [100%]
+
+=================================== FAILURES ===================================
+____________________________ test_corruption_report ____________________________
+
+    def test_corruption_report():
+        assert CORRUPTION_FILE.exists(), "corruption_report.txt missing"
+        content = CORRUPTION_FILE.read_bytes()
+        # The line in exp_alpha was "data_dirty.csv | READY \n"
+        # 1 trailing space.
+>       assert b"data_dirty.csv | READY \n" in content, "Corrupted line not found in report exactly as bytes"
+E       AssertionError: Corrupted line not found in report exactly as bytes
+E       assert b'data_dirty.csv | READY \n' in b'exp_delta: corrupted_line_bad.pt | READY | corrupt_data'
+
+/tests/test_final_state.py:50: AssertionError
+____________________________ test_inventory_content ____________________________
+
+    def test_inventory_content():
+        assert INVENTORY_FILE.exists(), "inventory.csv missing"
+    
+        with open(INVENTORY_FILE, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+    
+        header = lines[0].strip()
+        assert header == "Artifact|NameHash|Locations", "Header format incorrect"
+    
+        data_rows = [line.strip().split('|') for line in lines[1:] if line.strip()]
+>       assert len(data_rows) == 4, f"Expected 4 valid artifacts, found {len(data_rows)}"
+E       AssertionError: Expected 4 valid artifacts, found 7
+E       assert 7 == 4
+E        +  where 7 = len([['also_corrupted.pt', '951199e0c4320a9b6721a85fc9ad58a2', 'experiments/exp_delta'], ['corrupted_model.pt', '161d1ce590dd9f22bca5ca252c74cd01', 'experiments/exp_gamma'], ['model_v3.pt', 'eb94fc87e4ae3948e498b14f6bcc2ae5', 'experiments/exp_alpha'], ['new_model_v1.pt', '720afb0c90ee53480cf26b8dcfb6a623', 'experiments/exp_beta'], ['new_model_v2.pt', 'eb72f0542799d108fa52e7765a32f2b6', 'experiments/exp_beta'], ['valid_line_ok.pt', '271f4642ccd05d9410c08ff84e54a766', 'experiments/exp_delta'], ...])
+
+/tests/test_final_state.py:62: AssertionError
+______________________________ test_manifest_file ______________________________
+
+    def test_manifest_file():
+        assert MANIFEST_FILE.exists(), "manifest.yaml missing"
+    
+        with open(MANIFEST_FILE, 'r') as f:
+            manifest = yaml.safe_load(f)
+    
+>       assert manifest['total_artifacts'] == 4
+E       assert 7 == 4
+
+/tests/test_final_state.py:84: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_corruption_report - AssertionErr...
+FAILED ../../tests/test_final_state.py::test_inventory_content - AssertionErr...
+FAILED ../../tests/test_final_state.py::test_manifest_file - assert 7 == 4
+============================== 3 failed in 0.04s ===============================

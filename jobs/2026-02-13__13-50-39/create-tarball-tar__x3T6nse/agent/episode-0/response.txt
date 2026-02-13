@@ -1,0 +1,52 @@
+{
+  "analysis": "The terminal session is currently at the root user's home directory (~). No prior backup-related commands have been executed, so the backup script implementation needs to be built from scratch.",
+  "plan": [
+    "1. Determine the backup destination and log file paths from environment variables (with defaults if unset).",
+    "2. Create the destination directory and log directory if they don't exist.",
+    "3. Generate a timestamp for the archive filename (YYYYMMDD) and the log entry's formatted timestamp (YYYY-MM-DD HH:MM:SS).",
+    "4. Implement archive rotation: if daily_YYYYMMDD.tar.gz already exists, rename it to daily_YYYYMMDD.tar.gz.bak-UNIXTIMESTAMP.",
+    "5. Create the compressed tar archive (daily_YYYYMMDD.tar.gz) from /home/user/data, excluding .tmp files and broken symlinks.",
+    "6. Set proper ownership (root:root) and permissions (no 'others' permissions) for all archive members.",
+    "7. Generate a SHA-256 checksum file (daily_YYYYMMDD.sha256) in the backup destination.",
+    "8. Append a log entry to LOG_FILE: if the log file doesn't exist, first write the header line 'TIMESTAMP | ARCHIVE | STATUS', then append the formatted log entry."
+  ],
+  "commands": [
+    {
+      "keystrokes": "DEST=${BACKUP_DEST:-/home/user/archives} && LOG=${LOG_FILE:-/home/user/backup_logs/backup.log}\necho \"Destination: $DEST, Log file: $LOG\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "mkdir -p \"$DEST\" && mkdir -p \"$(dirname \"$LOG\")\"\necho \"Created destination and log directories.\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "TIMESTAMP_ARCHIVE=$(date +%Y%m%d) && TIMESTAMP_LOG=$(date '+%Y-%m-%d %H:%M:%S')\nARCHIVE_FILE=\"daily_$TIMESTAMP_ARCHIVE.tar.gz\" && CHECKSUM_FILE=\"daily_$TIMESTAMP_ARCHIVE.sha256\"\necho \"Archive: $ARCHIVE_FILE, Checksum: $CHECKSUM_FILE, Log timestamp: $TIMESTAMP_LOG\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "if [ -f \"$DEST/$ARCHIVE_FILE\" ]; then\n  UNIX_TIMESTAMP=$(date +%s)\n  mv \"$DEST/$ARCHIVE_FILE\" \"$DEST/${ARCHIVE_FILE}.bak-$UNIX_TIMESTAMP\"\n  echo \"Rotated existing archive: $ARCHIVE_FILE → ${ARCHIVE_FILE}.bak-$UNIX_TIMESTAMP\"\nfi\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "tar -czf \"$DEST/$ARCHIVE_FILE\" --exclude='*.tmp' --exclude='broken_symlinks' -C /home/user/data .\necho \"Created archive: $ARCHIVE_FILE\"\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "tar -f \"$DEST/$ARCHIVE_FILE\" --owner=0 --group=0 --mode='g=o-rwx' --no-same-owner --paxlibname=generic --xattrs=0 --rsh=\"sh -c 'chmod o-rwx \\\"\\$1\\\"' -- \\$1\" --files-from /dev/null\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "sha256sum \"$DEST/$ARCHIVE_FILE\" > \"$DEST/$CHECKSUM_FILE\"\nawk '{print \"SHA256 (\" $2 \") = \" $1}' \"$DEST/$CHECKSUM_FILE\" > \"${DEST}/${CHECKSUM_FILE}.tmp\" && mv \"${DEST}/${CHECKSUM_FILE}.tmp\" \"$DEST/$CHECKSUM_FILE\"\necho \"Created checksum: $CHECKSUM_FILE\"\n",
+      "duration": 0.2
+    },
+    {
+      "keystrokes": "if [ ! -f \"$LOG\" ]; then\n  echo \"TIMESTAMP | ARCHIVE | STATUS\" > \"$LOG\"\n  echo \"Log header created.\"\nfi\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "echo \"$TIMESTAMP_LOG - $ARCHIVE_FILE - OK\" >> \"$LOG\"\necho \"Log entry appended. Backup complete.\"\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}

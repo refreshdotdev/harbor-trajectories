@@ -1,0 +1,83 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user# cat > update_db_config_manual.py << 'EOF'
+> import re
+> import base64
+> import json
+>
+> # Read ticket data
+> with open('tickets/CR-1104-placeholder.json', 'r') as f:
+>     ticket = json.load(f)
+>
+> db_config = ticket['database']
+> decoded_password = base64.b64decode(db_config['password']).decode('utf-8')
+> original_max_connections = 50
+> new_max_connections = original_max_connections * db_config['connection_multiplier'] + db_config['connection_offset']
+>
+> # Read TOML file
+> lines = []
+> database_section_found = False
+> max_connections_found = False
+> features_section_found = False
+>
+> with open('configs/db-service.toml', 'r') as f:
+>     lines = f.readlines()
+>
+> # Update database section
+> for i in range(len(lines)):
+>     line = lines[i]
+>     if line.strip() == '[database]' and not database_section_found:
+>         database_section_found = True
+>         # Find and update host, port, password, max_connections
+>         for j in range(i, len(lines)):
+>             current_line = lines[j]
+>             if current_line.startswith('host ='):
+>                 lines[j] = f'host = "{db_config["host"]}"\n'
+>             elif current_line.startswith('port ='):
+>                 lines[j] = f'port = {db_config["port"]}\n'
+>             elif current_line.startswith('password ='):
+>                 lines[j] = f'password = "{decoded_password}"\n'
+>             elif current_line.startswith('max_connections ='):
+>                 max_connections_found = True
+>                 lines[j] = f'max_connections = {new_max_connections}\n'
+>             if current_line.strip().startswith('[') and current_line.strip() != '[database]':
+>                 break
+>     elif line.strip() == '[features]' and not features_section_found:
+>         features_section_found = True
+>         # Find and update logging
+>         for j in range(i, len(lines)):
+>             current_line = lines[j]
+>             if current_line.startswith('logging ='):
+>                 lines[j] = 'logging = true\n'
+>                 break
+>             if current_line.strip().startswith('['):
+>                 break
+>
+> # Ensure features section exists if not found
+> if not features_section_found:
+>     # Add features section at the end
+>     lines.append('\n[features]\n')
+>     lines.append('logging = true\n')
+>
+> # Write updated config
+> with open('configs/db-service.toml', 'w') as f:
+>     f.writelines(lines)
+>
+> print("Database configuration updated successfully")
+> EOF
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user# python3 update_db_config_manual.py
+Database configuration updated successfully
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user# cat configs/db-service.toml
+[database]
+host = "db.prod.example.com"
+port = 5432
+password = "secretpassword"
+max_connections = 105
+
+[features]
+logging = false
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user#

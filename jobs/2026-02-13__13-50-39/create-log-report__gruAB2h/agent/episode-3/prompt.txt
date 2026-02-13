@@ -1,0 +1,102 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+8e31aa:~# cat << 'EOF' > /tmp/process_files.sh
+> #!/bin/bash
+>
+> # Configuration
+> RAW_DIR="/home/user/datasets/raw"
+> ORG_DIR="/home/user/datasets/organized"
+> PNG_LARGE_DIR="$ORG_DIR/png_large"
+> JPG_OLD_DIR="$ORG_DIR/jpg_old"
+> MISC_SMALL_DIR="$ORG_DIR/misc_small"
+> LOG_TSV="$ORG_DIR/organize_log.tsv"
+> SUMMARY_JSON="$ORG_DIR/summary.json"
+> CUTOFF_EPOCH=1625097600
+> PNG_SIZE_THRESHOLD=1000000
+> MISC_SIZE_THRESHOLD=512000
+>
+> # Initialize counters for summary.json
+> MOVED_COUNT=0
+> COPIED_COUNT=0
+> TOTAL_BYTES=0
+>
+> # Read null-delimited paths from stdin (piped from find)
+> while IFS= read -r -d '' src_path; do
+>   # Skip broken symbolic links and files with no permissions
+>   if [ ! -L "$src_path" ] && [ -r "$src_path" ]; then
+>     ext="${src_path##*.}"
+>     fname="${src_path##*/}"
+>     fdir="${src_path%/*}"
+>     fparentdir="${fdir##*/}"
+>     fparentdir=${fparentdir:-"orphan"}
+>     fstem="${fname%.*}"
+>
+>     # Get file metadata
+>     size_bytes=$(stat --printf="%s" "$src_path" 2>/dev/null || echo 0)
+>     mtime_epoch=$(stat --printf="%Y" "$src_path" 2>/dev/null || echo 0)
+>     md5_hash=""  # Placeholder; md5sum will be calculated later
+>
+>     # Rule 1: png_large - Move PNG > 1MB
+>     if [ "$ext" = "png" ] && [ "$size_bytes" -gt "$PNG_SIZE_THRESHOLD" ]; then
+>       dest_dir="$PNG_LARGE_DIR"
+>       dest_path_base="${fstem}_${fparentdir}.${ext}"
+>       dest_path="$dest_dir/$dest_path_base"
+>
+>       while [ -e "$dest_path" ]; do
+>         dest_path_base="${fstem}_${fparentdir}_$((++counter)).${ext}"
+>         dest_path="$dest_dir/$dest_path_base"
+>       done
+>
+>       mv "$src_path" "$dest_path"
+>       MOVED_COUNT=$((MOVED_COUNT + 1))
+>       TOTAL_BYTES=$((TOTAL_BYTES + size_bytes))
+>
+>     # Rule 2: jpg_old - Copy JPG modified before cutoff epoch
+>     elif [ "$ext" = "jpg" ] && [ "$mtime_epoch" -lt "$CUTOFF_EPOCH" ]; then
+>       dest_dir="$JPG_OLD_DIR"
+>       dest_path_base="${fstem}_${fparentdir}.${ext}"
+>       dest_path="$dest_dir/$dest_path_base"
+>
+>       while [ -e "$dest_path" ]; do
+>         dest_path_base="${fstem}_${fparentdir}_$((++counter)).${ext}"
+>         dest_path="$dest_dir/$dest_path_base"
+>       done
+>
+>       cp -p "$src_path" "$dest_path"
+>       COPIED_COUNT=$((COPIED_COUNT + 1))
+>       TOTAL_BYTES=$((TOTAL_BYTES + size_bytes))
+>
+>     # Rule 3: misc_small - Copy other regular files <= 512KB (not .txt)
+>     elif [ ! "$ext" = "txt" ] && [ "$size_bytes" -le "$MISC_SIZE_THRESHOLD" ]; then
+>       dest_dir="$MISC_SMALL_DIR"
+>       dest_path_base="${fstem}_${fparentdir}.${ext}"
+>       dest_path="$dest_dir/$dest_path_base"
+>
+>       while [ -e "$dest_path" ]; do
+>         dest_path_base="${fstem}_${fparentdir}_$((++counter)).${ext}"
+>         dest_path="$dest_dir/$dest_path_base"
+>       done
+>
+>       cp -p "$src_path" "$dest_path"
+>       COPIED_COUNT=$((COPIED_COUNT + 1))
+>       TOTAL_BYTES=$((TOTAL_BYTES + size_bytes))
+>     fi
+>
+>     # Log action to TSV (md5_hash will be updated later)
+>     echo -e "$src_path\t$dest_path\t$size_bytes\t$mtime_epoch\t$md5_hash" >> "$LOG_TSV"
+>   fi
+> done
+>
+> # Generate final summary.json
+> echo '{"moved_count": $MOVED_COUNT, "copied_count": $COPIED_COUNT, "total_bytes": $TOTAL_BYTES}' > "$SUMMARY_JSON"
+>
+> # Sort final log TSV file
+> sort "$LOG_TSV" -o "$LOG_TSV"
+> EOF
+root@e582deae-00f4-4abb-bb80-a78c7f8e31aa:~# chmod +x /tmp/process_files.sh
+root@e582deae-00f4-4abb-bb80-a78c7f8e31aa:~# find /home/user/datasets/raw -type f -print0 | sort -z | /tmp/process_files.sh
+root@e582deae-00f4-4abb-bb80-a78c7f8e31aa:~#

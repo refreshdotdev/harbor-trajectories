@@ -1,0 +1,187 @@
+Current terminal state:
+New Terminal Output:
+
+root@4b82171f-a8ba-457c-b585-a005f0b516b1:~# mkdir -p /home/user/policy/configs /home/user/policy/reports
+root@4b82171f-a8ba-457c-b585-a005f0b516b1:~# cd /home/user
+root@4b82171f-a8ba-457c-b585-a005f0b516b1:/home/user# cat > process_ini.sh << 'EOF'
+xist
+    if grep -q "\[network\]" "$ini_file" && grep -q "^\s*trusted_hosts\s*=" "$ini_file"; then
+        local current_hosts=$(grep -oP "trusted_hosts\s*=\s*\K.*" "$ini_file" | tr -d '[:space:]')
+        network_was="$current_hosts"
+
+        # Filter out non-compliant hosts
+        local filtered_hosts=$(echo "$current_hosts" | tr ',' '\n' | grep -E '\.corp\.local$' | tr '\n' ',' | sed 's/,$//')
+        network_after="$filtered_hosts"
+
+        if [[ "$current_hosts" != "$filtered_hosts" ]]; then
+            sed -i -E "s|^(\s*)trusted_hosts\s*=\s*.*|\1trusted_hosts = $filtered_hosts|" "$ini_file"
+            network_remediated="was=${network_was} -> ${network_after}"
+            final_status="REMEDIATED"
+        else
+            network_remediated="was=${network_was} -> ${network_after}"
+        fi
+    else
+        network_remediated="was=MISSING -> MISSING"
+    fi
+
+    # Create backup if remediation occurred
+    if [[ "$final_status" == "REMEDIATED" ]]; then
+        tmp_backup=$(create_backup "$ini_file")
+        # Keep only th> #!/bin/bash
+>
+> # Function to create backup with 0400 permissions
+> create_backup() {
+>     local file="$1"
+>     local backup="$file.bak"
+>
+>     # Save original ownership and permissions
+>     local orig_owner=$(stat -c "%u:%g" "$file")
+>
+>     # Create backup and set permissions
+>     cp "$file" "$backup"
+>     chmod 0400 "$backup"
+>
+>     # Restore original ownership
+>     chown "$orig_owner" "$backup" >/dev/null 2>&1
+>     echo "$backup"
+> }
+>
+> # Function to get SHA256 hash of file content
+> get_sha256() {
+>     local file="$1"
+>     sha256sum "$file" | awk '{print $1}'
+> }
+>
+> # Function to process one INI file
+> process_one_ini() {
+>     local ini_file="$1"
+>     local tls_policy="${POLICY_TLS:-true}"
+>     local log_policy="${POLICY_LOG:-INFO}"
+>     local report_file="/home/user/policy/reports/after_remediation.log"
+>
+>     # Initialize remediation status flags
+>     local security_remediated=""
+>     local logging_remediated=""
+>     local network_remediated=""
+>     local original_hash
+>     local final_status="NO_ACTION_REQUIRED"
+>
+>     # Create backup only if any remediation occurs, but we'll check compliance first
+>     # so we create a temporary backup and only keep it if remediation happens
+>     local tmp_backup
+>     original_hash=$(get_sha256 "$ini_file")
+>
+>     # --- Security Check ---
+>     local current_tls_value=$(grep -E "^\s*enforce_tls\s*=\s*" "$ini_file" | tr -d '[:space:]' | sed 's/enforce_tls=//I')
+>     local tls_was=$(echo -n "${current_tls_value:-MISSING}" | tr '[:upper:]' '[:lower:]')
+>     local tls_after=$(echo -n "$tls_policy" | tr '[:upper:]' '[:lower:]')
+>
+>     if [[ -z "$current_tls_value" || "$tls_was" != "$tls_after" ]]; then
+>         sed -i -E "s/^(\s*)enforce_tls\s*=\s*/\1enforce_tls = $tls_policy/I" "$ini_file"
+>         security_remediated="was=${tls_was:-MISSING} -> ${tls_after}"
+>         final_status="REMEDIATED"
+>     else
+>         security_remediated="was=${tls_was:-MISSING} -> ${tls_after}"
+>     fi
+>
+>     # --- Logging Check ---
+>     local current_log_value=$(grep -E "^\s*level\s*=\s*" "$ini_file" | tr -d '[:space:]' | sed 's/level=//I')
+>     local log_was=$(echo -n "${current_log_value:-MISSING}" | tr '[:upper:]' '[:lower:]')
+>     local log_after=$(echo -n "$log_policy" | tr '[:upper:]' '[:lower:]')
+>
+>     if [[ -z "$current_log_value" ]]; then
+>         # Missing key - add it
+>         sed -i -E "\/\[logging\]/,/^[\[]/ {/[logging]$/a level = $log_policy\; d}" "$ini_file" || sed -i "1i [logging]\nlevel = $log_policy" "$ini_file"
+>         logging_remediated="was=MISSING -> ${log_after}"
+>         final_status="REMEDIATED"
+>     elif ! grep -qiE "^WARN|ERROR|FATAL|INFO" <<< "$log_was"; then
+>         # Wrong value - replace it
+>         sed -i -E "s/^(\s*)level\s*=\s*/\1level = $log_policy/I" "$ini_file"
+>         logging_remediated="was=${log_was} -> ${log_after}"
+>         final_status="REMEDIATED"
+>     else
+>         logging_remediated="was=${log_was} -> ${log_after}"
+>     fi
+>
+>     # --- Network Check ---
+>     local network_was="MISSING"
+>     local network_after=""
+>     local network_remediated=""
+>
+>     # Check if section and key exist
+>     if grep -q "\[network\]" "$ini_file" && grep -q "^\s*trusted_hosts\s*=" "$ini_file"; then
+>         local current_hosts=$(grep -oP "trusted_hosts\s*=\s*\K.*" "$ini_file" | tr -d '[:space:]')
+>         network_was="$current_hosts"
+>
+>         # Filter out non-compliant hosts
+>         local filtered_hosts=$(echo "$current_hosts" | tr ',' '\n' | grep -E '\.corp\.local$' | tr '\n' ',' | sed 's/,$//')
+>         network_after="$filtered_hosts"
+>
+>         if [[ "$current_hosts" != "$filtered_hosts" ]]; then
+>             sed -i -E "s|^(\s*)trusted_hosts\s*=\s*.*|\1trusted_hosts = $filtered_hosts|" "$ini_file"
+>             network_remediated="was=${network_was} -> ${network_after}"
+>             final_status="REMEDIATED"
+>         else
+>             network_remediated="was=${network_was} -> ${network_after}"
+>         fi
+>     else
+>         network_remediated="was=MISSING -> MISSING"
+>     fi
+>
+>     # Create backup if remediation occurred
+>     if [[ "$final_status" == "REMEDIATED" ]]; then
+>         tmp_backup=$(create_backup "$ini_file")
+>         # Keep only the backup file with correct permissions
+>         rm -f "$ini_file.bak" 2>/dev/null || true
+>         mv -f "$tmp_backup" "$ini_file.bak" 2>/dev/null
+>     fi
+>
+>     # Generate remediation block
+>     echo -e "FILE: $ini_file\nORIGINAL_HASH: $original_hash\nSECURITY_ENFORCED: ${security_remediated}\nLOG_LEVEL: ${logging_remediated}\nNETWORK_HOSTS: ${net
+work_remediated}\nSTATUS: ${final_status}\n----" >> "$report_file.tmp"
+> }
+>
+> export -f process_one_ini create_backup get_sha256
+> export POLICY_TLS POLICY_LOG
+>
+> # Find all INI files and process them concurrently
+> find /home/user/policy/configs -type f -name "*.ini" | parallel -j 0 -k process_one_ini {}
+>
+> # Sort the remediation blocks alphabetically
+> sort -o "/home/user/policy/reports/after_remediation.log" "/home/user/policy/reports/after_remediation.log.tmp"
+>
+> # Generate summary
+> local scanned=0 remediated=0 compliant=0
+> local remediation_blocks
+>
+> # Count files and remediation status
+> while IFS= read -r line; do
+>     if [[ "$line" == "FILE:"* ]]; then
+>         ((scanned++))
+>     elif [[ "$line" == "STATUS: REMEDIATED"* ]]; then
+>         ((remediated++))
+>     elif [[ "$line" == "STATUS: NO_ACTION_REQUIRED"* ]]; then
+>         ((compliant++))
+>     fi
+>     remediation_blocks+="$line\n"
+> done < "/home/user/policy/reports/after_remediation.log"
+>
+> # Append summary to log
+> echo -e "Summary:\nFILES_SCANNED=$scanned\nREMEDIATED=$remediated\nCOMPLIANT=$compliant" >> "/home/user/policy/reports/after_remediation.log"
+>
+> # Clean up temporary files
+> rm -f "/home/user/policy/reports/after_remediation.log.tmp"
+> EOF
+root@4b82171f-a8ba-457c-b585-a005f0b516b1:/home/user# chmod +x process_ini.sh
+root@4b82171f-a8ba-457c-b585-a005f0b516b1:/home/user# ./process_ini.sh
+./process_ini.sh: line 118: parallel: command not found
+find: ‘standard output’: Broken pipe
+find: write error
+sort: cannot read: /home/user/policy/reports/after_remediation.log.tmp: No such file or directory
+./process_ini.sh: line 124: local: can only be used in a function
+./process_ini.sh: line 125: local: can only be used in a function
+./process_ini.sh: line 137: /home/user/policy/reports/after_remediation.log: No such file or directory
+root@4b82171f-a8ba-457c-b585-a005f0b516b1:/home/user#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

@@ -1,0 +1,272 @@
+[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# clear
+[?2004l[H[J[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# cat > Makefile << 'EOF'
+[?2004l[?2004h> .PHONY: clean analyze package all
+[?2004l[?2004h> 
+[?2004l[?2004h> PROJECT_ROOT = $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+[?2004l[?2004h> LOG_FILE ?= pipeline.log
+[?2004l[?2004h> 
+[?2004l[?2004h> # Default target
+[?2004l[?2004h> all: package
+[?2004l[?2004h> 
+[?2004l[?2004h> # Clean target - processes raw CSV files
+[?2004l[?2004h> # Input: raw_data/batch_*.csv
+[?2004l[?2004h> # Output: cleaned/batch_*.tsv
+[?2004l[?2004h> # Encoding: ISO-8859-1 for batch_a.csv, UTF-16LE for batch_b.csv
+[?2004l[?2004h> # Filtering: Drop rows where status is "Cancelled" (case-insensitive) or amount is below MIN_LIMIT
+[?2004l[?2004h> # Threshold: Use MIN_LIMIT environment variable or config/params.json policy.limits.min_amount
+[?2004l[?2004h> # Format: Convert to TSV with CRLF line endings
+[?2004l[?2004h> 
+[?2004l[?2004h> clean:
+[?2004l[?2004h> @mkdir -p cleaned
+[?2004l[?2004h> @echo "Starting data cleaning..."
+[?2004l[?2004h> # Process batch_a.csv (ISO-8859-1 encoded)
+[?2004l[?2004h> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_a.csv $(PROJECT_ROOT)/cleaned/batch_a.tsv
+[?2004l[?2004h> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_b.csv $(PROJECT_ROOT)/cleaned/batch_b.tsv
+[?2004l[?2004h> @echo "[Data cleaning complete]"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Analyze target - generates JSON summaries from cleaned TSV files
+[?2004l[?2004h> # Input: cleaned/batch_*.tsv
+[?2004l[?2004h> # Output: analysis/batch_*.json
+[?2004l[?2004h> # Format: {"source": "filename", "valid_rows": count, "total_amount": sum}
+[?2004l[?2004h> 
+[?2004l[?2004h> analyze: clean
+[?2004l[?2004h> @mkdir -p analysis
+[?2004l[?2004h> @echo "Starting data analysis..."
+[?2004l[?2004h> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_a.tsv $(PROJECT_ROOT)/analysis/batch_a.json
+[?2004l[?2004h> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_b.tsv $(PROJECT_ROOT)/analysis/batch_b.json
+[?2004l[?2004h> @echo "[Data analysis complete]"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Package target - creates distribution archive
+[?2004l[?2004h> # Output: delivery.tar.gz
+[?2004l[?2004h> # Contents: cleaned/ and analysis/ directories, manifest.md5 file
+[?2004l[?2004h> 
+[?2004l[?2004h> package: analyze
+[?2004l[?2004h> @echo "Starting package creation..."
+[?2004l[?2004h> @mkdir -p temp_package
+[?2004l[?2004h> @cp -r cleaned analysis temp_package/
+[?2004l[?2004h> @(cd temp_package && find cleaned -name '*.tsv' -exec md5sum {} \; > manifest.md5)
+[?2004l[?2004h> @tar -czf delivery.tar.gz -C temp_package cleaned analysis manifest.md5
+[?2004l[?2004h> @rm -rf temp_package
+[?2004l[?2004h> @echo "[Package creation complete]"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Logging function - appends timestamp and target name to log file
+[?2004l[?2004h> define log
+[?2004l[?2004h>   @echo "[$$(date +%s)] $1" >> $(LOG_FILE)
+[?2004l[?2004h> endef
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add logging to each target
+[?2004l[?2004h> clean: 
+[?2004l[?2004h> $(call log,clean)
+[?2004l[?2004h> @mkdir -p cleaned
+[?2004l[?2004h> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_a.csv $(PROJECT_ROOT)/cleaned/batch_a.tsv
+[?2004l[?2004h> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_b.csv $(PROJECT_ROOT)/cleaned/batch_b.tsv
+[?2004l[?2004h> 
+[?2004l[?2004h> analyze: clean
+[?2004l[?2004h> $(call log,analyze)
+[?2004l[?2004h> @mkdir -p analysis
+[?2004l[?2004h> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_a.tsv $(PROJECT_ROOT)/analysis/batch_a.json
+[?2004l[?2004h> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_b.tsv $(PROJECT_ROOT)/analysis/batch_b.json
+[?2004l[?2004h> 
+[?2004l[?2004h> package: analyze
+[?2004l[?2004h> $(call log,package)
+[?2004l[?2004h> @echo "Starting package creation..."
+[?2004l[?2004h> @mkdir -p temp_package
+[?2004l[?2004h> @cp -r cleaned analysis temp_package/
+[?2004l[?2004h> @(cd temp_package && find cleaned -name '*.tsv' -exec md5sum {} \; > manifest.md5)
+[?2004l[?2004h> @tar -czf delivery.tar.gz -C temp_package cleaned analysis manifest.md5
+[?2004l[?2004h> @rm -rf temp_package
+[?2004l[?2004h> EOFcat > scripts/cleanup.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import json
+[?2004l[?2004h> import csv
+[?2004l[?2004h> import io
+[?2004l[?2004h> import os
+[?2004l[?2004h> from decimal import Decimal
+[?2004l[?2004h> 
+[?2004l[?2004h> def get_min_threshold():
+[?2004l[?2004h>     """Get minimum threshold from environment or config file"""
+[?2004l[?2004h>     if 'MIN_LIMIT' in os.environ:
+[?2004l[?2004h>         return float(os.environ['MIN_LIMIT'])
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         import json
+[?2004l[?2004h>         with open('config/params.json', 'r', encoding='utf-8') as f:
+[?2004l[?2004h>             data = json.load(f)
+[?2004l[?2004h>             return float(data.get('policy', {}).get('limits', {}).get('min_amount', 0))
+[?2004l[?2004h>     except Exception:
+[?2004l[?2004h>         return 0.0
+[?2004l[?2004h> 
+[?2004l[?2004h> def clean_csv(input_file, output_file, source_encoding, target_encoding='utf-8'):
+[?2004l[?2004h>     """
+[?2004l[?2004h>     Clean CSV data:
+[?2004l[?2004h>     - Convert encoding
+[?2004l[?2004h>     - Filter rows
+[?2004l[?2004h>     - Convert to TSV with CRLF line endings
+[?2004l[?2004h>     """
+[?2004l[?2004h>     min_threshold = get_min_threshold()
+[?2004l[?2004h>     
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(input_file, 'r', encoding=source_encoding, errors='replace') as infile:
+[?2004l[?2004h>             # Read CSV and remove BOM if present (for UTF-16LE)
+[?2004l[?2004h>             content = infile.read()
+[?2004l[?2004h>             if source_encoding == 'utf-16-le' and len(content) > 0 and content[0] == '﻿':
+[?2004l[?2004h>                 content = content[1:]
+[?2004l[?2004h>             
+[?2004l[?2004h>             reader = csv.reader(io.StringIO(content))
+[?2004l[?2004h>             header = next(reader)
+[?2004l[?2004h>             
+[?2004l[?2004h>             with open(output_file, 'w', encoding=target_encoding, newline='') as outfile: 
+[?2004l[?2004h>                 writer = csv.writer(outfile, delimiter='\t')
+[?2004l[?2004h>                 writer.writerow(header)
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 for row in reader:
+[?2004l[?2004h>                     try:
+[?2004l[?2004h>                         # Skip if status is Cancelled (case-insensitive)
+[?2004l[?2004h>                         if len(row) >= 4 and str(row[3]).lower().strip() == 'cancelled':
+[?2004l[?2004h>                             continue
+[?2004l[?2004h>                         
+[?2004l[?2004h>                         # Skip if amount is less than min_threshold
+[?2004l[?2004h>                         if len(row) >= 3 and row[2].strip():
+[?2004l[?2004h>                             amount = Decimal(row[2].replace(',', '').replace('$', '').strip())
+[?2004l[?2004h>                             if amount < Decimal(str(min_threshold)):
+[?2004l[?2004h>                                 continue
+[?2004l[?2004h>                         
+[?2004l[?2004h>                         writer.writerow(row)
+[?2004l[?2004h>                     except Exception:
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Error processing {input_file}: {e}")
+[?2004l[?2004h>         raise
+[?2004l[?2004h> 
+[?2004l[?2004h> def analyze_tsv(input_file, output_file):
+[?2004l[?2004h>     """Generate JSON summary from TSV file"""
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         valid_rows = 0
+[?2004l[?2004h>         total_amount = Decimal('0.0')
+[?2004l[?2004h>         
+[?2004l[?2004h>         with open(input_file, 'r', encoding='utf-8') as f:
+[?2004l[?2004h>             # Skip header
+[?2004l[?2004h>             next(f)
+[?2004l[?2004h>             reader = csv.reader(f, delimiter='\t')
+[?2004l[?2004h>             
+[?2004l[?2004h>             for row in reader:
+[?2004l[?2004h>                 if len(row) >= 3 and row[2].strip():
+[?2004l[?2004h>                     amount = Decimal(row[2].replace(',', '').replace('$', '').strip())
+[?2004l[?2004h>                     total_amount += amount
+[?2004l[?2004h>                     valid_rows += 1
+[?2004l[?2004h>         
+[?2004l[?2004h>         summary = {
+[?2004l[?2004h>             'source': os.path.basename(input_file),
+[?2004l[?2004h>             'valid_rows': valid_rows,
+[?2004l[?2004h>             'total_amount': round(total_amount, 2)
+[?2004l[?2004h>         }
+[?2004l[?2004h>         
+[?2004l[?2004h>         with open(output_file, 'w', encoding='utf-8') as f:
+[?2004l[?2004h>             json.dump(summary, f)
+[?2004l[?2004h>             
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Error analyzing {input_file}: {e}")
+[?2004l[?2004h>         raise
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     if len(sys.argv) < 3:
+[?2004l[?2004h>         print("Usage: python3 cleanup.py input_file output_file [--analyze]")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     
+[?2004l[?2004h>     input_file = sys.argv[1]
+[?2004l[?2004h>     output_file = sys.argv[2]
+[?2004l[?2004h>     
+[?2004l[?2004h>     if '--analyze' in sys.argv:
+[?2004l[?2004h>         analyze_tsv(input_file, output_file)
+[?2004l[?2004h>     else:
+[?2004l[?2004h>         if 'batch_a.csv' in input_file:
+[?2004l[?2004h>             clean_csv(input_file, output_file, 'iso-8859-1')
+[?2004l[?2004h>         elif 'batch_b.csv' in input_file: 
+[?2004l[?2004h>             clean_csv(input_file, output_file, 'utf-16-le')
+[?2004l[?2004h>         else:
+[?2004l[?2004h>             print("Unsupported input file")
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h> EOFchmod +x scripts/cleanup.py
+[?2004l[?2004h> make all
+[?2004l[?2004h> ^C[?2004l[?2004h[?2004l
+[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# ls -la
+[?2004ltotal 0
+drwxrwxrwx 1 root root 67 Feb 12 22:44 .
+drwxr-xr-x 1 root root 49 Feb 13 19:10 ..
+drwxrwxrwx 1 root root 65 Feb 12 22:44 config
+drwxrwxrwx 1 root root 79 Feb 12 22:44 raw_data
+drwxrwxrwx 1 root root 32 Feb 12 22:44 scripts
+[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# cat pipeline.log
+[?2004lcat: pipeline.log: No such file or directory
+[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# ls -la raw_data/
+[?2004ltotal 8
+drwxrwxrwx 1 root root  79 Feb 12 22:44 .
+drwxrwxrwx 1 root root  67 Feb 12 22:44 ..
+-rwxrwxrwx 1 root root 113 Feb 12 22:44 batch_a.csv
+-rwxrwxrwx 1 root root 186 Feb 12 22:44 batch_b.csv
+-rwxrwxrwx 1 root root   0 Feb 12 22:44 .temp_cache
+[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# make clean
+[?2004lmake: *** No rule to make target 'clean'.  Stop.
+[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# ls -la cleaned/
+[?2004lls: cannot access 'cleaned/': No such file or directory
+[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# ls -la Makefile
+[?2004lls: cannot access 'Makefile': No such file or directory
+[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# head -10 Makefile
+[?2004lhead: cannot open 'Makefile' for reading: No such file or directory
+[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# make --version
+[?2004lGNU Make 4.3
+Built for x86_64-pc-linux-gnu
+Copyright (C) 1988-2020 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+[?2004hroot@6cb65ea0-7f70-4ac3-8a29-e64b3615b0e3:~/data_science_project# cat > Makefile << 'EOF'
+[?2004l[?2004h> .PHONY: clean analyze package all
+[?2004l[?2004h> 
+[?2004l[?2004h> PROJECT_ROOT = $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+[?2004l[?2004h> LOG_FILE ?= pipeline.log
+[?2004l[?2004h> 
+[?2004l[?2004h> all: package
+[?2004l[?2004h> 
+[?2004l[?2004h> # Clean target - processes raw CSV files
+[?2004l[?2004h> clean:
+[?2004l[?2004h> @mkdir -p cleaned
+[?2004l[?2004h> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_a.csv $(PROJECT_ROOT)/cleaned/batch_a.tsv
+[?2004l[?2004h> @python3 scripts/cleanup.py $(PROJECT_ROOT)/raw_data/batch_b.csv $(PROJECT_ROOT)/cleaned/batch_b.tsv
+[?2004l[?2004h> 
+[?2004l[?2004h> # Analyze target - generates JSON summaries
+[?2004l[?2004h> analyze: clean
+[?2004l[?2004h> @mkdir -p analysis
+[?2004l[?2004h> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_a.tsv $(PROJECT_ROOT)/analysis/batch_a.json
+[?2004l[?2004h> @python3 scripts/cleanup.py --analyze $(PROJECT_ROOT)/cleaned/batch_b.tsv $(PROJECT_ROOT)/analysis/batch_b.json
+[?2004l[?2004h> 
+[?2004l[?2004h> # Package target - creates distribution archive
+[?2004l[?2004h> package: analyze
+[?2004l[?2004h> @mkdir -p temp_package
+[?2004l[?2004h> @cp -r cleaned analysis temp_package/
+[?2004l[?2004h> @(cd temp_package && find cleaned -name '*.tsv' -exec md5sum {} \; > manifest.md5)
+[?2004l[?2004h> @tar -czf delivery.tar.gz -C temp_package cleaned analysis manifest.md5
+[?2004l[?2004h> @rm -rf temp_package
+[?2004l[?2004h> EOFmake clean
+[?2004l[?2004h> make clean
+[?2004l[?2004h> ls -la cleaned/
+[?2004l[?2004h> ls -la cleaned/
+[?2004l[?2004h> python3 scripts/cleanup.py raw_data/batch_a.csv cleaned/batch_a.tsv
+[?2004l[?2004h> pwd
+[?2004l[?2004h> ls -la
+[?2004l[?2004h> mkdir -p cleaned
+[?2004l[?2004h> python3 scripts/cleanup.py raw_data/batch_a.csv cleaned/batch_a.tsv 2>&1
+[?2004l[?2004h> ls -la cleaned/
+[?2004l[?2004h> head -5 raw_data/batch_a.csv
+[?2004l[?2004h> head -5 raw_data/batch_b.csv
+[?2004l[?2004h> echo "Testing command execution"
+[?2004l[?2004h> python3 -c "print('Python version:', sys.version)" 2>&1
+[?2004l[?2004h> reset
+[?2004l[?2004h> echo "Terminal reset completed"
+[?2004l[?2004h> printf "Testing printf command\n"
+[?2004l[?2004h> ls > /tmp/ls_output.txt
+[?2004l[?2004h> cat /tmp/ls_output.txt
+[?2004l[?2004h> 

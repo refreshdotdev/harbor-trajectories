@@ -1,0 +1,93 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+> cat > /home/user/sample_data/mock_netstat.txt << 'EOF'
+> tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN
+> tcp        0      0 127.0.0.1:3306          0.0.0.0:*               LISTEN
+> udp        0      0 0.0.0.0:68              0.0.0.0:*
+> tcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN
+> tcp        0      0 192.168.1.100:443       0.0.0.0:*               LISTEN
+> EOF
+root@9bd0b62a-04ed-4a32-9f6a-87255f2d0b86:~# cat > /home/user/sample_data/mock_passwd << 'EOF'
+> root:x:0:0:root:/root:/bin/bash
+> bin:x:1:1:bin:/bin:/bin/false
+> daemon:x:2:2:daemon:/sbin:/bin/false
+> adm:x:3:4:adm:/var/adm:/bin/false
+> lp:x:4:7:lp:/var/spool/lpd:/bin/false
+> EOF
+root@9bd0b62a-04ed-4a32-9f6a-87255f2d0b86:~# tail -n +2 /home/user/sample_data/service_names.csv > /home/user/sample_data/service_names_clean.csv
+root@9bd0b62a-04ed-4a32-9f6a-87255f2d0b86:~# cat > /home/user/reports/run_security_scan.sh << 'EOF'
+> #!/bin/bash
+>
+> # Enterprise Security Baseline Automation (SOP-992)
+> # Ticket SEC-4022: Automate daily infrastructure snapshot report
+>
+> # Output files
+> NETSTAT_OUT="/tmp/netstat_analysis.txt"
+> USER_OUT="/tmp/user_audit.txt"
+> REPORT_YAML="/home/user/reports/infra_security_report.yml"
+> SCAN_LOG="/home/user/reports/scan_exec_time.log"
+>
+> # Cleanup temporary files on exit
+> cleanup() {
+>     rm -f "$NETSTAT_OUT" "$USER_OUT"
+> }
+> trap cleanup SIGINT SIGTERM EXIT
+>
+> # Process network exposure
+> process_netstat() {
+>     # Load service names
+>     declare -A services
+>     while IFS=',' read -r port service; do
+>         if [ -n "$port" ]; then
+>             services["$port"]="$service"
+>         fi
+> done < "/home/user/sample_data/service_names_clean.csv"
+>
+>     # Process netstat data
+>     awk -F'[ :]+' '/LISTEN|udp/ {
+>         if ($3 == "LISTEN" || $1 == "udp") {
+>             port_proto = $5 ":" $4
+>             service_name = ""
+>             if (port_proto in services) {
+>                 service_name = services[port_proto]
+>             }
+>             prefix = ""
+>             if ($2 == "0.0.0.0") {
+>                 prefix = "public-"
+>             } else if ($2 == "127.0.0.1") {
+>                 prefix = "local-"
+>             }
+>             printf "%s\t%s\t%s (%s)\n", $5, prefix $4, $6, service_name
+>         }
+>     }' /home/user/sample_data/mock_netstat.txt |
+>     sort -k1n > "$NETSTAT_OUT"
+> }
+>
+> # Process user audit
+> process_user_audit() {
+>     awk -F: '$3 < 1000 && $7 != "/bin/false"' /home/user/sample_data/mock_passwd |
+>     sort > "$USER_OUT"
+> }
+>
+> # Main script execution
+> start_epoch=$(date +%s)
+>
+> # Run jobs in parallel
+> process_netstat &
+> process_user_audit &
+> wait
+>
+> end_epoch=$(date +%s)
+>
+> # Generate reports
+> # TODO: Implement YAML generation with ISO-8859-1 encoding
+> # TODO: Implement CSV log with CRLF line endings
+>
+> echo "Security scan completed"
+> EOF
+root@9bd0b62a-04ed-4a32-9f6a-87255f2d0b86:~# chmod +x /home/user/reports/run_security_scan.sh
+root@9bd0b62a-04ed-4a32-9f6a-87255f2d0b86:~#

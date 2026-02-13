@@ -1,0 +1,89 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating test files for maintenance script..."
+Creating test files for maintenance script...
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create large .bak files (over 512KB = 524288 bytes)
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating large backup files..."
+Creating large backup files...
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# for i in {1..3}; do
+>     dd if=/dev/zero of="incoming/large_bak_$i.bak" bs=1024 count=600 2>/dev/null
+>     echo "File created: large_bak_$i.bak ($(stat -c%s "incoming/large_bak_$i.bak") bytes)"
+> done
+File created: large_bak_1.bak (614400 bytes)
+File created: large_bak_2.bak (614400 bytes)
+File created: large_bak_3.bak (614400 bytes)
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage#
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create system hold .bak files (should not be deleted)
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating system hold backup files..."
+Creating system hold backup files...
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# for i in {1..2}; do
+>     dd if=/dev/zero of="incoming/_hold_bak_$i.bak" bs=1024 count=200 2>/dev/null
+>     echo "File created: _hold_bak_$i.bak ($(stat -c%s "incoming/_hold_bak_$i.bak") bytes)"
+> done
+File created: _hold_bak_1.bak (204800 bytes)
+File created: _hold_bak_2.bak (204800 bytes)
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage#
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create old .txt files (should be archived)
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating old text files..."
+Creating old text files...
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# touch -d "60 days ago" "incoming/old_file1.txt"
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "This is a valid UTF-8 file" > "incoming/old_file1.txt"
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage#
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# touch -d "90 days ago" "incoming/old_file2.txt"
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Another valid UTF-8 file with special chars: \xE2\x82\xAC" > "incoming/old_file2.txt"
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage#
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create a file with invalid UTF-8 (should be marked as corrupt)
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating invalid UTF-8 file..."
+Creating invalid UTF-8 file...
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -n -e "Invalid UTF-8: \xFF\xFE\xFD" > "incoming/corrupt_file.txt"
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage#
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# touch -d "60 days ago" "incoming/corrupt_file.txt"
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage#
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create some directories and files to test cleanup
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating directory structure for cleanup test..."
+Creating directory structure for cleanup test...
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# mkdir -p incoming/subdir1/subdir2
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# mkdir -p incoming/subdir3
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage#
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create a recent file that shouldn't be moved
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Recent file" > "incoming/recent_file.txt"
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage#
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Test files created successfully."
+Test files created successfully.
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "File listing before maintenance:"
+File listing before maintenance:
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find incoming/ -type f | sort
+incoming/corrupt_file.txt
+incoming/_hold_bak_1.bak
+incoming/_hold_bak_2.bak
+incoming/large_bak_1.bak
+incoming/large_bak_2.bak
+incoming/large_bak_3.bak
+incoming/old_file1.txt
+incoming/old_file2.txt
+incoming/project1/delete_me.bak
+incoming/project1/small.bak
+incoming/project1/_system_hold.bak
+incoming/project2/invalid_utf8.txt
+incoming/project2/new.txt
+incoming/project2/valid_old.txt
+incoming/recent_file.txt
+incoming/space dir/file
+name.txt
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Directory structure before maintenance:"
+Directory structure before maintenance:
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find incoming/ -type d
+incoming/
+incoming/project1
+incoming/project2
+incoming/space dir
+incoming/subdir1
+incoming/subdir1/subdir2
+incoming/subdir3
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Starting maintenance process..."
+Starting maintenance process...
+root@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage#

@@ -1,0 +1,183 @@
+New Terminal Output:
+
+root@1420d0fc-ea92-4280-aba8-678707baa0a3:/home/user/firewall# cat > process_firewall.py << 'EOF'
+> #!/usr/bin/env python3
+> import json
+> import os
+> import re
+> import hashlib
+> import csv
+> import io
+> import sys
+> from datetime import datetime, timezone
+> import glob
+>
+> # Find most recent config file
+> config_files = glob.glob("configs/*.json")
+> config_files.sort(key=lambda x: os.path.getmtime(x))
+> active_config = config_files[-1]
+> print(f"Using config: {active_config}")
+>
+> # Read and sanitize config
+> with open(active_config, 'r') as f:
+>     try:
+>         config = json.load(f)
+>     except json.JSONDecodeError:
+>         print(f"Error: Invalid JSON in {active_config}")
+>         sys.exit(1)
+>
+> # Sanitize values by removing zero width spaces
+> config['trusted_ip'] = re.sub(r'[\u200b\u200c]', '', config['trusted_ip'])
+> config['trusted_ip'] = re.sub(r'\s+', '', config['trusted_ip'])
+>
+> # Function to expand port ranges
+> def expand_ports(ports):
+>     expanded = []
+>     for port in ports:
+>         if '-' in port:
+>             start, end = map(int, port.split('-'))
+>             expanded.extend(str(p) for p in range(start, end + 1))
+>         else:
+>             expanded.append(port)
+>     return expanded
+>
+> allow_ports = expand_ports(config['allow_ports'])
+> block_ports = expand_ports(config['block_ports'])
+>
+> print(f"Sanitized trusted_ip: {config['trusted_ip']}")
+> print(f"Expanded allow_ports: {allow_ports}")
+> print(f"Expanded block_ports: {block_ports}")
+>
+> # Read base rules
+> with open('base_rules.v4', 'r') as f:
+>     base_rules = [line.strip() for line in f.readlines() if line.strip()]
+>
+> print(f"Base rules loaded: {len(base_rules)} lines")
+>
+> # Generate intermediate.json
+> intermediate = []
+> for port in allow_ports:
+>     intermediate.append({
+>         'type': 'allow',
+>         'protocol': 'tcp',
+>         'ip': config['trusted_ip'],
+>         'port': port
+>     })
+>
+> for port in block_ports:
+>     intermediate.append({
+>         'type': 'block',
+>         'protocol': 'tcp',
+>         'ip': 'any',
+>         'port': port
+>     })
+>
+> with open('intermediate.json', 'w') as f:
+>     json.dump(intermediate, f, indent=2)
+>
+> print("intermediate.json created")
+>
+> # Generate optimized_rules.v4
+> rules = []
+>
+> # Find and preserve state rule
+> state_rule = None
+> for i, line in enumerate(base_rules):
+>     if "RELATED,ESTABLISHED" in line:
+>         state_rule = line
+>         del base_rules[i]
+>         break
+>
+> # Default policies
+> rules.extend([
+>     ":INPUT DROP [0:0]",
+>     ":FORWARD DROP [0:0]",
+>     ":OUTPUT ACCEPT [0:0]"
+> ])
+>
+> # Add state rule first
+> if state_rule:
+>     rules.append(state_rule)
+> else:
+>     rules.append("-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT")
+>
+> # Create allow rules (ACCEPT from trusted_ip)
+> allow_rules = []
+> for port in sorted(allow_ports, key=int):
+>     allow_rules.append(f"-A INPUT -p tcp --dport {port} -s {config['trusted_ip']} -j ACCEPT")
+>
+> # Create block rules (DROP from any)
+> block_rules = []
+> for port in sorted(block_ports, key=int):
+>     block_rules.append(f"-A INPUT -p tcp --dport {port} -j DROP")
+>
+> # Combine and sort rules
+> combined_rules = allow_rules + block_rules
+> combined_rules.sort(key=lambda x: ("-A INPUT -p tcp --dport " in x, int(x.split('--dport ')[-1].split()[0])))
+>
+> rules.extend(combined_rules)
+>
+> # Add remaining base rules
+> rules.extend(base_rules)
+>
+> with open('optimized_rules.v4', 'w') as f:
+>     f.write("*filter\n")
+>     f.write("\n".join(rules))
+>     f.write("\nCOMMIT\n")
+>
+> print("optimized_rules.v4 created")
+>
+> # Generate audit_manifest.csv
+> with open('audit_manifest.csv', 'wb') as f:
+>     # Create CSV file with ISO-8859-1 encoding
+>     writer = csv.writer(io.TextIOWrapper(f, encoding='iso-8859-1'), delimiter='|')
+>
+>     # Header
+>     writer.writerow(["timestamp", "action", "detail"])
+>
+>     # Add entries
+>     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+>
+>     writer.writerow([
+>         timestamp,
+>         "changed",
+>         "§INPUT policy set to DROP"
+>     ])
+>
+>     writer.writerow([
+>         timestamp,
+>         "changed",
+>         "§FORWARD policy set to DROP"
+>     ])
+>
+>     writer.writerow([
+>         timestamp,
+>         "changed",
+>         "§OUTPUT policy set to ACCEPT"
+>     ])
+>
+>     # Footer verification
+>     with open('intermediate.json', 'rb') as json_file:
+>         md5_hash = hashlib.md5(json_file.read()).hexdigest()
+>
+>     with open('optimized_rules.v4', 'rb') as rules_file:
+>         byte_count = len(rules_file.read())
+>
+>     writer.writerow([f"Check: {md5_hash}"])
+>     writer.writerow([f"Bytes: {byte_count}"])
+>
+> print("audit_manifest.csv created")
+> print("All tasks completed successfully!")
+> EOF
+root@1420d0fc-ea92-4280-aba8-678707baa0a3:/home/user/firewall# chmod +x process_firewall.py
+root@1420d0fc-ea92-4280-aba8-678707baa0a3:/home/user/firewall# python3 process_firewall.py
+Using config: configs/config3.json
+Sanitized trusted_ip: 172.16.0.8
+Expanded allow_ports: ['80', '443', '9000', '9001', '9002', '9003', '9004', '9005', '9006', '9007', '9008', '9009', '9010']
+Expanded block_ports: ['25', '143', '993', '8080', '8081', '8082', '8083', '8084', '8085', '8086', '8087', '8088', '8089', '8090']
+Base rules loaded: 11 lines
+intermediate.json created
+optimized_rules.v4 created
+audit_manifest.csv created
+All tasks completed successfully!
+root@1420d0fc-ea92-4280-aba8-678707baa0a3:/home/user/firewall#

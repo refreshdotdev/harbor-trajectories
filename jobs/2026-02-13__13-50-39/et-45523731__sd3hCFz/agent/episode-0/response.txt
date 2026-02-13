@@ -1,0 +1,41 @@
+```json
+{
+  "analysis": "The current environment is a Linux shell with the user logged in as root. The task requires creating a diagnostic bundle under `/home/user/diagnostics`, including a shell script `run_net_checks.sh` that performs parallel network checks, handles log rotation, and outputs results in a specific format. The current directory appears to be the root home directory (`~`), and no prior work has been done on this task.",
+  "plan": "1. Create the diagnostics directory and set proper permissions. 2. Create the script file with a shebang and basic structure. 3. Implement configuration file reading and validation. 4. Implement log rotation logic. 5. Implement parallel execution of network checks using background processes and a wait mechanism. 6. Implement proper output formatting with Base64 encoding and atomic writes using file locking. 7. Add header and timestamp to the log file. 8. Compute and store SHA-256 checksum of the final log. 9. Make the script executable. 10. Create a sample targets.txt file for testing.",
+  "commands": [
+    {
+      "keystrokes": "mkdir -p /home/user/diagnostics\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat > /home/user/diagnostics/run_net_checks.sh << 'EOF'\n#!/bin/sh\n\n# Script for diagnosing network glitches in CI/CD jobs\n# Requires: base64, gzip, flock, ping, traceroute, dig\n\nset -eu\n\n# Configuration\nLOG_DIR=\"/home/user/diagnostics\"\nLOG_FILE=\"${LOG_DIR}/netcheck.log\"\nLOG_PREVIOUS=\"${LOG_DIR}/netcheck.previous.log.gz\"\nTARGETS_FILE=\"${LOG_DIR}/targets.txt\"\nLOCK_FILE=\"${LOG_DIR}/.netcheck.lock\"\n\n# 1. Configuration & Input Validation\nif [ ! -f \"${TARGETS_FILE}\" ]; then\n    echo \"ERROR: Configuration file ${TARGETS_FILE} does not exist\" >&2\n    exit 1\nfi\n\n# Read targets, skipping comments and empty lines\nhosts=$(grep -v '^#' \"${TARGETS_FILE}\" | grep -v '^$')\nif [ -z \"$hosts\" ]; then\n    echo \"WARNING: No valid targets found in ${TARGETS_FILE}\" >&2\nfi\n\n# 2. Log Rotation\n# Compress and archive previous log if it exists\nif [ -f \"${LOG_FILE}\" ]; then\n    gzip -c \"${LOG_FILE}\" > \"${LOG_PREVIOUS}\" || {\n        echo \"ERROR: Failed to compress previous log file\" >&2\n        exit 1\n    }\n    # If previous archive exists, overwrite it\n    rm -f \"${LOG_PREVIOUS}.backup\"\n    mv -f \"${LOG_PREVIOUS}\" \"${LOG_PREVIOUS}.backup\" 2>/dev/null || true\n    mv -f \"${LOG_PREVIOUS}\" \"${LOG_PREVIOUS}\" 2>/dev/null || true\nfi\n\n# Create new empty log file\n: > \"${LOG_FILE}\"\n\n# Write header with timestamp\ntimestamp=$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")\necho \"# Netcheck Report\" >> \"${LOG_FILE}\"\necho \"Timestamp: ${timestamp}\" >> \"${LOG_FILE}\"\n\n# 3. Execution & Output Format\n# Function to run a single check\nrun_check() {\n    local host=\"$1\"\n    local cmd=\"$2\"\n    local cmd_name=\"$3\"\n    \n    # Execute command, capture stdout and stderr together\n    # Use temp file to avoid command injection issues with eval\n    local output_file=\"${LOG_DIR}/.tmp_output.$$\"\n    rm -f \"${output_file}\"\n    \n    # Run command and capture both stdout and stderr\n    $cmd > \"${output_file}\" 2>&1\n    status=$?\n    \n    # If output file empty, create it to avoid encoding errors\n    [ -s \"${output_file}\" ] || echo -n > \"${output_file}\"\n    \n    # Base64 encode the combined output\n    encoded_output=$(base64 \"${output_file}\" | tr -d '\\n')\n    rm -f \"${output_file}\"\n    \n    # Write to log with file locking for atomicity\n    exec 9>\"${LOCK_FILE}\"\n    if ! flock -n 9; then\n        echo \"ERROR: Could not acquire lock for log file\" >&2\n        return 1\n    fi\n    \n    echo \"===== START host=${host} check=${cmd_name} =====\" >> \"${LOG_FILE}\"\n    echo \"${encoded_output}\" >> \"${LOG_FILE}\"\n    echo \"===== END host=${host} check=${cmd_name} status=${status} =====\" >> \"${LOG_FILE}\"\n    \n    flock -u 9\n    return 0\n}\n\n# Function to run all checks for a host in background\nrun_host_checks() {\n    local host=\"$1\"\n    \n    # Ping check\n    run_check \"$host\" \"ping -n -c 1 $host\" \"ping\" &\n    \n    # Traceroute check\n    run_check \"$host\" \"traceroute -n -m 5 $host\" \"traceroute\" &\n    \n    # DNS check\n    run_check \"$host\" \"dig +short $host A\" \"dig\" &\n}\n\n# Main execution - run checks in parallel for all hosts\nfor host in $hosts; do\n    run_host_checks \"$host\" &\ndone\n\n# Wait for all background jobs to complete\nwait\n\n# 4. Header & Checksum\n# Compute SHA-256 checksum of the final log file\nif [ -s \"${LOG_FILE}\" ]; then\n    sha256sum \"${LOG_FILE}\" | cut -d' ' -f1 > \"${LOG_DIR}/netcheck.sha256\"\nelse\n    echo \"ERROR: Log file ${LOG_FILE} is empty\" >&2\n    exit 1\nfi\n\n# Clean up lock file if exists\nrm -f \"${LOCK_FILE}\"\n\n# Script completed successfully\nexit 0\nEOF",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "chmod +x /home/user/diagnostics/run_net_checks.sh\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat > /home/user/diagnostics/targets.txt << 'EOF'\n# Example target hosts\nexample.com\n# This is a comment\ngoogle.com\n\n8.8.8.8\nEOF",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "ls -la /home/user/diagnostics/\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "head -5 /home/user/diagnostics/run_net_checks.sh\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat /home/user/diagnostics/targets.txt\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "chmod go-rwx /home/user/diagnostics/run_net_checks.sh\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+```

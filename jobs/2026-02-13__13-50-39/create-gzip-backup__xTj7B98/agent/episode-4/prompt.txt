@@ -1,0 +1,199 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@65828d79-39a2-4a26-86c7-82bbffd02509:/home/user/db_backups# cat > /home/user/process_backups.py << 'EOF'
+> #!/usr/bin/env python3
+> import os
+> import sys
+> import gzip
+> import hashlib
+> import json
+> import re
+> import subprocess
+> from pathlib import Path
+>
+> class BackupProcessor:
+>     def __init__(self):
+>         self.backup_dir = Path('/home/user/db_backups')
+>         self.logs_dir = Path('/home/user/backup_logs')
+>         self.config_file = Path('/home/user/.config/backup_system.conf')
+>         self.manifest = {}
+>         self.compliance_data = []
+>
+>     def read_batch_id(self):
+>         """Read and clean the Batch ID from the configuration file"""
+>         try:
+>             content = self.config_file.read_text(encoding='utf-8')
+>             match = re.search(r'^BATCH_ID=(.*)$', content, re.MULTILINE)
+>             return match.group(1).strip() if match else 'UNKNOWN'
+>         except Exception as e:
+>             print(f"Warning: Could not read Batch ID: {e}")
+>             return 'UNKNOWN'
+>
+>     def normalize_file(self, file_path):
+>         """Read file, remove BOM, and trim trailing whitespace from each line"""
+>         try:
+>             content = file_path.read_text(encoding='utf-8')
+>             # Remove UTF-8 BOM if present
+>             content = content.lstrip('\ufeff')
+>             # Trim trailing whitespace from each line
+>             normalized = '\n'.join(line.rstrip() for line in content.splitlines())
+>             return normalized.encode('utf-8')
+>         except Exception as e:
+>             print(f"Warning: Normalization failed for {file_path.name}: {e}")
+>             return None
+>
+>     def process_file(self, sql_file):
+>         """Process a single SQL file: normalize, compress, update manifest"""
+>         print(f"Processing {sql_file.name}...")
+>
+>         # Normalize content
+>         normalized_content = self.normalize_file(sql_file)
+>         if normalized_content is None:
+>             return False
+>
+>         # Calculate normalized size and hash
+>         normalized_size = len(normalized_content)
+>         md5_hash = hashlib.md5(normalized_content).hexdigest()
+>
+>         # Update manifest
+>         self.manifest[sql_file.name] = normalized_size
+>
+>         # Create compressed file name
+>         gz_file = sql_file.with_suffix('.sql.gz')
+>
+>         try:
+>             # Compress normalized content
+>             with gzip.open(gz_file, 'wb') as f_out:
+>                 f_out.write(normalized_content)
+>
+>             # Get compressed size
+>             gz_size = gz_file.stat().st_size
+>
+>             # Update compliance data
+>             self.compliance_data.append({
+>                 'filename': sql_file.name,
+>                 'n_size': normalized_size,
+>                 'gz_size': gz_size,
+>                 'md5': md5_hash
+>             })
+>
+>             # Remove original SQL file
+>             sql_file.unlink()
+>             print(f"  Successfully processed: {sql_file.name} ({normalized_size} bytes) -> {gz_size} bytes gzipped")
+>             return True
+>
+>         except Exception as e:
+>             print(f"Error compressing {sql_file.name}: {e}")
+>             return False
+>
+>     def generate_manifest(self):
+>         """Generate the manifest.json file"""
+>         try:
+>             manifest_path = self.logs_dir / 'manifest.json'
+>             with open(manifest_path, 'w', encoding='utf-8') as f:
+>                 json.dump(self.manifest, f, indent=2)
+>             print(f"Manifest generated: {manifest_path}")
+>             return manifest_path
+>         except Exception as e:
+>             print(f"Error generating manifest: {e}")
+>             return None
+>
+>     def calculate_manifest_sha256(self, manifest_path):
+>         """Calculate SHA256 hash of manifest file"""
+>         try:
+>             sha256 = hashlib.sha256()
+>             with open(manifest_path, 'rb') as f:
+>                 sha256.update(f.read())
+>             return sha256.hexdigest()
+>         except Exception as e:
+>             print(f"Error calculating manifest hash: {e}")
+>             return 'UNKNOWN'
+>
+>     def custom_sort_key(self, filename):
+>         """Custom sort key: case-insensitive, _ before -"""
+>         # Transform filename for custom collation
+>         # Convert to lowercase for case-insensitive sorting
+>         # Replace hyphens with a character that sorts before underscore
+>         return filename.lower().replace('-', '\x01')
+>
+>     def generate_compliance_report(self, manifest_path, batch_id):
+>         """Generate compliance report with specific encoding and line endings"""
+>         try:
+>             report_path = self.logs_dir / 'compliance_report.log'
+>
+>             # Calculate manifest SHA256
+>             manifest_sha256 = self.calculate_manifest_sha256(manifest_path)
+>
+>             # Sort files using custom collation
+>             sorted_files = sorted(self.compliance_data, key=lambda x: self.custom_sort_key(x['filename']))
+>
+>             # Create report content with Windows line endings
+>             report_content = []
+>             report_content.append(f"BATCH: {batch_id}\r\n")
+>
+>             for file_data in sorted_files:
+>                 line = (f"FILE: {file_data['filename']} | "
+>                         f"N_SIZE: {file_data['n_size']} | "
+>                         f"GZ_SIZE: {file_data['gz_size']} | "
+>                         f"MD5: {file_data['md5']}")
+>                 report_content.append(f"{line}\r\n")
+>
+>             report_content.append(f"MANIFEST_SHA256: {manifest_sha256}\r\n")
+>
+>             # Join all lines and encode in ISO-8859-1
+>             full_report = ''.join(report_content).encode('iso-8859-1')
+>
+>             # Write to file
+>             with open(report_path, 'wb') as f:
+>                 f.write(full_report)
+>
+>             print(f"Compliance report generated: {report_path}")
+>             return True
+>
+>         except Exception as e:
+>             print(f"Error generating compliance report: {e}")
+>             return False
+>
+>     def run(self):
+>         """Main processing function"""
+>         print("Starting backup processing pipeline...")
+>
+>         # Ensure logs directory exists
+>         self.logs_dir.mkdir(parents=True, exist_ok=True)
+>
+>         # Read Batch ID
+>         batch_id = self.read_batch_id()
+>         print(f"Using Batch ID: {batch_id}")
+>
+>         # Process SQL files
+>         sql_files = list(self.backup_dir.glob('*.sql'))
+>         print(f"Found {len(sql_files)} SQL files to process")
+>
+>         if not sql_files:
+>             print("No SQL files found. Creating empty manifests.")
+>
+>         for sql_file in sql_files:
+>             self.process_file(sql_file)
+>
+>         # Generate manifest
+>         manifest_path = self.generate_manifest()
+>         if not manifest_path:
+>             return False
+>
+>         # Generate compliance report
+>         success = self.generate_compliance_report(manifest_path, batch_id)
+>
+>         print("Backup processing completed!")
+>         return success
+>
+>
+> if __name__ == '__main__':
+>     processor = BackupProcessor()
+>     processor.run()
+> EOF
+root@65828d79-39a2-4a26-86c7-82bbffd02509:/home/user/db_backups# chmod +x /home/user/process_backups.py
+root@65828d79-39a2-4a26-86c7-82bbffd02509:/home/user/db_backups#

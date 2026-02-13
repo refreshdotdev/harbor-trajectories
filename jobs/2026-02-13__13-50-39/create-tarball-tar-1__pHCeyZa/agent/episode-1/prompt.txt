@@ -1,0 +1,167 @@
+Current terminal state:
+New Terminal Output:
+
+root@49573271-cd29-43f5-ba0c-59db462adeb9:~# cat > ~/backup_configs.sh << 'EOF'
+> #!/bin/bash
+>
+> # Set strict error handling
+> set -euo pipefail
+>
+> # Define paths
+> readonly CONFIGS_DIR="/home/user/configs"
+> readonly BACKUPS_DIR="/home/user/backups"
+> readonly BACKUP_LOGS_DIR="/home/user/backup_logs"
+> readonly BACKUP_ID_FILE="/home/user/backup_id"
+>
+> # Read and trim backup ID
+> readonly BACKUP_ID=$(cat "$BACKUP_ID_FILE" | tr -d '[:space:]')
+>
+> # Ensure backup directories exist
+> mkdir -p "$BACKUPS_DIR"
+> mkdir -p "$BACKUP_LOGS_DIR"
+>
+> # Log file path
+> readonly LOG_FILE="$BACKUP_LOGS_DIR/backup_${BACKUP_ID}.log"
+>
+> # Header for the log file
+> readonly LOG_HEADER="REL_PATH|ARCHIVE_NAME|SHA256|SIZE"
+>
+> # Temporary files for logging individual file details
+> readonly INTERMEDIATE_LOG_FILE="${LOG_FILE}.tmp_lines"
+> readonly SORTED_LOG_FILE="${LOG_FILE}.tmp_sorted"
+>
+> # 1. Identify and Filter Files
+> # Find files recursively in CONFIGS_DIR:
+> # - Name ending in .conf or .yml
+> # - Size <= 512 bytes
+> # - Not named test.conf (path-aware exclusion)
+> # - Print full path
+> FIND_CMD=(
+>   find "$CONFIGS_DIR" -type f \
+>     \( -name "*.conf" -or -name "*.yml" \) \
+>     -size -512c \
+>     ! -name "test.conf" \
+>     -print
+> )
+>
+> # Process each found file
+> # Use a temporary array to store background PIDs
+> declare -a background_pids
+>
+> # Create intermediate log file and add header
+> echo "$LOG_HEADER" > "$INTERMEDIATE_LOG_FILE"
+>
+> # Iterate through each file found by find
+> while IFS= read -r file_path; do
+>   # 2. Create Individual Archives (Parallel)
+>
+>   # Get filename and extension
+>   filename=$(basename "$file_path")
+>   extension="${filename##*.}"
+>
+>   # Get basename (filename without extension), handle spaces
+>   basename="${filename%.*}"
+>
+>   # Determine compression based on extension
+>   if [ "$extension" = "conf" ]; then
+>     archive_ext="tar.gz"
+>     tar_compress_flag="z"
+>   elif [ "$extension" = "yml" ]; then
+>     archive_ext="tar.bz2"
+>     tar_compress_flag="j"
+>   else
+>     # Should not happen due to find criteria, but as a safeguard
+>     echo "Warning: Unknown file type for $filename, skipping." >&2
+>     continue
+>   fi
+>
+>   # Construct archive name: <basename>_<BACKUP_ID>.tar.<ext>
+>   archive_name="${basename}_${BACKUP_ID}.tar.${archive_ext}"
+>
+>   # Target archive path
+>   target_archive_path="${BACKUPS_DIR}/${archive_name}"
+>
+>   # Path of the file relative to CONFIGS_DIR (for tar and log)
+>   # Remove CONFIGS_DIR prefix and ensure no leading slash or './'
+>   rel_path="${file_path#${CONFIGS_DIR}/}"
+>   if [ "${rel_path:0:1}" = "/" ]; then
+>     rel_path="${rel_path:1}"
+>   fi
+>   if [ "${rel_path:0:2}" = "./" ]; then
+>     rel_path="${rel_path:2}"
+>   fi
+>
+>   # Calculate SHA256 checksum of the original source file
+>   file_sha256=$(sha256sum "$file_path" | awk '{print $1}')
+>
+>   # Get file size in bytes
+>   file_size=$(stat -c%s "$file_path")
+>
+>   # Add details to intermediate log (will be sorted later)
+>   echo "${rel_path}|${archive_name}|${file_sha256}|${file_size}" >> "$INTERMEDIATE_LOG_FILE"
+>
+>   # Create the archive in the background
+>   # tar -C <parent_of_item> -${tar_compress_flag}vf <archive_path> <item_relative_to_parent>
+>   # Example: tar -C /home/user/configs -zvf /home/user/backups/app_v1.2.tar.gz subdir/app.conf
+>   # This means we need to cd into $CONFIGS_DIR first, then tar the relative path
+>
+>   # Construct command for background job
+>   # tar is run from CONFIGS_DIR so paths are relative
+>   (
+>     cd "$CONFIGS_DIR" || exit 1
+>     tar -C "$CONFIGS_DIR" -${tar_compress_flag}cf "$target_archive_path" "${rel_path}"
+>   ) &
+>   background_pids+=($!)
+> done
+>
+> # Wait for all background jobs to finish
+> # Check if any background_pids were actually spawned
+> if [ ${#background_pids[@]} -eq 0 ]; then
+>   echo "No files matching criteria found for individual backups. Proceeding to full archive." >&2
+> else
+>   echo "Waiting for ${#background_pids[@]} background archiving jobs to complete..."
+>   for pid in "${background_pids[@]}"; do
+>     wait "$pid" || {
+>       echo "Error: Background job (PID $pid) exited with a non-zero status." >&2
+>       # Propagate error if any background job fails
+>       false
+>     }
+>   done
+>   echo "All background archiving jobs completed."
+> fi
+>
+> # 3. Create Full Archive
+> # Path: /home/user/backups/configs_full_<BACKUP_ID>.tar.xz
+> full_archive_name="configs_full_${BACKUP_ID}.tar.xz"
+> full_archive_path="${BACKUPS_DIR}/${full_archive_name}"
+>
+> echo "Creating full archive: ${full_archive_path}..."
+> tar -C "$(dirname "$CONFIGS_DIR")" -Jcf "$full_archive_path" "$(basename "$CONFIGS_DIR")"
+>
+> # 4. Generate Log File
+> # Sort intermediate log file by SHA256 column
+> # Sort options:
+> # -k4,4: Sort by 4th field (SHA256)
+> # -t'|': Use pipe as delimiter
+> # -o: Specify output file
+> sort -k4,4 -t'|' -o "$SORTED_LOG_FILE" "$INTERMEDIATE_LOG_FILE"
+>
+> # Move sorted log to final log file name
+> mv "$SORTED_LOG_FILE" "$LOG_FILE"
+>
+> echo "Backup process completed successfully."
+> echo "Log file: $LOG_FILE"
+> echo "Individual archives are in: $BACKUPS_DIR"
+> echo "Full archive: $full_archive_path"
+>
+> # Clean up temporary files (if any, though mv handles this)
+> # rm -f "$INTERMEDIATE_LOG_FILE" "$SORTED_LOG_FILE" # Not strictly needed if mv is used
+>
+> # Exit successfully
+> exit 0
+> EOFchmod +x ~/backup_configs.sh
+> echo "Script created: ~/backup_configs.sh"
+>
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

@@ -1,0 +1,161 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are a configuration-manager who has been handed a small archive of historical application configuration files. All files are already present on the system under `/home/user/configs/`.
+
+However, the archive is messy. It contains backup files, future drafts, and files with varying syntax rules.
+
+Your job is to produce a set of summary artefacts using standard UNIX text-processing utilities (awk, sed, grep, sort, cut, etc.). Do not use scripting languages such as Python, Perl, or jq.
+
+### 1. File Selection Rules
+
+*   **Naming Convention**: You must ONLY process files matching the pattern `config_YYYYMMDD.conf` (where YYYYMMDD is an 8-digit date).
+*   **Reference Date**: A file `/home/user/reference_date.txt` contains a single line with a reference date (YYYYMMDD).
+*   **Time Travel Rule**: Any configuration file whose date is **strictly later** than the reference date is considered a "future draft" and must be **completely ignored**. It should not contribute to any counts, keys, or outputs.
+
+### 2. Syntax & Parsing Rules
+
+Each valid file follows the pattern `key = value`, but with specific quoting rules:
+
+*   **Comments**: Lines starting with `#` (ignoring whitespace) are comments.
+*   **Keys**: Case-insensitive (treat as lower-case). Strip surrounding whitespace.
+*   **Values (Quoted)**: If the first non-whitespace character after the `=` is a double-quote (`"`), the value is the content *between* that quote and the next double-quote. 
+    *   Content inside quotes is preserved exactly (including whitespace and `#` characters).
+    *   Any text after the closing quote is ignored.
+*   **Values (Unquoted)**: If the value is not quoted:
+    *   It ends at the first `#` character or the end of the line.
+    *   Leading and trailing whitespace must be stripped.
+*   **Blank Lines**: Ignored.
+
+### 3. Required Outputs
+
+When finished, the following objects must exist:
+
+1.  **Directory**: `/home/user/output/` and `/home/user/clean_configs/`
+
+2.  **File**: `/home/user/output/config_line_counts.tsv`
+    *   Tab-separated: `filename<TAB>count`
+    *   Count of "active" lines (non-blank, non-comment) for each **valid** file.
+    *   Sorted chronologically (oldest valid file first).
+
+3.  **File**: `/home/user/output/all_keys.txt`
+    *   Union of all keys found in all **valid** files.
+    *   Lower-case, sorted alphabetically, unique.
+
+4.  **Directory**: `/home/user/clean_configs/`
+    *   Contains one sanitised copy of every **valid** configuration file.
+    *   Filename: Same as original.
+    *   Format: `key=value` (no spaces around `=`).
+    *   **Crucial**: If the original value was quoted, the sanitised file must contain the value **unquoted** (the content inside the quotes). Examples:
+        *   `key = " foo # bar "`  -> `key= foo # bar `
+        *   `key = plain # comment` -> `key=plain`
+
+5.  **File**: `/home/user/output/new_keys.log`
+    *   Keys present in the **newest valid** file but absent from the **oldest valid** file.
+    *   Format: One key per line, sorted.
+
+6.  **File**: `/home/user/output/merged_config.csv`
+    *   A CSV summary of the final active configuration.
+    *   Header: `Key,Value,Source`
+    *   Rows: For every unique key found across all valid files, list the **Key**, its **Value** from the *latest valid file* that defined it, and the **Source** filename where that value was found.
+    *   Sorted alphabetically by Key.
+    *   Assume values do not contain commas.
+
+### Constraints
+
+*   Work only in the terminal.
+*   Do not modify the input files.
+*   Do not use Python, Perl, Ruby, JS, or jq.
+
+Good luck!
+
+Current terminal state:
+Current Terminal Screen:
+root@95c1b8b6-f4d6-4d41-9b39-415e0e3668a1:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

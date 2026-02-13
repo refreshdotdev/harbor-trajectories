@@ -1,0 +1,98 @@
+New Terminal Output:
+
+root@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat >> solve.sh << 'EOF'
+>
+> # Archival function
+> create_archive() {
+>     echo "Creating archive..."
+>
+>     # Create tarball name
+>     ARCHIVE_NAME="data_${REGION_CODE}_${CURRENT_DATE}_${TOTAL_RECORDS}.tar.gz"
+>
+>     # Create tarball in archive directory
+>     tar -czf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "${INCOMING_DIR}" *.tsv
+>
+>     echo "Archive created: ${ARCHIVE_DIR}/${ARCHIVE_NAME}"
+> }
+>
+> # Raw backup function
+> move_raw_backup() {
+>     echo "Moving valid files to raw backup..."
+>     for csv_file in "$INCOMING_DIR"/*.csv; do
+>         if [ -f "$csv_file" ]; then
+>             mv "$csv_file" "$RAW_BACKUP_DIR/"
+>         fi
+>     done
+> }
+>
+> # Manifest generation function
+> generate_manifest() {
+>     echo "Generating manifest..."
+>
+>     # Create manifest with ISO-8859-1 encoding
+>     echo "Legacy ETL Manifest © 2023" | iconv -t ISO-8859-1 > "${LOG_DIR}/process_manifest.txt"
+>
+>     # Sort valid files alphabetically and add entries
+>     for file in $(printf '%s\n' "${VALID_FILES[@]}" | sort); do
+>         original_path="${RAW_BACKUP_DIR}/$file"
+>         md5_hash=$(get_md5 "$original_path")
+>         row_count=$(count_data_rows "$original_path")
+>
+>         # Append to manifest (convert to ISO-8859-1)
+>         echo "$file|$md5_hash|$row_count" | iconv -t ISO-8859-1 >> "${LOG_DIR}/process_manifest.txt"
+>     done
+>
+>     echo "Manifest generated: ${LOG_DIR}/process_manifest.txt"
+> }
+>
+> # Sorting function for orders.tsv
+> sort_orders_file() {
+>     echo "Sorting orders.tsv by total_amount..."
+>
+>     # Sort orders.tsv by 3rd column (numeric, descending) in staging directory
+>     sort -t$'\t' -k3,3nr "${STAGING_DIR}/orders.tsv" -o "${STAGING_DIR}/orders.tsv"
+> }
+>
+> # Main execution
+> main() {
+>     process_files
+>     create_archive
+>
+>     # Extract archive to staging directory
+>     tar -xzf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "${STAGING_DIR}"
+>
+>     sort_orders_file
+>
+>     move_raw_backup
+>     generate_manifest
+>
+>     echo "ETL process completed successfully!"
+> }
+>
+> # Call main function
+> main
+> EOF
+root@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ./solve.sh
+Configuration loaded successfully. REGION_CODE: US_EAST
+Starting file processing...
+Processing file: customers.csv
+File is clean. Processing customers.csv...
+Processing file: inventory.csv
+File is clean. Processing inventory.csv...
+Processing file: orders.csv
+File is clean. Processing orders.csv...
+Processing file: products.csv
+File is clean. Processing products.csv...
+Processing file: transactions.csv
+File is clean. Processing transactions.csv...
+Creating archive...
+tar: *.tsv: Cannot stat: No such file or directory
+tar: Exiting with failure status due to previous errors
+Archive created: /home/user/etl/archive/data_US_EAST_20260213_2.tar.gz
+Sorting orders.tsv by total_amount...
+sort: cannot read: /home/user/etl/staging/orders.tsv: No such file or directory
+Moving valid files to raw backup...
+Generating manifest...
+Manifest generated: /home/user/etl/logs/process_manifest.txt
+ETL process completed successfully!
+root@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user#

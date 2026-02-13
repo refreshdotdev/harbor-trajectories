@@ -1,0 +1,185 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# SQL Query Log Analysis & Optimization Task
+
+You are a database administrator tasked with analyzing a legacy application's query logs to identify performance bottlenecks. The system is old, quirky, and strictly specifies how data must be processed to ensure compatibility with downstream auditing tools.
+
+## 1. Workspace & Configuration
+
+Your analysis must take place in `/home/user/query_optimization`. 
+
+Unlike modern systems, this application does not use standard paths. You must locate the configuration file at `/home/user/db_tools/db_config.ini`. This file contains the absolute path to the log file (`log_file_path`) and a performance threshold (`min_duration_ms`). 
+
+**Do not hardcode the log path or threshold.** Your script must read them from the config file at runtime.
+
+## 2. Python Environment
+
+You must create an isolated virtual environment at `/home/user/query_optimization/env` containing exactly these packages:
+- `sqlparse==0.4.4`
+- `psycopg2-binary==2.9.7`
+
+## 3. The Analysis Script
+
+Create a script at `/home/user/query_optimization/analyze_and_optimize.py`. The script must accept a `--date` argument (format `YYYY-MM-DD`).
+
+### Phase 1: Filtering & Staging (The Audit Trail)
+
+The log file is pipe-delimited. Each line follows this format:
+`TIMESTAMP | DURATION | [LEVEL] | MESSAGE`
+
+Example:
+`2023-01-01T12:00:00Z | 15ms | [QUERY] | SELECT * FROM users;`
+
+You must parse the log file defined in the config and filter for queries that meet **ALL** of the following criteria:
+1.  **Date Match:** The timestamp occurs on the date provided via the `--date` argument.
+2.  **Type Match:** The level is exactly `[QUERY]`.
+3.  **Performance Threshold:** The query duration (e.g., "15ms") is **greater than or equal to** the `min_duration_ms` value found in `db_config.ini`.
+
+**Output Requirement:**
+All qualifying queries must be written to a staging file at `/home/user/query_optimization/staging/raw_extract.csv`.
+-   **Directory:** You must create the `staging` directory if it doesn't exist.
+-   **Format:** Standard CSV with a header row: `timestamp,duration_ms,query_text`.
+-   **Encoding:** The file **must** be encoded in `ISO-8859-1` (Latin-1) to support legacy Windows viewers.
+-   **Line Endings:** The file **must** use CRLF (`\r\n`) line endings.
+-   **Ordering:** Preserve the order from the original log file.
+
+### Phase 2: Analysis & Normalization
+
+Once the staging file is written, you must compute its **SHA-256 checksum**. This checksum proves to the auditor that the analysis is based on the exact data extracted.
+
+Next, process the queries from your staging data:
+1.  **Normalize:** Use `sqlparse` to format the SQL with `keyword_case='upper'`, `strip_comments=True`, and `reindent=False`. Remove any trailing semicolons.
+2.  **Deduplicate:** Count occurrences based on the *normalized* SQL string.
+3.  **Suggest Indexes:** For each unique normalized query, suggest an index:
+    -   Extract the table and columns from the `WHERE` clause.
+    -   Support simple equality (`col = val`) and `AND` conditions.
+    -   Format: `CREATE INDEX idx_<table>_<cols> ON <table>(<cols>);` (cols separated by underscores in name, commas in definition).
+
+### Phase 3: Reporting
+
+Generate a final JSON report at `/home/user/query_optimization/report.json`.
+-   **Encoding:** UTF-8.
+-   **Line Endings:** Unix (`\n`).
+-   **Structure:**
+    ```json
+    {
+      "meta": {
+        "date_analyzed": "<YYYY-MM-DD>",
+        "staging_file_sha256": "<hex_hash_of_the_csv_file>"
+      },
+      "stats": {
+        "total_queries_extracted": <int>,
+        "unique_patterns": <int>
+      },
+      "suggestions": [
+        {
+           "id": "<timestamp_of_first_occurrence>",
+           "normalized_sql": "<string>",
+           "index_suggestion": "<string>"
+        }
+      ]
+    }
+    ```
+-   **Sorting:** The `suggestions` list must be sorted chronologically by the `id` (timestamp) of the first occurrence.
+
+## 4. Execution
+
+Finally, run your script for the date `2023-03-15` and display the contents of `report.json` to stdout.
+
+## Constraints & Traps
+-   The log file may contain messy whitespace around the pipes `|`.
+-   The duration field in the log always ends with `ms`.
+-   Queries may contain non-ASCII characters (e.g., names in Latin-1).
+-   The grader checks the binary exactness of the CSV (CRLF, encoding) and the cryptographic hash in the JSON.
+
+Current terminal state:
+Current Terminal Screen:
+root@46cd37b5-c3fc-40bd-8daa-ac893002f79a:/home/user#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

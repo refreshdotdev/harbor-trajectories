@@ -1,0 +1,104 @@
+Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Hit:4 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.81.0-1ubuntu1.21).
+0 upgraded, 0 newly installed, 0 to remove and 4 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading cpython-3.12.12-linux-x86_64-gnu (download) (31.1MiB)
+ Downloading cpython-3.12.12-linux-x86_64-gnu (download)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 5 packages in 26ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/QzKzHYx6DFodBQV8PogNw/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 4 items
+
+../../tests/test_final_state.py::test_backups_exist FAILED               [ 25%]
+../../tests/test_final_state.py::test_db_service_encoding_and_content FAILED [ 50%]
+../../tests/test_final_state.py::test_api_gateway_cross_reference FAILED [ 75%]
+../../tests/test_final_state.py::test_log_file_formatting FAILED         [100%]
+
+=================================== FAILURES ===================================
+______________________________ test_backups_exist ______________________________
+
+    def test_backups_exist():
+        assert BACKUP_DB.exists(), "DB backup missing"
+        assert BACKUP_API.exists(), "API backup missing"
+        # Verify backup content is original UTF-8
+        content = BACKUP_DB.read_text(encoding="utf-8")
+>       assert "max_connections = 100" in content
+E       AssertionError: assert 'max_connections = 100' in ''
+
+/tests/test_final_state.py:18: AssertionError
+_____________________ test_db_service_encoding_and_content _____________________
+
+    def test_db_service_encoding_and_content():
+        assert DB_PATH.exists()
+    
+        # 1. Check Encoding: Must be readable as Latin-1, NOT UTF-8 if special chars differ
+        # The copyright symbol © is 0xC2 0xA9 in UTF-8, but 0xA9 in ISO-8859-1.
+        raw_bytes = DB_PATH.read_bytes()
+    
+        # It should NOT contain the UTF-8 sequence for copyright (0xC2 0xA9)
+        assert b"\xc2\xa9" not in raw_bytes, "db-service.toml is improperly encoded as UTF-8 (found 0xC2 0xA9). Must be ISO-8859-1."
+>       assert b"\xa9" in raw_bytes, "db-service.toml missing copyright symbol in ISO-8859-1 encoding."
+E       AssertionError: db-service.toml missing copyright symbol in ISO-8859-1 encoding.
+E       assert b'\xa9' in b'[database]\nhost = "db.prod.example.com"\nport = 5432\npassword = "secretpassword"\nmax_connections = 105\n\n[features]\nlogging = true\n'
+
+/tests/test_final_state.py:29: AssertionError
+_______________________ test_api_gateway_cross_reference _______________________
+
+    def test_api_gateway_cross_reference():
+        assert API_PATH.exists()
+    
+        # Calculate expected hash of the DB file
+        db_bytes = DB_PATH.read_bytes()
+        expected_md5 = hashlib.md5(db_bytes).hexdigest()
+    
+        api_text = API_PATH.read_text(encoding="utf-8")
+        lines = api_text.splitlines()
+    
+        # Check first line
+        first_line = lines[0]
+>       assert first_line.startswith("# REF:"), "First line of api-gateway.yaml must be the reference comment."
+E       AssertionError: First line of api-gateway.yaml must be the reference comment.
+E       assert False
+E        +  where False = <built-in method startswith of str object at 0x71ec57e89f80>('# REF:')
+E        +    where <built-in method startswith of str object at 0x71ec57e89f80> = 'server:'.startswith
+
+/tests/test_final_state.py:53: AssertionError
+___________________________ test_log_file_formatting ___________________________
+
+    def test_log_file_formatting():
+        assert LOG_PATH.exists()
+        raw_log = LOG_PATH.read_bytes()
+    
+        # Check CRLF
+>       assert b"\r\n" in raw_log, "Log file must use CRLF line endings."
+E       AssertionError: Log file must use CRLF line endings.
+E       assert b'\r\n' in b"\nChange Log for System Configuration Update\n\n=============================================\n\n\n\nTicket ID: CR-1104 (Placeholder)\n\nDate: $(date +'%Y-%m-%d %H:%M:%S')\n\n\n\nDatabase Service Configuration:\n\n- Host updated to: db.prod.example.com\n\n- Port updated to: 5432\n\n- Password updated (Base64 decoded)\n\n- Max connections calculated as: 105\n\n- Logging feature enabled: True\n\n\n\nAPI Gateway Configuration:\n\n- Server port set to: 8080\n\n- CORS allowed origins updated to:\n\n  * https://app.example.com\n\n  * https://admin.example.com\n\n\n\nBackup Files Created:\n\n- db-service.toml.bak\n\n- api-gateway.yaml.bak\n\n\n\nNotes:\n\n- Original email and ticket files were empty; placeholder data used\n\n- TOML and YAML files were manually created and updated\n\n- Log file uses CRLF line endings for Windows compatibility\n\n"
+
+/tests/test_final_state.py:65: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_backups_exist - AssertionError: ...
+FAILED ../../tests/test_final_state.py::test_db_service_encoding_and_content
+FAILED ../../tests/test_final_state.py::test_api_gateway_cross_reference - As...
+FAILED ../../tests/test_final_state.py::test_log_file_formatting - AssertionE...
+============================== 4 failed in 0.03s ===============================

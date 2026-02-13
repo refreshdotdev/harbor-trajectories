@@ -1,0 +1,96 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 4 items
+
+../../tests/test_final_state.py::test_cleaned_log_exists_and_sanitized FAILED [ 25%]
+../../tests/test_final_state.py::test_report_structure_mixed_delimiters PASSED [ 50%]
+../../tests/test_final_state.py::test_report_content_logic FAILED        [ 75%]
+../../tests/test_final_state.py::test_checksum_file FAILED               [100%]
+
+=================================== FAILURES ===================================
+____________________ test_cleaned_log_exists_and_sanitized _____________________
+
+    def test_cleaned_log_exists_and_sanitized():
+        """Check that the intermediate clean log exists and has no null bytes."""
+        assert os.path.exists(CLEAN_LOG), "Intermediate file cleaned_combined.log is missing."
+    
+        with open(CLEAN_LOG, 'rb') as f:
+            content = f.read()
+    
+        # Check for null bytes
+        assert b'\x00' not in content, "cleaned_combined.log still contains null bytes."
+    
+        # Check that it contains content from both logs
+        decoded = content.decode('utf-8', errors='replace')
+>       assert "10.0.0.1" in decoded, "Missing content from plain text log."
+E       AssertionError: Missing content from plain text log.
+E       assert '10.0.0.1' in 'Feb 11 22:45:01 server1 sshd[9876]: Failed password for root from 10.0.0.5 port 2222 ssh2Feb 11 22:45:02 server1 sshd[9877]: Failed password for root from 203.0.113.10 port 8022 ssh2Feb 12 08:15:22 server1 sshd[1234]: Failed password for root from 192.168.1.100 port 22 ssh2Feb 12 08:15:23 server1 sshd[1235]: Failed password for root from 10.0.0.5 port 2222 ssh2Feb 12 08:15:24 server1 sshd[1236]: Failed password for invalid user admin from 203.0.113.10 port 8022 ssh2Feb 12 08:15:25 server1 sshd[1237]: Failed password for root from 192.168.1.100 port 22 ssh2Feb 12 08:15:26 server1 sshd[1238]: Failed password for root from 10.0.0.5 port 2222 ssh2EOFcat > /home/user/evidence/old/auth.log.1 << \'EOF\'Feb 11 20:30:15 server1 sshd[5678]: Failed password for root from 10.0.0.5 port 2222 ssh2Feb 11 20:30:16 server1 sshd[5679]: Failed password for root from 203.0.113.10 port 8022 ssh2EOFgzip /home/user/evidence/old/auth.log.1echo "Feb 12 08:15:22 server1 sshd[1234]: Failed password for root from 192.168.1.100 port 22 ssh2" > /home/user/evidence/auth.logecho "Feb 12 08:15:23 server1 sshd[1235]: Failed password for root from 10.0.0.5 port 2222 ssh2" >> /home/user/evidence/auth.logecho "Feb ... 12 08:15:25 server1 sshd[1237]: Failed password for root from 192.168.1.100 port 22 ssh2Feb 12 08:15:26 server1 sshd[1238]: Failed password for root from 10.0.0.5 port 2222 ssh2EOFcat > /home/user/evidence/old/auth.log.1 << \'EOF\'Feb 11 20:30:15 server1 sshd[5678]: Failed password for root from 10.0.0.5 port 2222 ssh2Feb 11 20:30:16 server1 sshd[5679]: Failed password for root from 203.0.113.10 port 8022 ssh2EOFgzip /home/user/evidence/old/auth.log.1echo "Feb 12 08:15:22 server1 sshd[1234]: Failed password for root from 192.168.1.100 port 22 ssh2" > /home/user/evidence/auth.logecho "Feb 12 08:15:23 server1 sshd[1235]: Failed password for root from 10.0.0.5 port 2222 ssh2" >> /home/user/evidence/auth.logecho "Feb 12 08:15:24 server1 sshd[1236]: Failed password for invalid user admin from 203.0.113.10 port 8022 ssh2" >> /home/user/evidence/auth.logecho "Feb 12 08:15:25 server1 sshd[1237]: Failed password for root from 192.168.1.100 port 22 ssh2" >> /home/user/evidence/auth.logecho "Feb 12 08:15:26 server1 sshd[1238]: Failed password for root from 10.0.0.5 port 2222 ssh2" >> /home/user/evidence/auth.logcat > /home/user/.config/ir_settings.ini << \'EOF\'[Filters]port_threshold=2000'
+
+/tests/test_final_state.py:45: AssertionError
+__________________________ test_report_content_logic ___________________________
+
+    def test_report_content_logic():
+        """
+        Verify the data logic.
+        Config min_port = 45000.
+    
+        10.0.0.1:
+          - 10:05 EST (15:05 UTC) | Port 46000 | Failed | Valid -> COUNT
+          - 10:15 EST (15:15 UTC) | Port 46002 | Failed | Invalid -> COUNT
+          -> Total: 2. First Seen: 15:05 UTC.
+    
+        192.168.1.100:
+          - 09:00 EST (14:00 UTC) | Port 50000 | Failed -> COUNT
+          - 09:01 EST (14:01 UTC) | Port 50001 | Failed -> COUNT
+          - 09:03 EST | Port 22 | Failed -> IGNORED (< 45000)
+          -> Total: 2. First Seen: 14:00 UTC.
+    
+        192.168.1.50:
+          - 10:00 EST | Port 44000 | Failed -> IGNORED (< 45000)
+    
+        Sorting:
+        1. 192.168.1.100 (Count 2, First Seen 14:00 UTC)
+        2. 10.0.0.1 (Count 2, First Seen 15:05 UTC)
+        (192... is first because tie-breaker is First_Seen DESC? No, First_Seen DESC means 'most recent first'.)
+        Wait, instruction says: "If counts are equal, break ties by First_Seen_UTC (descending / most recent first)."
+        15:05 is > 14:00. So 10.0.0.1 comes BEFORE 192.168.1.100.
+    
+        Expected Order:
+        1. 10.0.0.1;2023-01-10T15:05:00Z;2
+        2. 192.168.1.100;2023-01-10T14:00:00Z;2
+        """
+        with open(REPORT_FILE, 'r', encoding='utf-8') as f:
+            lines = [l.strip() for l in f.readlines() if l.strip()]
+    
+        data_rows = lines[1:]
+>       assert len(data_rows) == 2, f"Expected 2 data rows, found {len(data_rows)}"
+E       AssertionError: Expected 2 data rows, found 1
+E       assert 1 == 2
+E        +  where 1 = len(['203.0.113.10;2023-02-11T18:45:01Z;2'])
+
+/tests/test_final_state.py:104: AssertionError
+______________________________ test_checksum_file ______________________________
+
+    def test_checksum_file():
+        """Verify the SHA1 checksum file exists and is correct."""
+        assert os.path.exists(CHECKSUM_FILE), "Checksum file is missing."
+    
+        expected_sha1 = calculate_sha1(REPORT_FILE)
+        with open(CHECKSUM_FILE, 'r') as f:
+            content = f.read().strip()
+    
+>       assert content == expected_sha1, "Checksum file content does not match report.csv hash."
+E       AssertionError: Checksum file content does not match report.csv hash.
+E       assert '3ea941050cb3...ut/report.csv' == '3ea941050cb3...cc0df60d5aafe'
+E         
+E         - 3ea941050cb307c625bb062898fcc0df60d5aafe
+E         + 3ea941050cb307c625bb062898fcc0df60d5aafe  /home/user/out/report.csv
+
+/tests/test_final_state.py:126: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_cleaned_log_exists_and_sanitized
+FAILED ../../tests/test_final_state.py::test_report_content_logic - Assertion...
+FAILED ../../tests/test_final_state.py::test_checksum_file - AssertionError: ...
+========================= 3 failed, 1 passed in 0.05s ==========================

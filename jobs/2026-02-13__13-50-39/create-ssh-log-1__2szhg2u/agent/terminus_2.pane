@@ -1,0 +1,132 @@
+[?2004hroot@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# clear
+[?2004l[H[J[?2004hroot@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# find evidence/ -type f | head -20
+[?2004l[?2004hroot@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# ls -la evidence/
+[?2004ltotal 0
+drwxr-xr-x 3 root root 25 Feb 13 18:48 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 29 Feb 13 18:48 [01;34m..[0m
+drwxr-xr-x 2 root root  6 Feb 13 18:48 [01;34mold[0m
+[?2004hroot@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# find evidence/ -type f
+[?2004l[?2004hroot@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# cat /home/user/.config/ir_settings.ini
+[?2004l[Filters]
+min_port = 45000
+# threshold for firewall rule generation
+[?2004hroot@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# find evidence/ -type f -name "*" 
+[?2004l[?2004hroot@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# ls -la evidence/old/
+[?2004ltotal 0
+drwxr-xr-x 2 root root  6 Feb 13 18:48 [0m[01;34m.[0m
+drwxr-xr-x 3 root root 25 Feb 13 18:48 [01;34m..[0m
+[?2004hroot@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# mkdir -p /home/user/out
+[?2004l[?2004hroot@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# cat > process_logs.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration
+[?2004l[?2004h> PORT_THRESHOLD=$(grep '^min_port = ' /home/user/.config/ir_settings.ini | cut -d' ' -f3)
+[?2004l[?2004h> OUTPUT_DIR="/home/user/out"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create output directory
+[?2004l[?2004h> mkdir -p "$OUTPUT_DIR"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize empty files
+[?2004l[?2004h> : > "$OUTPUT_DIR/cleaned_combined.log"
+[?2004l[?2004h> : > "$OUTPUT_DIR/report.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to sanitize log lines
+[?2004l[?2004h> echo "# Phase 1: Sanitation - creating empty cleaned_combined.log" > "$OUTPUT_DIR/process_log.txt"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# cat >> process_logs.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sanitization function
+[?2004l[?2004h> sanitize_log() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     echo "Processing: $file" >> "$OUTPUT_DIR/process_log.txt"
+[?2004l[?2004h>     case "$file" in
+[?2004l[?2004h>         *.gz)
+[?2004l[?2004h>             gunzip -c "$file" | tr -d '\000-\037' | sed 's/\r$//' | grep -v '^$' | iconv -t UTF-8 -c >> "$OUTPUT_DIR/cleaned_combined.log"
+[?2004l[?2004h>             ;;
+[?2004l[?2004h>         *)
+[?2004l[?2004h>             tr -d '\000-\037' < "$file" | sed 's/\r$//' | grep -v '^$' | iconv -t UTF-8 -c >> "$OUTPUT_DIR/cleaned_combined.log"
+[?2004l[?2004h>             ;;
+[?2004l[?2004h>     esac
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process all evidence files
+[?2004l[?2004h> if [ -d evidence ]; then
+[?2004l[?2004h>     find evidence/ -type f | while read -r file; do
+[?2004l[?2004h>         if [[ -f "$file" ]]; then
+[?2004l[?2004h>             sanitize_log "$file"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     done
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Sanitization complete" >> "$OUTPUT_DIR/process_log.txt"
+[?2004l[?2004h> EOFchmod +x process_logs.sh
+[?2004l[?2004h> cat >> process_logs.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Analysis function
+[?2004l[?2004h> parse_logs() {
+[?2004l[?2004h>     local port_threshold="$1"
+[?2004l[?2004h>     echo "# Phase 2: Analysis - parsing cleaned_combined.log for SSH failed password attempts" >> "$OUTPUT_DIR/process_log.txt"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Extract relevant log entries
+[?2004l[?2004h>     grep "Failed password" "$OUTPUT_DIR/cleaned_combined.log" | while read -r line; do
+[?2004l[?2004h>         # Extract IP address and port
+[?2004l[?2004h>         ip=$(echo "$line" | grep -o -E "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | head -1)
+[?2004l[?2004h>         port=$(echo "$line" | grep -o -E "port [0-9]+" | awk '{print $2}' | head -1)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Only process high ports
+[?2004l[?2004h>         if [ -n "$port" ] && [ "$port" -ge "$port_threshold" ]; then
+[?2004l[?2004h>             # Extract timestamp (format: MMM DD HH:MM:SS)
+[?2004l[?2004h>             timestamp=$(echo "$line" | awk '{print $1, $2, $3}' | tr -d '[]')
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Convert to UTC (EST is UTC-5, assume 2023 year)
+[?2004l[?2004h>             utc_timestamp="2023-$(date -d "$timestamp" +"%Y-%m-%dT%H:%M:%SZ")"
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Store for report generation
+[?2004l[?2004h>             echo "$ip|$utc_timestamp" >> "$OUTPUT_DIR/attacks.tmp"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     done
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate report
+[?2004l[?2004h> generate_report() {
+[?2004l[?2004h>     echo "# Phase 3: Generating report.csv" >> "$OUTPUT_DIR/process_log.txt"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create header with comma delimiter
+[?2004l[?2004h>     echo "IP,First_Seen_UTC,Attempt_Count" > "$OUTPUT_DIR/report.csv"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Process attacks and sort by attempt count (descending)
+[?2004l[?2004h>     if [ -f "$OUTPUT_DIR/attacks.tmp" ]; then
+[?2004l[?2004h>         awk -F"|" '{count[$1]++} END {for (ip in count) {print ip, count[ip]}}' "$OUTPUT_DIR/attacks.tmp" | \
+[?2004l[?2004h>         sort -t" " -k2 -nr -k1 -r | \
+[?2004l[?2004h>         while read -r ip count; do
+[?2004l[?2004h>             # Find earliest timestamp for this IP
+[?2004l[?2004h>             first_seen=$(grep "^$ip|" "$OUTPUT_DIR/attacks.tmp" | sort | head -1 | cut -d"|" -f2)
+[?2004l[?2004h>             # Use semicolon delimiter for data rows
+[?2004l[?2004h>             echo "$ip;$first_seen;$count" >> "$OUTPUT_DIR/report.csv"
+[?2004l[?2004h>         done
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main processing logic
+[?2004l[?2004h> if [ -s "$OUTPUT_DIR/cleaned_combined.log" ]; then
+[?2004l[?2004h>     parse_logs "$PORT_THRESHOLD"
+[?2004l[?2004h>     generate_report
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Clean up temporary files
+[?2004l[?2004h>     rm -f "$OUTPUT_DIR/attacks.tmp"
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "Processing complete. Report generated." >> "$OUTPUT_DIR/process_log.txt"
+[?2004l[?2004h> else
+[?2004l[?2004h>     echo "No valid log data available for analysis." >> "$OUTPUT_DIR/process_log.txt"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "# Phase 4: Generating checksum" >> "$OUTPUT_DIR/process_log.txt"
+[?2004l[?2004h> sha1sum "$OUTPUT_DIR/report.csv" > "$OUTPUT_DIR/report.csv.sha1"
+[?2004l[?2004h> sed -i 's/ .*//' "$OUTPUT_DIR/report.csv.sha1"  # Remove filename from checksum file
+[?2004l[?2004h> EOFchmod +x process_logs.sh
+[?2004l[?2004h> ./process_logs.sh
+[?2004l[?2004h> ls -la /home/user/out/
+[?2004l[?2004h> 

@@ -1,0 +1,77 @@
+Current terminal state:
+New Terminal Output:
+
+root@e75d6e9d-7dbc-477b-974d-7a2fec15c896:/home/user/source_files# cat > /tmp/verify_log.sh << 'EOF'
+> #!/bin/bash
+>
+> AUDIT_DIR="/home/user/audit_2023Q4"
+> LOG_FILE="${AUDIT_DIR}/checksum_audit.log"
+> STATUS="VERIFICATION_PASSED"
+>
+> # Ensure we are in the source directory for relative path lookups
+> cd /home/user/source_files
+>
+> # Read the log file line by line, skipping header lines
+> # Use ISO-8859-1 for reading
+> count=0
+> while IFS= read -r line; do
+>     ((count++))
+>     if [[ $count -le 3 ]]; then
+>         continue  # Skip header lines
+>     fi
+>     if [[ $line == "" ]]; then
+>         continue  # Skip empty lines (should only be the final newline)
+>     fi
+>
+>     if [[ $line == *SHA256* && $line == *MD5* ]]; then
+>         filename=$(echo "$line" | awk '{print $1}')
+>         recorded_sha256=$(echo "$line" | awk '{print $3}' | cut -d'=' -f2)
+>
+>         # Construct full path to the file (relative path from source_files)
+>         filepath="./${filename}"
+>         if [[ ! -f "${filepath}" ]]; then
+>             echo "File not found: ${filename}"
+>             STATUS="VERIFICATION_FAILED"
+>             continue
+>         fi
+>
+>         # Compute actual SHA256 hash
+>         actual_sha256=$(sha256sum "${filepath}" | awk '{print $1}')
+>
+>         if [[ "${recorded_sha256}" != "${actual_sha256}" ]]; then
+>             echo "Hash mismatch for ${filename}: expected ${recorded_sha256}, got ${actual_sha256}"
+>             STATUS="VERIFICATION_FAILED"
+>         fi
+>     fi
+> done < <(iconv -f ISO-8859-1 -t UTF-8 "${LOG_FILE}")
+>
+> # Append the verification status to the log file in ISO-8859-1
+> # Use a subshell to maintain the correct encoding
+> {
+>     if [[ "${STATUS}" == "VERIFICATION_PASSED" ]]; then
+>         echo "VERIFICATION_PASSED"
+>     else
+>         echo "VERIFICATION_FAILED"
+>     fi
+> } | iconv -t ISO-8859-1 >> "${LOG_FILE}"
+>
+> # Also output the final status to stdout for logging
+> if [[ -t 1 ]]; then
+>     echo "Audit log verification status: ${STATUS}"
+>     echo "Final log content:"
+>     cat "${LOG_FILE}"
+> fi
+> EOF
+root@e75d6e9d-7dbc-477b-974d-7a2fec15c896:/home/user/source_files# chmod +x /tmp/verify_log.sh
+root@e75d6e9d-7dbc-477b-974d-7a2fec15c896:/home/user/source_files# /tmp/verify_log.sh
+Audit log verification status: VERIFICATION_PASSED
+Final log content:
+START       : 2023-Q4 checksum verification
+START_TIME  : 2026-02-13T19:02:28Z
+FILE_RECORDS
+
+VERIFICATION_PASSED
+root@e75d6e9d-7dbc-477b-974d-7a2fec15c896:/home/user/source_files#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

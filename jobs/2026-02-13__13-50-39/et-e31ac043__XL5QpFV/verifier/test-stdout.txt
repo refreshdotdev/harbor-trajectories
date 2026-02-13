@@ -1,0 +1,49 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 5 items
+
+../../tests/test_final_state.py::test_environment_isolation PASSED       [ 20%]
+../../tests/test_final_state.py::test_secure_keyring_has_key PASSED      [ 40%]
+../../tests/test_final_state.py::test_audit_log_format_and_content PASSED [ 60%]
+../../tests/test_final_state.py::test_encrypted_payload_decrypts FAILED  [ 80%]
+../../tests/test_final_state.py::test_manifest_integrity PASSED          [100%]
+
+=================================== FAILURES ===================================
+_______________________ test_encrypted_payload_decrypts ________________________
+
+    def test_encrypted_payload_decrypts():
+        """payload.encrypted must decrypt using the derived passphrase."""
+        _require_file(ENCRYPTED_PAYLOAD)
+    
+        passphrase = _calculate_expected_passphrase(MESSAGE_TXT)
+    
+        # Attempt decryption
+        proc = subprocess.run(
+            [
+                "gpg", "--batch", "--yes", "--pinentry-mode", "loopback",
+                "--passphrase", passphrase,
+                "--decrypt", str(ENCRYPTED_PAYLOAD)
+            ],
+            capture_output=True,
+            text=False
+        )
+    
+>       assert proc.returncode == 0, (
+            f"Decryption failed with passphrase '{passphrase}'. stderr:\n{proc.stderr.decode('utf-8', errors='replace')}"
+        )
+E       AssertionError: Decryption failed with passphrase '445566778899-7331-efac-feeb-11225588-4650'. stderr:
+E         gpg: directory '/root/.gnupg' created
+E         gpg: keybox '/root/.gnupg/pubring.kbx' created
+E         gpg: AES256.CFB encrypted data
+E         gpg: encrypted with 1 passphrase
+E         gpg: decryption failed: Bad session key
+E         
+E       assert 2 == 0
+E        +  where 2 = CompletedProcess(args=['gpg', '--batch', '--yes', '--pinentry-mode', 'loopback', '--passphrase', '445566778899-7331-efac-feeb-11225588-4650', '--decrypt', '/home/user/work/integration/payload.encrypted'], returncode=2, stdout=b'', stderr=b"gpg: directory '/root/.gnupg' created\ngpg: keybox '/root/.gnupg/pubring.kbx' created\ngpg: AES256.CFB encrypted data\ngpg: encrypted with 1 passphrase\ngpg: decryption failed: Bad session key\n").returncode
+
+/tests/test_final_state.py:124: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_encrypted_payload_decrypts - Ass...
+========================= 1 failed, 4 passed in 0.13s ==========================

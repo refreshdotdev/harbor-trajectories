@@ -1,0 +1,370 @@
+[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# clear
+[?2004l[H[J[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# pwd
+[?2004l/home/user/cloud
+[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# ls -la
+[?2004ltotal 8
+drwxrwxrwx 1 root root  90 Feb 13 00:00 [0m[34;42m.[0m
+drwxr-xr-x 1 root root  27 Feb 13 00:00 [01;34m..[0m
+-rwxrwxrwx 1 root root  15 Feb 13 00:00 [01;32m.config[0m
+-rwxrwxrwx 1 root root 107 Feb 13 00:00 [01;32minventory.csv[0m
+drwxrwxrwx 1 root root   6 Feb 13 00:00 [34;42mlegacy[0m
+drwxrwxrwx 1 root root   6 Feb 13 00:00 [34;42moutput[0m
+[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# mkdir -p /home/user/cloud/output
+[?2004l[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# echo "Source inventory file: $LEGACY_INVENTORY"
+[?2004lSource inventory file: /home/user/cloud/legacy/mainframe_export.csv
+[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# cat /home/user/cloud/.config
+[?2004l.internal.corp
+[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# cat > /tmp/migration_script.py << 'EOF'
+[?2004l                processed_service_name [?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import csv
+[?2004l[?2004h> import json
+[?2004l[?2004h> import io
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import re
+[?2004l[?2004h> from pathlib import Path
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Configuration ---
+[?2004l[?2004h> SOURCE_INVENTORY = os.environ.get('LEGACY_INVENTORY')
+[?2004l[?2004h> CONFIG_FILE = '/home/user/cloud/.config'
+[?2004l[?2004h> OUTPUT_DIR = '/home/user/cloud/output'
+[?2004l[?2004h> DOMAIN_SUFFIX = None
+[?2004l[?2004h> MIGRATION_PLAN_FILE = os.path.join(OUTPUT_DIR, 'migration_plan.tsv')
+[?2004l[?2004h> MANIFEST_FILE = os.path.join(OUTPUT_DIR, 'manifest.json')
+[?2004l[?2004h> AUDIT_LOG_FILE = os.path.join(OUTPUT_DIR, 'audit.log')
+[?2004l[?2004h> 
+[?2004l[?2004h> class CRLFWriter:
+[?2004l[?2004h>     """A CSV writer that forces CRLF line endings and encodes to ISO-8859-1."""
+[?2004l[?2004h>     def __init__(self, f):
+[?2004l[?2004h>         self.writer = csv.writer(f, dialect='excel', lineterminator='\r\n')
+[?2004l[?2004h> 
+[?2004l[?2004h>     def writerow(self, row):
+[?2004l[?2004h>         self.writer.writerow(row)
+[?2004l[?2004h> 
+[?2004lr[?2004h>     def writerows(self, rows):
+[?2004l[?2004h>         for r in rows:
+[?2004l[?2004h>             self.writerow(r)
+[?2004l[?2004h> 
+[?2004lt[?2004h> def remove_zwsp(text):
+[?2004l[?2004h>     """Remove Zero Width Spaces (U+200B)."""
+[?2004l[?2004h>     if text:
+[?2004l[?2004h>         return text.replace('\u200b', '')
+[?2004l[?2004h>     return text
+[?2004l[?2004h> 
+[?2004l[?2004h> def main():
+[?2004l[?2004h>     if not os.path.exists(OUTPUT_DIR):
+[?2004l[?2004h>         os.makedirs(OUTPUT_DIR, exist_ok=True)
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Read domain suffix
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+[?2004l[?2004h>             domain_suffix_content = f.read().strip()
+[?2004l[?2004h>             if domain_suffix_content:
+[?2004l[?2004h>                 DOMAIN_SUFFIX = domain_suffix_content
+[?2004l[?2004h>                 print(f"Domain suffix read: {DOMAIN_SUFFIX}")
+[?2004l[?2004h>             else:
+[?2004l[?2004h>                 print(f"Warning: Domain suffix file {CONFIG_FILE} is empty or not readable. Using empty suffix.")
+[?2004l[?2004h>                 DOMAIN_SUFFIX = ''
+[?2004l[?2004h>     except FileNotFoundError:
+[?2004l[?2004h>         print(f"Error: Config file {CONFIG_FILE} not found. Using empty suffix.")
+[?2004l[?2004h>         DOMAIN_SUFFIX = ''
+[?2004l[?2004h> 
+[?2004l[?2004h>     if not SOURCE_INVENTORY:
+[?2004l[?2004h>         print("Error: LEGACY_INVENTORY environment variable not set or is empty.")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     if not os.path.exists(SOURCE_INVENTORY):
+[?2004l[?2004h>         print(f"Error: Source inventory file {SOURCE_INVENTORY} not found.")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h>     print(f"Processing source inventory: {SOURCE_INVENTORY}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     processed_rows = []
+[?2004l[?2004h>     # Header for the TSV output
+[?2004l[?2004h>     output_header = ["ServiceName", "TargetFQDN"]
+[?2004l[?2004h> 
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(SOURCE_INVENTORY, 'rb') as f_in:
+[?2004l[?2004h>             # UTF-16LE with BOM, decode to Python strings (Unicode)
+[?2004l[?2004h>             decoded_lines = []
+[?2004l[?2004h>             for line_bytes in f_in:
+[?2004l[?2004h>                 # Decode bytes to Unicode string, stripping CRLF if present
+[?2004l[?2004h>                 line = line_bytes.decode('utf-16le').strip('
+[?2004l[?2004h> 
+[?2004le[?2004h> ')
+[?2004l[?2004h>                 decoded_lines.append(line)
+[?2004l[?2004h>             
+[?2004l[?2004h>             # CSV reader for the decoded lines (now strings)
+[?2004l[?2004h>             # Assumes standard CSV structure after decoding
+[?2004l[?2004h>             # Pandas is not standard, using pure Python CSV module
+[?2004l[?2004h>             reader = csv.reader(decoded_lines, delimiter=',')
+[?2004l[?2004h>             
+[?2004ln[?2004h>             for row_idx, row_data in enumerate(reader):
+[?2004l[?2004h>                 if not row_data: # Skip empty rows
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # Check for comment lines (lines starting with # after decoding)
+[?2004l[?2004h>                 if row_data and row_data[0].startswith('#'):
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # Filter: Status should not be 'Decom' or 'Pending'
+[?2004l[?2004h>                 # Filter: NewServer should not be empty or only whitespace
+[?2004l[?2004h>                 # Assume column names: 'ServiceName', 'Status', 'NewServer' exist in the CSV
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 try:
+[?2004l[?2004h>                     service_name = row_data[0] 
+[?2004l[?2004h>                     status = row_data[1] 
+[?2004l[?2004h>                     new_server_val = row_data[2]
+[?2004l[?2004h>                 except IndexError:
+[?2004l[?2004h>                     print(f"Warning: Skipping malformed row {row_idx+1} (not enough columns). Expected at least 3 columns.")
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                     
+[?2004l[?2004h>                 if status in ['Decom', 'Pending']:
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 if not new_server_val or new_server_val.isspace():
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # Transformations:
+[?2004l[?2004h>                 # ServiceName: Convert to all lowercase
+[?2004l[?2004h>                 processed_service_name = service_name.lower()
+[?2004l[?2004h>                 # TargetFQDN: Clean NewServer, append domain suffix
+[?2004l[?2004h>                 target_fqdn = remove_zwsp(new_server_val) + DOMAIN_SUFFIX
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 processed_rows.append([processed_service_name, target_fqdn])
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Sort the output by ServiceName (alphabetically)
+[?2004l[?2004h>         processed_rows.sort(key=lambda x: x[0])
+[?2004l[?2004h> 
+[?2004l[?2004h>         # Write migration_plan.tsv (ISO-8859-1, CRLF)
+[?2004l[?2004h>         # ISO-8859-1 is a subset of UTF-16LE for common Western characters.
+[?2004l[?2004h>         # If data only contains these, encoding should be fine.
+[?2004l[?2004h>         # If data contains characters not in ISO-8859-1, they will be replaced (e.g., by '?')
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(MIGRATION_PLAN_FILE, 'w', encoding='iso-8859-1', errors='replace') as f_out:
+[?2004l[?2004h>                 tsv_writer = CRLFWriter(f_out) 
+[?2004l[?2004h>                 tsv_writer.writerow(output_header)
+[?2004l[?2004h>                 tsv_writer.writerows(processed_rows)
+[?2004l[?2004h>             print(f"Generated migration plan: {MIGRATION_PLAN_FILE}")
+[?2004l[?2004h>         except UnicodeEncodeError as e:
+[?2004l[?2004h>             print(f"Error: Could not encode data to ISO-8859-1: {e}. Please check source data for non-Latin-1 characters.")
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>         except Exception as e:
+[?2004l[?2004h>             print(f"Error writing {MIGRATION_PLAN_FILE}: {e}")
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Generate manifest.json
+[?2004l[?2004h>         # Record count = number of data rows in TSV, excluding header
+[?2004l[?2004h>         record_count = len(processed_rows)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # MD5 hash of the final migration_plan.tsv
+[?2004l[?2004h>         md5_hash = ""
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(MIGRATION_PLAN_FILE, 'rb') as f:
+[?2004l[?2004h>                 md5_hash = hashlib.md5(f.read()).hexdigest()
+[?2004l[?2004h>         except FileNotFoundError:
+[?2004l[?2004h>             print(f"Error: {MIGRATION_PLAN_FILE} not found for MD5 calculation.")
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>         except Exception as e:
+[?2004l[?2004h>             print(f"Error calculating MD5 for {MIGRATION_PLAN_FILE}: {e}")
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>             
+[?2004l[?2004h>         manifest_data = {
+[?2004l[?2004h>             "source_file": SOURCE_INVENTORY,
+[?2004l[?2004h>             "record_count": record_count,
+[?2004l[?2004h>             "output_md5": md5_hash
+[?2004l[?2004h>         }
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(MANIFEST_FILE, 'w', encoding='utf-8') as f:
+[?2004l[?2004h>                 json.dump(manifest_data, f, indent=2)
+[?2004l[?2004h>             print(f"Generated manifest: {MANIFEST_FILE}")
+[?2004l[?2004h>         except Exception as e:
+[?2004l[?2004h>             print(f"Error writing {MANIFEST_FILE}: {e}")
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>             
+[?2004l[?2004h>         # Generate audit.log
+[?2004l[?2004h>         # Size in bytes of the final migration_plan.tsv
+[?2004l[?2004h>         file_size_bytes = 0
+[?2004l[?2004h>         if os.path.exists(MIGRATION_PLAN_FILE):
+[?2004l[?2004h>             file_size_bytes = os.path.getsize(MIGRATION_PLAN_FILE)
+[?2004l[?2004h>         
+[?2004l[?2004h>         audit_log_content = f"{file_size_bytes} bytes generated"
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(AUDIT_LOG_FILE, 'w', encoding='utf-8') as f:
+[?2004l[?2004h>                 f.write(audit_log_content + "\n") 
+[?2004l[?2004h>             print(f"Generated audit log: {AUDIT_LOG_FILE}")
+[?2004l[?2004h>         except Exception as e:
+[?2004l[?2004h>             print(f"Error writing {AUDIT_LOG_FILE}: {e}")
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>             
+[?2004l[?2004h>         print("All tasks completed successfully.")
+[?2004l[?2004h>         
+[?2004l[?2004h>     except FileNotFoundError:
+[?2004l[?2004h>         print(f"Error: Input file {SOURCE_INVENTORY} not found. Check $LEGACY_INVENTORY variable.")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"An unexpected error occurred: {e}")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     main()
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# python3 /tmp/migration_script.py
+[?2004l  File "/tmp/migration_script.py", line 75
+    line = line_bytes.decode('utf-16le').strip('
+                                               ^
+SyntaxError: unterminated string literal (detected at line 75)
+[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# ls -la /home/user/cloud/output/
+[?2004ltotal 0
+drwxrwxrwx 1 root root  6 Feb 13 00:00 [0m[34;42m.[0m
+drwxrwxrwx 1 root root 90 Feb 13 00:00 [34;42m..[0m
+[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# rm -f /tmp/migration_script.py
+[?2004l[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# cat > /tmp/migration_script.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import csv
+[?2004l[?2004h> import json
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import re
+[?2004l[?2004h> from pathlib import Path
+[?2004l[?2004h> 
+[?2004l[?2004h> # --- Configuration ---
+[?2004l[?2004h> SOURCE_INVENTORY = os.environ.get('LEGACY_INVENTORY')
+[?2004l[?2004h> CONFIG_FILE = '/home/user/cloud/.config'
+[?2004l[?2004h> OUTPUT_DIR = '/home/user/cloud/output'
+[?2004l[?2004h> DOMAIN_SUFFIX = None
+[?2004l[?2004h> MIGRATION_PLAN_FILE = os.path.join(OUTPUT_DIR, 'migration_plan.tsv')
+[?2004l[?2004h> MANIFEST_FILE = os.path.join(OUTPUT_DIR, 'manifest.json')
+[?2004l[?2004h> AUDIT_LOG_FILE = os.path.join(OUTPUT_DIR, 'audit.log')
+[?2004l[?2004h> 
+[?2004l[?2004h> class CRLFWriter:
+[?2004l[?2004h>     """A CSV writer that forces CRLF line endings and encodes to ISO-8859-1."""
+[?2004l[?2004h>     def __init__(self, f):
+[?2004l[?2004h>         self.writer = csv.writer(f, dialect='excel', lineterminator='\r\n')
+[?2004l[?2004h> 
+[?2004l[?2004h>     def writerow(self, row):
+[?2004l[?2004h>         self.writer.writerow(row)
+[?2004l[?2004h> 
+[?2004l[?2004h>     def writerows(self, rows):
+[?2004l[?2004h>         for r in rows:
+[?2004l[?2004h>             self.writerow(r)
+[?2004l[?2004h> 
+[?2004l[?2004h> def remove_zwsp(text):
+[?2004l[?2004h>     """Remove Zero Width Spaces (U+200B)."""
+[?2004l[?2004h>     if text:
+[?2004l[?2004h>         return text.replace('\u200b', '')
+[?2004l[?2004h>     return text
+[?2004l[?2004h> 
+[?2004l[?2004h> def main():
+[?2004l[?2004h>     if not os.path.exists(OUTPUT_DIR):
+[?2004l[?2004h>         os.makedirs(OUTPUT_DIR, exist_ok=True)
+[?2004l[?2004h> 
+[?2004l[?2004h>     # Read domain suffix
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+[?2004l[?2004h>             domain_suffix_content = f.read().strip()
+[?2004l[?2004h>             if domain_suffix_content:
+[?2004l[?2004h>                 DOMAIN_SUFFIX = domain_suffix_content
+[?2004l[?2004h>             else:
+[?2004l[?2004h>                 DOMAIN_SUFFIX = ''
+[?2004l[?2004h>     except FileNotFoundError:
+[?2004l[?2004h>         DOMAIN_SUFFIX = ''
+[?2004l[?2004h> 
+[?2004l[?2004h>     if not SOURCE_INVENTORY:
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     if not os.path.exists(SOURCE_INVENTORY):
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h>     processed_rows = []
+[?2004l[?2004h>     output_header = ["ServiceName", "TargetFQDN"]
+[?2004l[?2004h> 
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(SOURCE_INVENTORY, 'rb') as f_in:
+[?2004l[?2004h>             decoded_lines = []
+[?2004l[?2004h>             for line_bytes in f_in:
+[?2004l[?2004h>                 line = line_bytes.decode('utf-16le').strip('\r\n')
+[?2004l[?2004h>                 decoded_lines.append(line)
+[?2004l[?2004h>             
+[?2004l[?2004h>             reader = csv.reader(decoded_lines, delimiter=',')
+[?2004l[?2004h>             for row_idx, row_data in enumerate(reader):
+[?2004l[?2004h>                 if not row_data:
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 if row_data and row_data[0].startswith('#'):
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 try:
+[?2004l[?2004h>                     service_name = row_data[0] 
+[?2004l[?2004h>                     status = row_data[1] 
+[?2004l[?2004h>                     new_server_val = row_data[2]
+[?2004l[?2004h>                 except IndexError:
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 if status in ['Decom', 'Pending']:
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 if not new_server_val or new_server_val.isspace():
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 processed_service_name = service_name.lower()
+[?2004l[?2004h>                 target_fqdn = remove_zwsp(new_server_val) + DOMAIN_SUFFIX
+[?2004l[?2004h>                 processed_rows.append([processed_service_name, target_fqdn])
+[?2004l[?2004h>         
+[?2004l[?2004h>         processed_rows.sort(key=lambda x: x[0])
+[?2004l[?2004h> 
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(MIGRATION_PLAN_FILE, 'w', encoding='iso-8859-1', errors='replace') as f_out:
+[?2004l[?2004h>                 tsv_writer = CRLFWriter(f_out)
+[?2004l[?2004h>                 tsv_writer.writerow(output_header)
+[?2004l[?2004h>                 tsv_writer.writerows(processed_rows)
+[?2004l[?2004h>         except UnicodeEncodeError:
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>         except Exception:
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h>         record_count = len(processed_rows)
+[?2004l[?2004h>         
+[?2004l[?2004h>         md5_hash = ""
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(MIGRATION_PLAN_FILE, 'rb') as f:
+[?2004l[?2004h>                 md5_hash = hashlib.md5(f.read()).hexdigest()
+[?2004l[?2004h>         except FileNotFoundError:
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>         except Exception:
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>             
+[?2004l[?2004h>         manifest_data = {
+[?2004l[?2004h>             "source_file": SOURCE_INVENTORY,
+[?2004l[?2004h>             "record_count": record_count,
+[?2004l[?2004h>             "output_md5": md5_hash
+[?2004l[?2004h>         }
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(MANIFEST_FILE, 'w', encoding='utf-8') as f:
+[?2004l[?2004h>                 json.dump(manifest_data, f, indent=2)
+[?2004l[?2004h>         except Exception:
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>             
+[?2004l[?2004h>         file_size_bytes = 0
+[?2004l[?2004h>         if os.path.exists(MIGRATION_PLAN_FILE):
+[?2004l[?2004h>             file_size_bytes = os.path.getsize(MIGRATION_PLAN_FILE)
+[?2004l[?2004h> 
+[?2004l[?2004h>         audit_log_content = f"{file_size_bytes} bytes generated"
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(AUDIT_LOG_FILE, 'w', encoding='utf-8') as f:
+[?2004l[?2004h>                 f.write(audit_log_content + "\n")
+[?2004l[?2004h>         except Exception:
+[?2004l[?2004h>             sys.exit(1)
+[?2004l[?2004h>             
+[?2004l[?2004h>     except FileNotFoundError:
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     except Exception:
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     main()
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# python3 /tmp/migration_script.py
+[?2004l[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# ls -la /home/user/cloud/output/
+[?2004ltotal 0
+drwxrwxrwx 1 root root  6 Feb 13 00:00 [0m[34;42m.[0m
+drwxrwxrwx 1 root root 90 Feb 13 00:00 [34;42m..[0m
+[?2004hroot@7580c8f0-e7c8-4065-8c8c-491704ad27c6:/home/user/cloud# 

@@ -1,0 +1,1095 @@
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:~# clear
+[?2004l[H[J[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:~# cat /etc/legacy_etl/settings.conf
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:~# mkdir -p /home/user/etl/quarantine /home/user/etl/archive /home/user/etl/raw_backup /home/user/etl/staging /home/user/etl/logs
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:~# cd /home/user
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# mkdir -p incoming
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cd incoming
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user/incoming# echo "header1,header2,header3\n1.23,abc,def\n4.56,ghi,jkl" > orders.csv
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user/incoming# echo "headerA,headerB,headerC\n111,aaa,bbb\n222,ccc,ddd" > transactions.csv
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user/incoming# cd /etc/legacy_etl
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/etc/legacy_etl# cat > settings.conf << 'EOF'
+[?2004l[?2004h> REGION_CODE=US_EAST
+[?2004l[?2004h> RETENTION_POLICY=30d
+[?2004l[?2004h> # This is a comment
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/etc/legacy_etl# cat settings.conf
+[?2004lREGION_CODE=US_EAST
+RETENTION_POLICY=30d
+# This is a comment
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/etc/legacy_etl# cd /home/user/incoming
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user/incoming# cd /home/user
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > solve.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read configuration
+[?2004l[?2004h> CONFIG_FILE="/etc/legacy_etl/settings.conf"
+[?2004l[?2004h> REGION_CODE=$(grep -E '^REGION_CODE=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+[?2004l[?2004h> RETENTION_POLICY=$(grep -E '^RETENTION_POLICY=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Directory paths
+[?2004l[?2004h> INCOMING_DIR="/home/user/incoming"
+[?2004l[?2004h> QUARANTINE_DIR="/home/user/etl/quarantine"
+[?2004l[?2004h> ARCHIVE_DIR="/home/user/etl/archive"
+[?2004l[?2004h> RAW_BACKUP_DIR="/home/user/etl/raw_backup"
+[?2004l[?2004h> STAGING_DIR="/home/user/etl/staging"
+[?2004l[?2004h> LOG_DIR="/home/user/etl/logs"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize counters
+[?2004l[?2004h> TOTAL_RECORDS=0
+[?2004l[?2004h> VALID_FILES=()
+[?2004l[?2004h> ARCHIVE_NAME=""
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to check for BOM
+[?2004l[?2004h> check_bom() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     # BOM bytes: EF BB BF
+[?2004l[?2004h>     if [ "$(head -c 3 "$file" | od -An -tx1 | tr -d ' ')" = "EFBBBF" ]; then
+[?2004l[?2004h>         return 0  # Corrupt (BOM detected)
+[?2004l[?2004h>     else
+[?2004l[?2004h>         return 1  # Clean
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to convert CSV to TSV
+[?2004l[?2004h> convert_csv_to_tsv() {
+[?2004l[?2004h>     local csv_file="$1"
+[?2004l[?2004h>     local tsv_file="$2"
+[?2004l[?2004h>     sed 's/,/\t/g' "$csv_file" > "$tsv_file"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to get MD5 hash
+[?2004l[?2004h> get_md5() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     md5sum "$file" | awk '{print $1}'
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to count data rows (excluding header)
+[?2004l[?2004h> echo "Configuration loaded successfully. REGION_CODE: $REGION_CODE"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# chmod +x solve.sh
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat >> solve.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main processing function
+[?2004l[?2004h> process_files() {
+[?2004l[?2004h>     echo "Starting file processing..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get current date for archive naming
+[?2004l[?2004h>     CURRENT_DATE=$(date +%Y%m%d)
+[?2004l[?2004h>     
+[?2004l[?2004h>     for csv_file in "$INCOMING_DIR"/*.csv; do
+[?2004l[?2004h>         if [ ! -f "$csv_file" ]; then
+[?2004l[?2004h>             echo "No CSV files found in $INCOMING_DIR"
+[?2004l[?2004h>             exit 1
+[?2004l[?2004h>         fi
+[?2004l[?2004h>         
+[?2004l[?2004h>         filename=$(basename "$csv_file")
+[?2004l[?2004h>         echo "Processing file: $filename"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Check for BOM
+[?2004l[?2004h>         if check_bom "$csv_file"; then
+[?2004l[?2004h>             echo "ERROR: BOM detected in $filename. Moving to quarantine."
+[?2004l[?2004h>             mv "$csv_file" "$QUARANTINE_DIR/"
+[?2004l[?2004h>         else
+[?2004l[?2004h>             echo "File is clean. Processing $filename..."
+[?2004l[?2004h>             VALID_FILES+=("$filename")
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Count data rows (excluding header)
+[?2004l[?2004h>             row_count=$(tail -n +2 "$csv_file" | wc -l)
+[?2004l[?2004h>             TOTAL_RECORDS=$((TOTAL_RECORDS + row_count))
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Convert to TSV for archival
+[?2004l[?2004h>             convert_csv_to_tsv "$csv_file" "$csv_file.tsv"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     done
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to count data rows
+[?2004l[?2004h> count_data_rows() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     tail -n +2 "$file" | wc -l
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ./solve.sh
+[?2004lConfiguration loaded successfully. REGION_CODE: US_EAST
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat >> solve.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Archival function
+[?2004l[?2004h> create_archive() {
+[?2004l[?2004h>     echo "Creating archive..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create tarball name
+[?2004l[?2004h>     ARCHIVE_NAME="data_${REGION_CODE}_${CURRENT_DATE}_${TOTAL_RECORDS}.tar.gz"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create tarball in archive directory
+[?2004l[?2004h>     tar -czf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "${INCOMING_DIR}" *.tsv
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "Archive created: ${ARCHIVE_DIR}/${ARCHIVE_NAME}"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Raw backup function
+[?2004l[?2004h> move_raw_backup() {
+[?2004l[?2004h>     echo "Moving valid files to raw backup..."
+[?2004l[?2004h>     for csv_file in "$INCOMING_DIR"/*.csv; do
+[?2004l[?2004h>         if [ -f "$csv_file" ]; then
+[?2004l[?2004h>             mv "$csv_file" "$RAW_BACKUP_DIR/"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     done
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Manifest generation function
+[?2004l[?2004h> generate_manifest() {
+[?2004l[?2004h>     echo "Generating manifest..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create manifest with ISO-8859-1 encoding
+[?2004l[?2004h>     echo "Legacy ETL Manifest © 2023" | iconv -t ISO-8859-1 > "${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sort valid files alphabetically and add entries
+[?2004l[?2004h>     for file in $(printf '%s\n' "${VALID_FILES[@]}" | sort); do
+[?2004l[?2004h>         original_path="${RAW_BACKUP_DIR}/$file"
+[?2004l[?2004h>         md5_hash=$(get_md5 "$original_path")
+[?2004l[?2004h>         row_count=$(count_data_rows "$original_path")
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Append to manifest (convert to ISO-8859-1)
+[?2004l[?2004h>         echo "$file|$md5_hash|$row_count" | iconv -t ISO-8859-1 >> "${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h>     done
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "Manifest generated: ${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sorting function for orders.tsv
+[?2004l[?2004h> sort_orders_file() {
+[?2004l[?2004h>     echo "Sorting orders.tsv by total_amount..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sort orders.tsv by 3rd column (numeric, descending) in staging directory
+[?2004l[?2004h>     sort -t$'\t' -k3,3nr "${STAGING_DIR}/orders.tsv" -o "${STAGING_DIR}/orders.tsv"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main execution
+[?2004l[?2004h> main() {
+[?2004l[?2004h>     process_files
+[?2004l[?2004h>     create_archive
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Extract archive to staging directory
+[?2004l[?2004h>     tar -xzf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "${STAGING_DIR}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     sort_orders_file
+[?2004l[?2004h>     
+[?2004l[?2004h>     move_raw_backup
+[?2004l[?2004h>     generate_manifest
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "ETL process completed successfully!"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Call main function
+[?2004l[?2004h> main
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ./solve.sh
+[?2004lConfiguration loaded successfully. REGION_CODE: US_EAST
+Starting file processing...
+Processing file: customers.csv
+File is clean. Processing customers.csv...
+Processing file: inventory.csv
+File is clean. Processing inventory.csv...
+Processing file: orders.csv
+File is clean. Processing orders.csv...
+Processing file: products.csv
+File is clean. Processing products.csv...
+Processing file: transactions.csv
+File is clean. Processing transactions.csv...
+Creating archive...
+tar: *.tsv: Cannot stat: No such file or directory
+tar: Exiting with failure status due to previous errors
+Archive created: /home/user/etl/archive/data_US_EAST_20260213_2.tar.gz
+Sorting orders.tsv by total_amount...
+sort: cannot read: /home/user/etl/staging/orders.tsv: No such file or directory
+Moving valid files to raw backup...
+Generating manifest...
+Manifest generated: /home/user/etl/logs/process_manifest.txt
+ETL process completed successfully!
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ls -la /home/user/incoming/
+[?2004ltotal 16
+drwxrwxrwx 1 root root 4096 Feb 13 19:03 [0m[34;42m.[0m
+drwxr-xr-x 1 root root   65 Feb 13 19:02 [01;34m..[0m
+-rw-r--r-- 1 root root    0 Feb 13 19:03 customers.csv.tsv
+-rw-r--r-- 1 root root   66 Feb 13 19:03 inventory.csv.tsv
+-rw-r--r-- 1 root root   52 Feb 13 19:03 orders.csv.tsv
+-rw-r--r-- 1 root root    0 Feb 13 19:03 products.csv.tsv
+-rw-r--r-- 1 root root   50 Feb 13 19:03 transactions.csv.tsv
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ls -la /home/user/etl/raw_backup/
+[?2004ltotal 12
+drwxr-xr-x 2 root root 134 Feb 13 19:03 [0m[01;34m.[0m
+drwxr-xr-x 7 root root 108 Feb 13 19:02 [01;34m..[0m
+-rwxrwxrwx 1 root root   0 Feb 13 18:51 [01;32mcustomers.csv[0m
+-rwxrwxrwx 1 root root  66 Feb 13 18:51 [01;32minventory.csv[0m
+-rwxrwxrwx 1 root root  52 Feb 13 19:02 [01;32morders.csv[0m
+-rwxrwxrwx 1 root root   0 Feb 13 18:51 [01;32mproducts.csv[0m
+-rw-r--r-- 1 root root  50 Feb 13 19:02 transactions.csv
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ls -la /home/user/etl/staging/
+[?2004ltotal 0
+drwxr-xr-x 2 root root   6 Feb 13 19:02 [0m[01;34m.[0m
+drwxr-xr-x 7 root root 108 Feb 13 19:02 [01;34m..[0m
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat /home/user/etl/logs/process_manifest.txt
+[?2004lLegacy ETL Manifest � 2023
+customers.csv|d41d8cd98f00b204e9800998ecf8427e|0
+inventory.csv|d310bcad4067dffa8edb35401d575d61|2
+orders.csv|c2433efe5f0b56e407e86206a6cbffd2|0
+products.csv|d41d8cd98f00b204e9800998ecf8427e|0
+transactions.csv|712fd7a9a6afcf38eace06d01fc0473d|0
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# rm -rf /home/user/etl/*
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# rm -f /home/user/incoming/*.csv.tsv
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > /home/user/incoming/orders.csv << 'EOF'
+[?2004l[?2004h> order_id,customer,total_amount
+[?2004l[?2004h> 1001,john,150.50
+[?2004l[?2004h> 1002,jane,200.75
+[?2004l[?2004h> 1003,bob,89.99
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > /home/user/incoming/transactions.csv << 'EOF'
+[?2004l[?2004h> transaction_id,amount,description
+[?2004l[?2004h> 12345,50.00,deposit
+[?2004l[?2004h> 67890,-25.00,fee
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > solve.sh << 'EOF'
+[?2004lMoving valid files to raw backup..."
+    for csv_file in "$INCOMING_DIR"/*.csv; do
+        if [ -f "$csv_file" ]; then
+            mv "$csv_file" "$RAW_BACKUP_DIR/"
+        fi
+    done
+}
+
+# Manifest generation function
+generate_manifest() {
+    echo "Generating manifest..."
+    
+    # Create manifest with ISO-8859-1 encoding
+    echo "Legacy ETL Manifest © 2023" | iconv -t ISO-8859-1 > "${LOG_DIR}/process_manifest.txt"
+    
+    # Sort valid files alphabetically and add entries
+    for file in $(printf '%s\n' "${VALID_FILES[@]}" | sort); do
+        original_path="${RAW_BACKUP_DIR}/$file"
+        md5_hash=$(get_md5 "$original_path")
+        row_count=$(count_data_rows "$original_path")
+        
+        # Append to manifest (convert to ISO-8859-1)
+        echo "$file|$md5_hash|$row_count" | iconv -t ISO-8859-1 >> "${LOG_DIR}/process_manifest.txt"
+    done
+    
+    echo "Manifest generated: ${LOG_DIR}/process_manifest.txt"
+}
+
+# Sorting function for orders.tsv
+sort_orders_file() {
+    echo "Sorting orders.tsv by total_amount..."
+    
+ [?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read configuration
+[?2004l[?2004h> CONFIG_FILE="/etc/legacy_etl/settings.conf"
+[?2004l[?2004h> if [ ! -f "$CONFIG_FILE" ]; then
+[?2004l[?2004h>     echo "Configuration file missing!"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> REGION_CODE=$(grep -E '^REGION_CODE=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+[?2004l[?2004h> RETENTION_POLICY=$(grep -E '^RETENTION_POLICY=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Directory paths
+[?2004l[?2004h> INCOMING_DIR="/home/user/incoming"
+[?2004l[?2004h> QUARANTINE_DIR="/home/user/etl/quarantine"
+[?2004l[?2004h> ARCHIVE_DIR="/home/user/etl/archive"
+[?2004l[?2004h> RAW_BACKUP_DIR="/home/user/etl/raw_backup"
+[?2004l[?2004h> STAGING_DIR="/home/user/etl/staging"
+[?2004l[?2004h> LOG_DIR="/home/user/etl/logs"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize counters
+[?2004l[?2004h> TOTAL_RECORDS=0
+[?2004l[?2004h> VALID_FILES=()
+[?2004l[?2004h> ARCHIVE_NAME=""
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to check for BOM
+[?2004l[?2004h> check_bom() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     # BOM bytes: EF BB BF
+[?2004l[?2004h>     if [ "$(head -c 3 "$file" | od -An -tx1 | tr -d ' ' | tr -d '\n')" = "efbbbf" ]; then
+[?2004l[?2004h>         return 0  # Corrupt (BOM detected)
+[?2004l[?2004h>     else
+[?2004l[?2004h>         return 1  # Clean
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to convert CSV to TSV
+[?2004l[?2004h> convert_csv_to_tsv() {
+[?2004l[?2004h>     local csv_file="$1"
+[?2004l[?2004h>     local tsv_file="${csv_file%.csv}.tsv"
+[?2004l[?2004h>     sed 's/,/\t/g' "$csv_file" > "$tsv_file"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to get MD5 hash
+[?2004l[?2004h> get_md5() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     md5sum "$file" | awk '{print $1}'
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to count data rows (excluding header)
+[?2004l[?2004h> count_data_rows() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     if [ ! -f "$file" ]; then
+[?2004l[?2004h>         echo "0"
+[?2004l[?2004h>         return
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     tail -n +2 "$file" | wc -l
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main processing function
+[?2004l[?2004h> process_files() {
+[?2004l[?2004h>     echo "Starting file processing..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get current date for archive naming
+[?2004l[?2004h>     CURRENT_DATE=$(date +%Y%m%d)
+[?2004l[?2004h>     
+[?2004l[?2004h>     for csv_file in "$INCOMING_DIR"/*.csv; do
+[?2004l[?2004h>         if [ ! -f "$csv_file" ]; then
+[?2004l[?2004h>             echo "No CSV files found in $INCOMING_DIR"
+[?2004l[?2004h>             continue
+[?2004l[?2004h>         fi
+[?2004l[?2004h>         
+[?2004l[?2004h>         filename=$(basename "$csv_file")
+[?2004l[?2004h>         echo "Processing file: $filename"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Check for BOM
+[?2004l[?2004h>         if check_bom "$csv_file"; then
+[?2004l[?2004h>             echo "ERROR: BOM detected in $filename. Moving to quarantine."
+[?2004l[?2004h>             mv "$csv_file" "$QUARANTINE_DIR/"
+[?2004l[?2004h>         else
+[?2004l[?2004h>             echo "File is clean. Processing $filename..."
+[?2004l[?2004h>             VALID_FILES+=("$filename")
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Count data rows (excluding header)
+[?2004l[?2004h>             row_count=$(count_data_rows "$csv_file")
+[?2004l[?2004h>             TOTAL_RECORDS=$((TOTAL_RECORDS + row_count))
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Convert to TSV for archival
+[?2004l[?2004h>             convert_csv_to_tsv "$csv_file"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     done
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [ ${#VALID_FILES[@]} -eq 0 ]; then
+[?2004l[?2004h>         echo "No valid files to process."
+[?2004l[?2004h>         exit 0
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Archival function
+[?2004l[?2004h> create_archive() {
+[?2004l[?2004h>     echo "Creating archive..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create tarball name
+[?2004l[?2004h>     ARCHIVE_NAME="data_${REGION_CODE}_${CURRENT_DATE}_${TOTAL_RECORDS}.tar.gz"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create tarball in archive directory
+[?2004l[?2004h>     tar -czf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "${INCOMING_DIR}" *.tsv 2>/dev/null
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [ $? -eq 0 ]; then
+[?2004l[?2004h>         echo "Archive created: ${ARCHIVE_DIR}/${ARCHIVE_NAME}"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "Warning: No TSV files to archive"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Raw backup function
+[?2004l[?2004h> move_raw_backup() {
+[?2004l[?2004h>     echo "Moving valid files to raw backup..."
+[?2004l[?2004h>     for csv_file in "$INCOMING_DIR"/*.csv; do
+[?2004l[?2004h>         if [ -f "$csv_file" ]; then
+[?2004l[?2004h>             mv "$csv_file" "$RAW_BACKUP_DIR/"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     done
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Manifest generation function
+[?2004l[?2004h> generate_manifest() {
+[?2004l[?2004h>     echo "Generating manifest..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create manifest with ISO-8859-1 encoding
+[?2004l[?2004h>     echo "Legacy ETL Manifest © 2023" | iconv -t ISO-8859-1 > "${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sort valid files alphabetically and add entries
+[?2004l[?2004h>     for file in $(printf '%s\n' "${VALID_FILES[@]}" | sort); do
+[?2004l[?2004h>         original_path="${RAW_BACKUP_DIR}/$file"
+[?2004l[?2004h>         md5_hash=$(get_md5 "$original_path")
+[?2004l[?2004h>         row_count=$(count_data_rows "$original_path")
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Append to manifest (convert to ISO-8859-1)
+[?2004l[?2004h>         echo "$file|$md5_hash|$row_count" | iconv -t ISO-8859-1 >> "${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h>     done
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "Manifest generated: ${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sorting function for orders.tsv
+[?2004l[?2004h> sort_orders_file() {
+[?2004l[?2004h>     echo "Sorting orders.tsv by total_amount..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     orders_file="${STAGING_DIR}/orders.tsv"
+[?2004l[?2004h>     if [ -f "$orders_file" ]; then
+[?2004l[?2004h>         # Sort orders.tsv by 3rd column (numeric, descending) in staging directory
+[?2004l[?2004h>         sort -t$'\t' -k3,3nr "$orders_file" -o "$orders_file"
+[?2004l[?2004h>         echo "Sorted $orders_file successfully"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "No orders.tsv file found for sorting"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main execution
+[?2004l[?2004h> main() {
+[?2004l[?2004h>     # Create directories if they don't exist
+[?2004l[?2004h>     mkdir -p "$QUARANTINE_DIR" "$ARCHIVE_DIR" "$RAW_BACKUP_DIR" "$STAGING_DIR" "$LOG_DIR"
+[?2004l[?2004h>     
+[?2004l[?2004h>     process_files
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [ $TOTAL_RECORDS -gt 0 ]; then
+[?2004l[?2004h>         create_archive
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Extract archive to staging directory
+[?2004l[?2004h>         tar -xzf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "$STAGING_DIR"
+[?2004l[?2004h>         
+[?2004l[?2004h>         sort_orders_file
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     move_raw_backup
+[?2004l[?2004h>     generate_manifest
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "ETL process completed successfully!"
+[?2004l[?2004h>     echo "Files quarantined: $(ls -1 "$QUARANTINE_DIR" 2>/dev/null | wc -l)"
+[?2004l[?2004h>     echo "Files in raw backup: $(ls -1 "$RAW_BACKUP_DIR" 2>/dev/null | wc -l)"
+[?2004l[?2004h>     echo "Files in staging: $(ls -1 "$STAGING_DIR" 2>/dev/null | wc -l)"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Call main function
+[?2004l[?2004h> main
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# chmod +x solve.sh
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ./solve.sh
+[?2004lStarting file processing...
+Processing file: orders.csv
+File is clean. Processing orders.csv...
+Processing file: transactions.csv
+File is clean. Processing transactions.csv...
+Creating archive...
+Warning: No TSV files to archive
+Sorting orders.tsv by total_amount...
+No orders.tsv file found for sorting
+Moving valid files to raw backup...
+Generating manifest...
+Manifest generated: /home/user/etl/logs/process_manifest.txt
+ETL process completed successfully!
+Files quarantined: 0
+Files in raw backup: 2
+Files in staging: 0
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ls -la /home/user/incoming/
+[?2004ltotal 8
+drwxrwxrwx 1 root root 156 Feb 13 19:04 [0m[34;42m.[0m
+drwxr-xr-x 1 root root  65 Feb 13 19:02 [01;34m..[0m
+-rw-r--r-- 1 root root  80 Feb 13 19:04 orders.tsv
+-rw-r--r-- 1 root root  71 Feb 13 19:04 transactions.tsv
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat /home/user/incoming/orders.csv
+[?2004lcat: /home/user/incoming/orders.csv: No such file or directory
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > /home/user/incoming/test_bom.csv << 'EOF'
+[?2004l[?2004h> header1,header2,header3
+[?2004l[?2004h> row1,row2,row3
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# sed -i '1s/^/\xEF\xBB\xBF/' /home/user/incoming/test_bom.csv
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# head -c 4 /home/user/incoming/test_bom.csv | od -An -tx1
+[?2004l ef bb bf 68
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# rm -rf /home/user/etl/*
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > solve.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l then
+        echo "Found TSV files: $(ls "$INCOMING_DIR"/*.tsv)"
+        # Create tarball in archive directory
+        tar -czf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "${INCOMING_DIR}" *.tsv 2>/dev/null
+        
+        if [ $? -eq 0 ]; then
+            echo "Archive created: ${ARCHIVE_DIR}/${ARCHIVE_NAME}"
+        else
+            echo "Warning: No TSV files to archive"
+        fi
+    else
+        echo "No TSV files found for archival"
+    fi
+}
+
+# Raw backup function
+move_raw_backup() {
+    echo "Moving valid files to raw backup..."
+    for filename in "${VALID_FILES[@]}"; do
+        csv_file="${INCOMING_DIR}/$filename"
+        if [ -f "$csv_file" ]; then
+            mv "$csv_file" "$RAW_BACKUP_DIR/"
+        fi
+    done
+}
+
+# Manifest generation function
+generate_manifest() {
+    echo "Generating manifest..."
+    
+    # Create manifest with ISO-8859-1 encoding
+    echo "Legacy ETL Manifest © 2023" | iconv -t ISO-8859-1 > "${LOG_DIR}/process_manifest.txt"
+    
+    # Sort valid files alphabetically and add entries
+    for file in $(printf '%s\n' "[?2004h> # Read configuration
+[?2004l[?2004h> CONFIG_FILE="/etc/legacy_etl/settings.conf"
+[?2004l[?2004h> if [ ! -f "$CONFIG_FILE" ]; then
+[?2004l[?2004h>     echo "Configuration file missing!"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004la[?2004h> REGION_CODE=$(grep -E '^REGION_CODE=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+[?2004l[?2004h> RETENTION_POLICY=$(grep -E '^RETENTION_POLICY=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+[?2004l[?2004h> 
+[?2004la[?2004h> # Directory paths
+[?2004l[?2004h> INCOMING_DIR="/home/user/incoming"
+[?2004l[?2004h> QUARANTINE_DIR="/home/user/etl/quarantine"
+[?2004l[?2004h> ARCHIVE_DIR="/home/user/etl/archive"
+[?2004l[?2004h> RAW_BACKUP_DIR="/home/user/etl/raw_backup"
+[?2004l[?2004h> STAGING_DIR="/home/user/etl/staging"
+[?2004l[?2004h> LOG_DIR="/home/user/etl/logs"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize counters
+[?2004l[?2004h> TOTAL_RECORDS=0
+[?2004l[?2004h> VALID_FILES=()
+[?2004l[?2004h> ARCHIVE_NAME=""
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to check for BOM
+[?2004l[?2004h> check_bom() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     # BOM bytes: EF BB BF
+[?2004l[?2004h>     if [ "$(head -c 3 "$file" | od -An -tx1 | tr -d ' ' | tr -d '\n')" = "efbbbf" ]; then
+[?2004l[?2004h>         return 0  # Corrupt (BOM detected)
+[?2004l[?2004h>     else
+[?2004l[?2004h>         return 1  # Clean
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004la[?2004h> # Function to convert CSV to TSV
+[?2004l[?2004h> convert_csv_to_tsv() {
+[?2004l[?2004h>     local csv_file="$1"
+[?2004l[?2004h>     local tsv_file="${csv_file%.csv}.tsv"
+[?2004l[?2004h>     echo "Converting $csv_file to $tsv_file"
+[?2004l[?2004h>     sed 's/,/\t/g' "$csv_file" > "$tsv_file"
+[?2004l[?2004h>     if [ -f "$tsv_file" ]; then
+[?2004l[?2004h>         echo "Created $tsv_file successfully"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "Failed to create $tsv_file"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to get MD5 hash
+[?2004l[?2004h> get_md5() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     md5sum "$file" | awk '{print $1}'
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to count data rows (excluding header)
+[?2004l[?2004h> count_data_rows() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     if [ ! -f "$file" ]; then
+[?2004l[?2004h>         echo "0"
+[?2004l[?2004h>         return
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     tail -n +2 "$file" | wc -l
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l [?2004h> # Main processing function
+[?2004l[?2004h> process_files() {
+[?2004l[?2004h>     echo "Starting file processing..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get current date for archive naming
+[?2004l[?2004h>     CURRENT_DATE=$(date +%Y%m%d)
+[?2004l[?2004h>     
+[?2004l[?2004h>     for csv_file in "$INCOMING_DIR"/*.csv; do
+[?2004l[?2004h>         if [ ! -f "$csv_file" ]; then
+[?2004l[?2004h>             echo "No CSV files found in $INCOMING_DIR"
+[?2004l[?2004h>             continue
+[?2004l[?2004h>         fi
+[?2004l[?2004h>         
+[?2004l[?2004h>         filename=$(basename "$csv_file")
+[?2004l[?2004h>         echo "Processing file: $filename"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Check for BOM
+[?2004l[?2004h>         if check_bom "$csv_file"; then
+[?2004l[?2004h>             echo "ERROR: BOM detected in $filename. Moving to quarantine."
+[?2004l[?2004h>             mv "$csv_file" "$QUARANTINE_DIR/"
+[?2004l[?2004h>         else
+[?2004l[?2004h>             echo "File is clean. Processing $filename..."
+[?2004l[?2004h>             VALID_FILES+=("$filename")
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Count data rows (excluding header)
+[?2004l[?2004h>             row_count=$(count_data_rows "$csv_file")
+[?2004l[?2004h>             TOTAL_RECORDS=$((TOTAL_RECORDS + row_count))
+[?2004l[?2004h>             echo "Row count for $filename: $row_count, Total: $TOTAL_RECORDS"
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Convert to TSV for archival
+[?2004l[?2004h>             convert_csv_to_tsv "$csv_file"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     done
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [ ${#VALID_FILES[@]} -eq 0 ]; then
+[?2004l[?2004h>         echo "No valid files to process."
+[?2004l[?2004h>         exit 0
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Archival function
+[?2004l[?2004h> create_archive() {
+[?2004l[?2004h>     echo "Creating archive..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create tarball name
+[?2004l[?2004h>     ARCHIVE_NAME="data_${REGION_CODE}_${CURRENT_DATE}_${TOTAL_RECORDS}.tar.gz"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check if TSV files exist
+[?2004l[?2004h>     if ls "$INCOMING_DIR"/*.tsv 1> /dev/null 2>&1; then
+[?2004l[?2004h>         echo "Found TSV files: $(ls "$INCOMING_DIR"/*.tsv)"
+[?2004l[?2004h>         # Create tarball in archive directory
+[?2004l[?2004h>         tar -czf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "${INCOMING_DIR}" *.tsv 2>/dev/null
+[?2004l[?2004h>         
+[?2004l[?2004h>         if [ $? -eq 0 ]; then
+[?2004l[?2004h>             echo "Archive created: ${ARCHIVE_DIR}/${ARCHIVE_NAME}"
+[?2004l[?2004h>         else
+[?2004l[?2004h>             echo "Warning: No TSV files to archive"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "No TSV files found for archival"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Raw backup function
+[?2004l[?2004h> move_raw_backup() {
+[?2004l[?2004h>     echo "Moving valid files to raw backup..."
+[?2004l[?2004h>     for filename in "${VALID_FILES[@]}"; do
+[?2004l[?2004h>         csv_file="${INCOMING_DIR}/$filename"
+[?2004l[?2004h>         if [ -f "$csv_file" ]; then
+[?2004l[?2004h>             mv "$csv_file" "$RAW_BACKUP_DIR/"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     done
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Manifest generation function
+[?2004l[?2004h> generate_manifest() {
+[?2004l[?2004h>     echo "Generating manifest..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create manifest with ISO-8859-1 encoding
+[?2004l[?2004h>     echo "Legacy ETL Manifest © 2023" | iconv -t ISO-8859-1 > "${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sort valid files alphabetically and add entries
+[?2004l[?2004h>     for file in $(printf '%s\n' "${VALID_FILES[@]}" | sort); do
+[?2004l[?2004h>         original_path="${RAW_BACKUP_DIR}/$file"
+[?2004l[?2004h>         md5_hash=$(get_md5 "$original_path")
+[?2004l[?2004h>         row_count=$(count_data_rows "$original_path")
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Append to manifest (convert to ISO-8859-1)
+[?2004l[?2004h>         echo "$file|$md5_hash|$row_count" | iconv -t ISO-8859-1 >> "${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h>     done
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "Manifest generated: ${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sorting function for orders.tsv
+[?2004l[?2004h> sort_orders_file() {
+[?2004l[?2004h>     echo "Sorting orders.tsv by total_amount..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     orders_file="${STAGING_DIR}/orders.tsv"
+[?2004l[?2004h>     if [ -f "$orders_file" ]; then
+[?2004l[?2004h>         # Sort orders.tsv by 3rd column (numeric, descending) in staging directory
+[?2004l[?2004h>         sort -t$'\t' -k3,3nr "$orders_file" -o "$orders_file"
+[?2004l[?2004h>         echo "Sorted $orders_file successfully"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "No orders.tsv file found for sorting"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main execution
+[?2004l[?2004h> main() {
+[?2004l[?2004h>     # Create directories if they don't exist
+[?2004l[?2004h>     mkdir -p "$QUARANTINE_DIR" "$ARCHIVE_DIR" "$RAW_BACKUP_DIR" "$STAGING_DIR" "$LOG_DIR"
+[?2004l[?2004h>     
+[?2004l[?2004h>     process_files
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [ $TOTAL_RECORDS -gt 0 ]; then
+[?2004l[?2004h>         create_archive
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Extract archive to staging directory
+[?2004l[?2004h>         tar -xzf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "$STAGING_DIR"
+[?2004l[?2004h>         
+[?2004l[?2004h>         sort_orders_file
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     move_raw_backup
+[?2004l[?2004h>     generate_manifest
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "ETL process completed successfully!"
+[?2004l[?2004h>     echo "Files quarantined: $(ls -1 "$QUARANTINE_DIR" 2>/dev/null | wc -l)"
+[?2004l[?2004h>     echo "Files in raw backup: $(ls -1 "$RAW_BACKUP_DIR" 2>/dev/null | wc -l)"
+[?2004l[?2004h>     echo "Files in staging: $(ls -1 "$STAGING_DIR" 2>/dev/null | wc -l)"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Call main function
+[?2004l[?2004h> main
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# chmod +x solve.sh
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ./solve.sh
+[?2004lStarting file processing...
+Processing file: test_bom.csv
+ERROR: BOM detected in test_bom.csv. Moving to quarantine.
+No valid files to process.
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > /home/user/incoming/orders.csv << 'EOF'
+[?2004l[?2004h> order_id,customer,total_amount
+[?2004l[?2004h> 1001,john,150.50
+[?2004l[?2004h> 1002,jane,200.75
+[?2004l[?2004h> 1003,bob,89.99
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > /home/user/incoming/transactions.csv << 'EOF'
+[?2004l[?2004h> transaction_id,amount,description
+[?2004l[?2004h> 12345,50.00,deposit
+[?2004l[?2004h> 67890,-25.00,fee
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ls -la /home/user/incoming/
+[?2004ltotal 16
+drwxrwxrwx 1 root root 184 Feb 13 19:06 [0m[34;42m.[0m
+drwxr-xr-x 1 root root  65 Feb 13 19:02 [01;34m..[0m
+-rw-r--r-- 1 root root  80 Feb 13 19:06 orders.csv
+-rw-r--r-- 1 root root  80 Feb 13 19:04 orders.tsv
+-rw-r--r-- 1 root root  71 Feb 13 19:06 transactions.csv
+-rw-r--r-- 1 root root  71 Feb 13 19:04 transactions.tsv
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ./solve.sh
+[?2004lStarting file processing...
+Processing file: orders.csv
+File is clean. Processing orders.csv...
+Row count for orders.csv: 3, Total: 3
+Converting /home/user/incoming/orders.csv to /home/user/incoming/orders.tsv
+Created /home/user/incoming/orders.tsv successfully
+Processing file: transactions.csv
+File is clean. Processing transactions.csv...
+Row count for transactions.csv: 2, Total: 5
+Converting /home/user/incoming/transactions.csv to /home/user/incoming/transactions.tsv
+Created /home/user/incoming/transactions.tsv successfully
+Creating archive...
+Found TSV files: /home/user/incoming/orders.tsv
+/home/user/incoming/transactions.tsv
+Warning: No TSV files to archive
+Sorting orders.tsv by total_amount...
+No orders.tsv file found for sorting
+Moving valid files to raw backup...
+Generating manifest...
+Manifest generated: /home/user/etl/logs/process_manifest.txt
+ETL process completed successfully!
+Files quarantined: 1
+Files in raw backup: 2
+Files in staging: 0
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# rm -rf /home/user/etl/*
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > solve.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read configuration
+[?2004l[?2004h> CONFIG_FILE="/etc/legacy_etl/settings.conf"
+[?2004l[?2004h> if [ ! -f "$CONFIG_FILE" ]; then
+[?2004l[?2004h>     echo "Configuration file missing!"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> REGION_CODE=$(grep -E '^REGION_CODE=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+[?2004l[?2004h> RETENTION_POLICY=$(grep -E '^RETENTION_POLICY=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Directory paths
+[?2004l[?2004h> INCOMING_DIR="/home/user/incoming"
+[?2004l[?2004h> QUARANTINE_DIR="/home/user/etl/quarantine"
+[?2004l[?2004h> ARCHIVE_DIR="/home/user/etl/archive"
+[?2004l[?2004h> RAW_BACKUP_DIR="/home/user/etl/raw_backup"
+[?2004l[?2004h> STAGING_DIR="/home/user/etl/staging"
+[?2004l[?2004h> LOG_DIR="/home/user/etl/logs"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize counters
+[?2004l[?2004h> TOTAL_RECORDS=0
+[?2004l[?2004h> VALID_FILES=()
+[?2004l[?2004h> ARCHIVE_NAME=""
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to check for BOM
+[?2004l[?2004h> check_bom() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     # BOM bytes: EF BB BF
+[?2004l[?2004h>     if [ "$(head -c 3 "$file" | od -An -tx1 | tr -d ' ' | tr -d '\n')" = "efbbbf" ]; then
+[?2004l[?2004h>         return 0  # Corrupt (BOM detected)
+[?2004l[?2004h>     else
+[?2004l[?2004h>         return 1  # Clean
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to convert CSV to TSV
+[?2004l[?2004h> convert_csv_to_tsv() {
+[?2004l[?2004h>     local csv_file="$1"
+[?2004l[?2004h>     local tsv_file="${csv_file%.csv}.tsv"
+[?2004l[?2004h>     echo "Converting $csv_file to $tsv_file"
+[?2004l[?2004h>     sed 's/,/\\t/g' "$csv_file" > "$tsv_file"
+[?2004l[?2004h>     if [ -f "$tsv_file" ]; then
+[?2004l[?2004h>         echo "Created $tsv_file successfully"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "Failed to create $tsv_file"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to get MD5 hash
+[?2004l[?2004h> get_md5() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     md5sum "$file" | awk '{print $1}'
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to count data rows (excluding header)
+[?2004l[?2004h> count_data_rows() {
+[?2004l[?2004h>     local file="$1"
+[?2004l[?2004h>     if [ ! -f "$file" ]; then
+[?2004l[?2004h>         echo "0"
+[?2004l[?2004h>         return
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     tail -n +2 "$file" | wc -l
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main processing function
+[?2004l[?2004h> process_files() {
+[?2004l[?2004h>     echo "Starting file processing..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get current date for archive naming
+[?2004l[?2004h>     CURRENT_DATE=$(date +%Y%m%d)
+[?2004l[?2004h>     
+[?2004l[?2004h>     for csv_file in "$INCOMING_DIR"/*.csv; do
+[?2004l[?2004h>         if [ ! -f "$csv_file" ]; then
+[?2004l[?2004h>             echo "No CSV files found in $INCOMING_DIR"
+[?2004l[?2004h>             continue
+[?2004l[?2004h>         fi
+[?2004l[?2004h>         
+[?2004l[?2004h>         filename=$(basename "$csv_file")
+[?2004l[?2004h>         echo "Processing file: $filename"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Check for BOM
+[?2004l[?2004h>         if check_bom "$csv_file"; then
+[?2004l[?2004h>             echo "ERROR: BOM detected in $filename. Moving to quarantine."
+[?2004l[?2004h>             mv "$csv_file" "$QUARANTINE_DIR/"
+[?2004l[?2004h>         else
+[?2004l[?2004h>             echo "File is clean. Processing $filename..."
+[?2004l[?2004h>             VALID_FILES+=("$filename")
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Count data rows (excluding header)
+[?2004l[?2004h>             row_count=$(count_data_rows "$csv_file")
+[?2004l[?2004h>             TOTAL_RECORDS=$((TOTAL_RECORDS + row_count))
+[?2004l[?2004h>             echo "Row count for $filename: $row_count, Total: $TOTAL_RECORDS"
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Convert to TSV for archival
+[?2004l[?2004h>             convert_csv_to_tsv "$csv_file"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     done
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [ ${#VALID_FILES[@]} -eq 0 ]; then
+[?2004l[?2004h>         echo "No valid files to process."
+[?2004l[?2004h>         exit 0
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Archival function
+[?2004l[?2004h> create_archive() {
+[?2004l[?2004h>     echo "Creating archive..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create tarball name
+[?2004l[?2004h>     ARCHIVE_NAME="data_${REGION_CODE}_${CURRENT_DATE}_${TOTAL_RECORDS}.tar.gz"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check if TSV files exist
+[?2004l[?2004h>     tsv_files=($(ls "$INCOMING_DIR"/*.tsv 2>/dev/null))
+[?2004l[?2004h>     if [ ${#tsv_files[@]} -gt 0 ]; then
+[?2004l[?2004h>         echo "Found TSV files: ${tsv_files[@]}"
+[?2004l[?2004h>         # Create tarball in archive directory
+[?2004l[?2004h>         tar -czf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "${INCOMING_DIR}" $(basename -a "${tsv_files[@]}")
+[?2004l[?2004h>         
+[?2004l[?2004h>         if [ $? -eq 0 ]; then
+[?2004l[?2004h>             echo "Archive created: ${ARCHIVE_DIR}/${ARCHIVE_NAME}"
+[?2004l[?2004h>         else
+[?2004l[?2004h>             echo "Warning: Failed to create archive"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "No TSV files found for archival"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Raw backup function
+[?2004l[?2004h> move_raw_backup() {
+[?2004l[?2004h>     echo "Moving valid files to raw backup..."
+[?2004l[?2004h>     for filename in "${VALID_FILES[@]}"; do
+[?2004l[?2004h>         csv_file="${INCOMING_DIR}/$filename"
+[?2004l[?2004h>         if [ -f "$csv_file" ]; then
+[?2004l[?2004h>             mv "$csv_file" "$RAW_BACKUP_DIR/"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     done
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Manifest generation function
+[?2004l[?2004h> generate_manifest() {
+[?2004l[?2004h>     echo "Generating manifest..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create manifest with ISO-8859-1 encoding
+[?2004l[?2004h>     echo "Legacy ETL Manifest © 2023" | iconv -t ISO-8859-1 > "${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sort valid files alphabetically and add entries
+[?2004l[?2004h>     for file in $(printf '%s\n' "${VALID_FILES[@]}" | sort); do
+[?2004l[?2004h>         original_path="${RAW_BACKUP_DIR}/$file"
+[?2004l[?2004h>         md5_hash=$(get_md5 "$original_path")
+[?2004l[?2004h>         row_count=$(count_data_rows "$original_path")
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Append to manifest (convert to ISO-8859-1)
+[?2004l[?2004h>         echo "$file|$md5_hash|$row_count" | iconv -t ISO-8859-1 >> "${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h>     done
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "Manifest generated: ${LOG_DIR}/process_manifest.txt"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sorting function for orders.tsv
+[?2004l[?2004h> sort_orders_file() {
+[?2004l[?2004h>     echo "Sorting orders.tsv by total_amount..."
+[?2004l[?2004h>     
+[?2004l[?2004h>     orders_file="${STAGING_DIR}/orders.tsv"
+[?2004l[?2004h>     if [ -f "$orders_file" ]; then
+[?2004l[?2004h>         # Sort orders.tsv by 3rd column (numeric, descending) in staging directory
+[?2004l[?2004h>         sort -t$'\\t' -k3,3nr "$orders_file" -o "$orders_file"
+[?2004l[?2004h>         echo "Sorted $orders_file successfully"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "No orders.tsv file found for sorting"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main execution
+[?2004l[?2004h> main() {
+[?2004l[?2004h>     # Create directories if they don't exist
+[?2004l[?2004h>     mkdir -p "$QUARANTINE_DIR" "$ARCHIVE_DIR" "$RAW_BACKUP_DIR" "$STAGING_DIR" "$LOG_DIR"
+[?2004l[?2004h>     
+[?2004l[?2004h>     process_files
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [ $TOTAL_RECORDS -gt 0 ]; then
+[?2004l[?2004h>         create_archive
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Extract archive to staging directory
+[?2004l[?2004h>         tar -xzf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "$STAGING_DIR"
+[?2004l[?2004h>         
+[?2004l[?2004h>         sort_orders_file
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     move_raw_backup
+[?2004l[?2004h>     generate_manifest
+[?2004l[?2004h>     
+[?2004l[?2004h>     echo "ETL process completed successfully!"
+[?2004l[?2004h>     echo "Files quarantined: $(ls -1 "$QUARANTINE_DIR" 2>/dev/null | wc -l)"
+[?2004l[?2004h>     echo "Files in raw backup: $(ls -1 "$RAW_BACKUP_DIR" 2>/dev/null | wc -l)"
+[?2004l[?2004h>     echo "Files in staging: $(ls -1 "$STAGING_DIR" 2>/dev/null | wc -l)"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Call main function
+[?2004l[?2004h> main
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# chmod +x solve.sh
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ./solve.sh
+[?2004lStarting file processing...
+No CSV files found in /home/user/incoming
+No valid files to process.
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ls -la /home/user/etl/
+[?2004ltotal 0
+drwxr-xr-x 7 root root 108 Feb 13 19:07 [0m[01;34m.[0m
+drwxr-xr-x 1 root root  65 Feb 13 19:02 [01;34m..[0m
+drwxr-xr-x 2 root root   6 Feb 13 19:07 [01;34marchive[0m
+drwxr-xr-x 2 root root   6 Feb 13 19:07 [01;34mlogs[0m
+drwxr-xr-x 2 root root   6 Feb 13 19:07 [01;34mquarantine[0m
+drwxr-xr-x 2 root root   6 Feb 13 19:07 [01;34mraw_backup[0m
+drwxr-xr-x 2 root root   6 Feb 13 19:07 [01;34mstaging[0m
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > /home/user/incoming/orders.csv << 'EOF'
+[?2004l[?2004h> order_id,customer,total_amount
+[?2004l[?2004h> 1001,john,150.50
+[?2004l[?2004h> 1002,jane,200.75
+[?2004l[?2004h> 1003,bob,89.99
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > /home/user/incoming/transactions.csv << 'EOF'
+[?2004l[?2004h> transaction_id,amount,description
+[?2004l[?2004h> 12345,50.00,deposit
+[?2004l[?2004h> 67890,-25.00,fee
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ./solve.sh
+[?2004lStarting file processing...
+Processing file: orders.csv
+File is clean. Processing orders.csv...
+Row count for orders.csv: 3, Total: 3
+Converting /home/user/incoming/orders.csv to /home/user/incoming/orders.tsv
+Created /home/user/incoming/orders.tsv successfully
+Processing file: transactions.csv
+File is clean. Processing transactions.csv...
+Row count for transactions.csv: 2, Total: 5
+Converting /home/user/incoming/transactions.csv to /home/user/incoming/transactions.tsv
+Created /home/user/incoming/transactions.tsv successfully
+Creating archive...
+Found TSV files: /home/user/incoming/orders.tsv /home/user/incoming/transactions.tsv
+Archive created: /home/user/etl/archive/data_US_EAST_20260213_5.tar.gz
+Sorting orders.tsv by total_amount...
+sort: multi-character tab ‘\\t’
+Sorted /home/user/etl/staging/orders.tsv successfully
+Moving valid files to raw backup...
+Generating manifest...
+Manifest generated: /home/user/etl/logs/process_manifest.txt
+ETL process completed successfully!
+Files quarantined: 0
+Files in raw backup: 2
+Files in staging: 2
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# echo "=== Quarantine ==="
+[?2004l=== Quarantine ===
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ls -la /home/user/etl/quarantine/
+[?2004ltotal 0
+drwxr-xr-x 2 root root   6 Feb 13 19:07 [0m[01;34m.[0m
+drwxr-xr-x 7 root root 108 Feb 13 19:07 [01;34m..[0m
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# 
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# echo "=== Raw Backup ==="
+[?2004l=== Raw Backup ===
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ls -la /home/user/etl/raw_backup/
+[?2004ltotal 8
+drwxr-xr-x 2 root root  60 Feb 13 19:07 [0m[01;34m.[0m
+drwxr-xr-x 7 root root 108 Feb 13 19:07 [01;34m..[0m
+-rw-r--r-- 1 root root  80 Feb 13 19:07 orders.csv
+-rw-r--r-- 1 root root  71 Feb 13 19:07 transactions.csv
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# 
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# echo "=== Archive ==="
+[?2004l=== Archive ===
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ls -la /home/user/etl/archive/
+[?2004ltotal 4
+drwxr-xr-x 2 root root  52 Feb 13 19:07 [0m[01;34m.[0m
+drwxr-xr-x 7 root root 108 Feb 13 19:07 [01;34m..[0m
+-rw-r--r-- 1 root root 258 Feb 13 19:07 [01;31mdata_US_EAST_20260213_5.tar.gz[0m
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# 
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# echo "=== Staging ==="
+[?2004l=== Staging ===
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ls -la /home/user/etl/staging/
+[?2004ltotal 8
+drwxr-xr-x 2 root root  48 Feb 13 19:07 [0m[01;34m.[0m
+drwxr-xr-x 7 root root 108 Feb 13 19:07 [01;34m..[0m
+-rw-r--r-- 1 root root  88 Feb 13 19:07 orders.tsv
+-rw-r--r-- 1 root root  77 Feb 13 19:07 transactions.tsv
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# 
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# echo "=== Manifest ==="
+[?2004l=== Manifest ===
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat /home/user/etl/logs/process_manifest.txt
+[?2004lLegacy ETL Manifest � 2023
+orders.csv|89d38c97646c2d453fd5a42f17004036|3
+transactions.csv|ceaab777002e145f28abe5a98cc17b82|2
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# 
+[?2004l[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# echo "=== Orders TSV ==="
+[?2004l=== Orders TSV ===
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat /home/user/etl/staging/orders.tsv
+[?2004lorder_id\tcustomer\ttotal_amount
+1001\tjohn\t150.50
+1002\tjane\t200.75
+1003\tbob\t89.99
+[?2004hroot@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# 

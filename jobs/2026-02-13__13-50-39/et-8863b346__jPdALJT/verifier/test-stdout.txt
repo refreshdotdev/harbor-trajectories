@@ -1,0 +1,77 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 5 items
+
+../../../tests/test_final_state.py::test_files_exist PASSED              [ 20%]
+../../../tests/test_final_state.py::test_tsv_encoding_and_line_endings PASSED [ 40%]
+../../../tests/test_final_state.py::test_tsv_content_logic FAILED        [ 60%]
+../../../tests/test_final_state.py::test_manifest_json FAILED            [ 80%]
+../../../tests/test_final_state.py::test_audit_log PASSED                [100%]
+
+=================================== FAILURES ===================================
+____________________________ test_tsv_content_logic ____________________________
+
+    def test_tsv_content_logic():
+        """
+        Verifies: sorting, filtering (Decom/Pending), lowercase transformation,
+        suffix appending, and ZWS stripping.
+        """
+        raw_bytes = _read_binary(TSV_FILE)
+        content = raw_bytes.decode('iso-8859-1')
+        lines = content.strip().split('\r\n')
+    
+        # Parse Data
+        data_rows = lines[1:]
+    
+        # Expected Data (Calculated manually from the known input logic)
+        # Input:
+        #   Auth-Api -> Active -> auth-api -> vm-auth-02.internal.corp
+        #   Billing-DB -> Decom -> SKIP
+        #   Frontend -> Active -> frontend -> vm-fe-blue.internal.corp
+        #   Metrics -> Pending -> SKIP
+        #   Search -> Active -> search -> vm-sr-green.internal.corp
+        #   Legacy-Ops -> Active -> Empty NewServer -> SKIP
+    
+        expected = [
+            "auth-api\tvm-auth-02.internal.corp",
+            "frontend\tvm-fe-blue.internal.corp",
+            "search\tvm-sr-green.internal.corp"
+        ]
+    
+>       assert len(data_rows) == 3, f"Expected 3 data rows, found {len(data_rows)}"
+E       AssertionError: Expected 3 data rows, found 2
+E       assert 2 == 3
+E        +  where 2 = len(['auth-api\tvm-new-01.internal.corp', 'billing\tvm-new-02.internal.corp'])
+
+/tests/test_final_state.py:100: AssertionError
+______________________________ test_manifest_json ______________________________
+
+    def test_manifest_json():
+        """
+        Verifies manifest structure and values.
+        """
+        with open(MANIFEST_FILE, 'r') as f:
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError:
+                pytest.fail("manifest.json is not valid JSON")
+    
+        # Check keys
+        assert "source_file" in data
+        assert "record_count" in data
+        assert "output_md5" in data
+    
+        # Check values
+>       assert data["source_file"] == "/home/user/cloud/legacy/mainframe_export.csv"
+E       AssertionError: assert '/home/user/c...inventory.csv' == '/home/user/c...me_export.csv'
+E         
+E         - /home/user/cloud/legacy/mainframe_export.csv
+E         + /home/user/cloud/inventory.csv
+
+/tests/test_final_state.py:119: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../tests/test_final_state.py::test_tsv_content_logic - Assertion...
+FAILED ../../../tests/test_final_state.py::test_manifest_json - AssertionErro...
+========================= 2 failed, 3 passed in 0.02s ==========================

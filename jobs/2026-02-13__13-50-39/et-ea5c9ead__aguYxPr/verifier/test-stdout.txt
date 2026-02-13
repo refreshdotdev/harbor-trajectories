@@ -1,0 +1,98 @@
+Hit:1 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.81.0-1ubuntu1.21).
+0 upgraded, 0 newly installed, 0 to remove and 4 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading cpython-3.12.12-linux-x86_64-gnu (download) (31.1MiB)
+ Downloading cpython-3.12.12-linux-x86_64-gnu (download)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 5 packages in 24ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/pqSkncT_FbKpU7Dj-Ei0p/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 3 items
+
+../../tests/test_final_state.py::test_port_open PASSED                   [ 33%]
+../../tests/test_final_state.py::test_log_file_encoding_and_format FAILED [ 66%]
+../../tests/test_final_state.py::test_report_file_bom_and_content FAILED [100%]
+
+=================================== FAILURES ===================================
+______________________ test_log_file_encoding_and_format _______________________
+
+    def test_log_file_encoding_and_format():
+        assert LOG_FILE.is_file(), "Log file missing"
+    
+        # Check encoding is strictly Latin-1 (ISO-8859-1)
+        # We verify this by reading raw bytes. If it were UTF-8, multi-byte chars would exist,
+        # but here we mostly have ASCII. To be strict, we check if it can be read as Latin-1.
+        # However, since the content is mostly ASCII, the real test is whether the Agent
+        # *tried* to use Latin-1 or just used default.
+        # We will check if the file content matches expected logic.
+    
+        raw_content = LOG_FILE.read_bytes()
+        content = raw_content.decode("latin-1")
+        lines = content.strip().splitlines()
+    
+        assert len(lines) == 6, "Log should have 1 header + 5 rows"
+        assert lines[0] == "Timestamp,Method,Path,Status,Bytes,MD5", "Invalid Header"
+    
+        for i, (method, path) in enumerate(ENDPOINTS):
+            row = lines[i+1]
+            parts = row.split(",")
+            assert len(parts) == 6, f"Row {i+1} malformed"
+            ts, m, p, s, b, md5 = parts
+    
+            # Check Timestamp format YYYY/MM/DD HH:mm:ss
+            assert re.match(r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}$", ts), f"Invalid timestamp format: {ts}"
+            assert m == method
+            assert p == path
+            assert s == "200"
+    
+            expected_body = RESPONSES[path]
+>           assert int(b) == len(expected_body)
+E           assert 25 == 34
+E            +  where 25 = int('25')
+E            +  and   34 = len(b'{"service":"backup","status":"OK"}')
+
+/tests/test_final_state.py:70: AssertionError
+_______________________ test_report_file_bom_and_content _______________________
+
+    def test_report_file_bom_and_content():
+        assert REPORT_FILE.is_file(), "Report file missing"
+    
+        raw_bytes = REPORT_FILE.read_bytes()
+    
+        # Check BOM \xEF\xBB\xBF
+        assert raw_bytes.startswith(codecs.BOM_UTF8), "XML Report missing UTF-8 BOM"
+    
+        # Decode skipping BOM
+        content = raw_bytes.decode("utf-8-sig")
+    
+        # Verify XML Structure
+        assert "<HealthCheck>" in content
+>       assert "<Status>OK</Status>" in content
+E       AssertionError: assert '<Status>OK</Status>' in '<HealthCheck>\n  <Status>operational</Status>\n  <LastBackup>2023-01-15T10:30:00Z</LastBackup>\n  <ListCount>1</ListCount>\n  <Triggered>job-12345</Triggered>\n  <DownloadMD5>430dbd412013bb68101cf2f9c1c32b67</DownloadMD5>\n  <LogChecksum>4232e2ee21653b4f26902fe8c2a758e01f217cca3d01ffafcb4e3b7dae4e7ce7</LogChecksum>\n</HealthCheck>\n'
+
+/tests/test_final_state.py:86: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_log_file_encoding_and_format - a...
+FAILED ../../tests/test_final_state.py::test_report_file_bom_and_content - As...
+========================= 2 failed, 1 passed in 0.04s ==========================

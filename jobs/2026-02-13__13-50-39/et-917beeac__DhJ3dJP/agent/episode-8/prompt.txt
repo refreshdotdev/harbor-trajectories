@@ -1,0 +1,241 @@
+New Terminal Output:
+
+root@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# cat > solve.sh << 'EOF'
+Moving valid files to raw backup..."
+    for csv_file in "$INCOMING_DIR"/*.csv; do
+        if [ -f "$csv_file" ]; then
+            mv "$csv_file" "$RAW_BACKUP_DIR/"
+        fi
+    done
+}
+
+# Manifest generation function
+generate_manifest() {
+    echo "Generating manifest..."
+
+    # Create manifest with ISO-8859-1 encoding
+    echo "Legacy ETL Manifest © 2023" | iconv -t ISO-8859-1 > "${LOG_DIR}/process_manifest.txt"
+
+    # Sort valid files alphabetically and add entries
+    for file in $(printf '%s\n' "${VALID_FILES[@]}" | sort); do
+        original_path="${RAW_BACKUP_DIR}/$file"
+        md5_hash=$(get_md5 "$original_path")
+        row_count=$(count_data_rows "$original_path")
+
+        # Append to manifest (convert to ISO-8859-1)
+        echo "$file|$md5_hash|$row_count" | iconv -t ISO-8859-1 >> "${LOG_DIR}/process_manifest.txt"
+    done
+
+    echo "Manifest generated: ${LOG_DIR}/process_manifest.txt"
+}
+
+# Sorting function for orders.tsv
+sort_orders_file() {
+    echo "Sorting orders.tsv by total_amount..."
+
+ > #!/bin/bash
+>
+> # Read configuration
+> CONFIG_FILE="/etc/legacy_etl/settings.conf"
+> if [ ! -f "$CONFIG_FILE" ]; then
+>     echo "Configuration file missing!"
+>     exit 1
+> fi
+>
+> REGION_CODE=$(grep -E '^REGION_CODE=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+> RETENTION_POLICY=$(grep -E '^RETENTION_POLICY=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '\r')
+>
+> # Directory paths
+> INCOMING_DIR="/home/user/incoming"
+> QUARANTINE_DIR="/home/user/etl/quarantine"
+> ARCHIVE_DIR="/home/user/etl/archive"
+> RAW_BACKUP_DIR="/home/user/etl/raw_backup"
+> STAGING_DIR="/home/user/etl/staging"
+> LOG_DIR="/home/user/etl/logs"
+>
+> # Initialize counters
+> TOTAL_RECORDS=0
+> VALID_FILES=()
+> ARCHIVE_NAME=""
+>
+> # Function to check for BOM
+> check_bom() {
+>     local file="$1"
+>     # BOM bytes: EF BB BF
+>     if [ "$(head -c 3 "$file" | od -An -tx1 | tr -d ' ' | tr -d '\n')" = "efbbbf" ]; then
+>         return 0  # Corrupt (BOM detected)
+>     else
+>         return 1  # Clean
+>     fi
+> }
+>
+> # Function to convert CSV to TSV
+> convert_csv_to_tsv() {
+>     local csv_file="$1"
+>     local tsv_file="${csv_file%.csv}.tsv"
+>     sed 's/,/\t/g' "$csv_file" > "$tsv_file"
+> }
+>
+> # Function to get MD5 hash
+> get_md5() {
+>     local file="$1"
+>     md5sum "$file" | awk '{print $1}'
+> }
+>
+> # Function to count data rows (excluding header)
+> count_data_rows() {
+>     local file="$1"
+>     if [ ! -f "$file" ]; then
+>         echo "0"
+>         return
+>     fi
+>     tail -n +2 "$file" | wc -l
+> }
+>
+> # Main processing function
+> process_files() {
+>     echo "Starting file processing..."
+>
+>     # Get current date for archive naming
+>     CURRENT_DATE=$(date +%Y%m%d)
+>
+>     for csv_file in "$INCOMING_DIR"/*.csv; do
+>         if [ ! -f "$csv_file" ]; then
+>             echo "No CSV files found in $INCOMING_DIR"
+>             continue
+>         fi
+>
+>         filename=$(basename "$csv_file")
+>         echo "Processing file: $filename"
+>
+>         # Check for BOM
+>         if check_bom "$csv_file"; then
+>             echo "ERROR: BOM detected in $filename. Moving to quarantine."
+>             mv "$csv_file" "$QUARANTINE_DIR/"
+>         else
+>             echo "File is clean. Processing $filename..."
+>             VALID_FILES+=("$filename")
+>
+>             # Count data rows (excluding header)
+>             row_count=$(count_data_rows "$csv_file")
+>             TOTAL_RECORDS=$((TOTAL_RECORDS + row_count))
+>
+>             # Convert to TSV for archival
+>             convert_csv_to_tsv "$csv_file"
+>         fi
+>     done
+>
+>     if [ ${#VALID_FILES[@]} -eq 0 ]; then
+>         echo "No valid files to process."
+>         exit 0
+>     fi
+> }
+>
+> # Archival function
+> create_archive() {
+>     echo "Creating archive..."
+>
+>     # Create tarball name
+>     ARCHIVE_NAME="data_${REGION_CODE}_${CURRENT_DATE}_${TOTAL_RECORDS}.tar.gz"
+>
+>     # Create tarball in archive directory
+>     tar -czf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "${INCOMING_DIR}" *.tsv 2>/dev/null
+>
+>     if [ $? -eq 0 ]; then
+>         echo "Archive created: ${ARCHIVE_DIR}/${ARCHIVE_NAME}"
+>     else
+>         echo "Warning: No TSV files to archive"
+>     fi
+> }
+>
+> # Raw backup function
+> move_raw_backup() {
+>     echo "Moving valid files to raw backup..."
+>     for csv_file in "$INCOMING_DIR"/*.csv; do
+>         if [ -f "$csv_file" ]; then
+>             mv "$csv_file" "$RAW_BACKUP_DIR/"
+>         fi
+>     done
+> }
+>
+> # Manifest generation function
+> generate_manifest() {
+>     echo "Generating manifest..."
+>
+>     # Create manifest with ISO-8859-1 encoding
+>     echo "Legacy ETL Manifest © 2023" | iconv -t ISO-8859-1 > "${LOG_DIR}/process_manifest.txt"
+>
+>     # Sort valid files alphabetically and add entries
+>     for file in $(printf '%s\n' "${VALID_FILES[@]}" | sort); do
+>         original_path="${RAW_BACKUP_DIR}/$file"
+>         md5_hash=$(get_md5 "$original_path")
+>         row_count=$(count_data_rows "$original_path")
+>
+>         # Append to manifest (convert to ISO-8859-1)
+>         echo "$file|$md5_hash|$row_count" | iconv -t ISO-8859-1 >> "${LOG_DIR}/process_manifest.txt"
+>     done
+>
+>     echo "Manifest generated: ${LOG_DIR}/process_manifest.txt"
+> }
+>
+> # Sorting function for orders.tsv
+> sort_orders_file() {
+>     echo "Sorting orders.tsv by total_amount..."
+>
+>     orders_file="${STAGING_DIR}/orders.tsv"
+>     if [ -f "$orders_file" ]; then
+>         # Sort orders.tsv by 3rd column (numeric, descending) in staging directory
+>         sort -t$'\t' -k3,3nr "$orders_file" -o "$orders_file"
+>         echo "Sorted $orders_file successfully"
+>     else
+>         echo "No orders.tsv file found for sorting"
+>     fi
+> }
+>
+> # Main execution
+> main() {
+>     # Create directories if they don't exist
+>     mkdir -p "$QUARANTINE_DIR" "$ARCHIVE_DIR" "$RAW_BACKUP_DIR" "$STAGING_DIR" "$LOG_DIR"
+>
+>     process_files
+>
+>     if [ $TOTAL_RECORDS -gt 0 ]; then
+>         create_archive
+>
+>         # Extract archive to staging directory
+>         tar -xzf "${ARCHIVE_DIR}/${ARCHIVE_NAME}" -C "$STAGING_DIR"
+>
+>         sort_orders_file
+>     fi
+>
+>     move_raw_backup
+>     generate_manifest
+>
+>     echo "ETL process completed successfully!"
+>     echo "Files quarantined: $(ls -1 "$QUARANTINE_DIR" 2>/dev/null | wc -l)"
+>     echo "Files in raw backup: $(ls -1 "$RAW_BACKUP_DIR" 2>/dev/null | wc -l)"
+>     echo "Files in staging: $(ls -1 "$STAGING_DIR" 2>/dev/null | wc -l)"
+> }
+>
+> # Call main function
+> main
+> EOF
+root@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# chmod +x solve.sh
+root@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user# ./solve.sh
+Starting file processing...
+Processing file: orders.csv
+File is clean. Processing orders.csv...
+Processing file: transactions.csv
+File is clean. Processing transactions.csv...
+Creating archive...
+Warning: No TSV files to archive
+Sorting orders.tsv by total_amount...
+No orders.tsv file found for sorting
+Moving valid files to raw backup...
+Generating manifest...
+Manifest generated: /home/user/etl/logs/process_manifest.txt
+ETL process completed successfully!
+Files quarantined: 0
+Files in raw backup: 2
+Files in staging: 0
+root@f42bf202-aec8-4d74-9485-6e5ec0d101c5:/home/user#

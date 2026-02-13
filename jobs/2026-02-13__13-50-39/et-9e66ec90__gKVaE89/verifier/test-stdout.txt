@@ -1,0 +1,95 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 4 items
+
+../../tests/test_final_state.py::test_preflight_exists_and_valid FAILED  [ 25%]
+../../tests/test_final_state.py::test_manifest_is_crlf_and_correct FAILED [ 50%]
+../../tests/test_final_state.py::test_log_encoding_and_content FAILED    [ 75%]
+../../tests/test_final_state.py::test_no_extra_files PASSED              [100%]
+
+=================================== FAILURES ===================================
+_______________________ test_preflight_exists_and_valid ________________________
+
+    def test_preflight_exists_and_valid():
+        """Verify preflight.json exists, is compact, and has correct values."""
+        assert PREFLIGHT_FILE.exists(), "Preflight file missing"
+        content = PREFLIGHT_FILE.read_text(encoding='utf-8')
+>       assert content == EXPECTED_PREFLIGHT_STR, f"Preflight JSON mismatch.\nExpected: {EXPECTED_PREFLIGHT_STR}\nActual: {content}"
+E       AssertionError: Preflight JSON mismatch.
+E         Expected: {"app_name":"titan_omega","environment":"prod_\u00a71","api_key_processed":"OTlfdG5lZ2FfdGVyY2Vz","template_hash":"e24895b1"}
+E         Actual: {"app_name":"","environment":"prod_§1","api_key_processed":"OTlfdG5lZ2FfdGVyY2VzCg==","template_hash":"e3b0c442"}
+E         
+E       assert '{"app_name":..."e3b0c442"}\n' == '{"app_name":...":"e24895b1"}'
+E         
+E         - {"app_name":"titan_omega","environment":"prod_\u00a71","api_key_processed":"OTlfdG5lZ2FfdGVyY2Vz","template_hash":"e24895b1"}
+E         ?              -----------                      ^^^^^^                                                                 ------
+E         + {"app_name":"","environment":"prod_§1","api_key_processed":"OTlfdG5lZ2FfdGVyY2VzCg==","template_hash":"e3b0c442"}
+E         ?                                    ^                                            ++++                    ++++++   +
+
+/tests/test_final_state.py:100: AssertionError
+______________________ test_manifest_is_crlf_and_correct _______________________
+
+    def test_manifest_is_crlf_and_correct():
+        """Verify manifest content and line endings."""
+        assert RENDERED_FILE.exists(), "Rendered manifest missing"
+        content_bytes = RENDERED_FILE.read_bytes()
+    
+        # Check for CRLF
+        if b'\r\n' not in content_bytes:
+            pytest.fail("Manifest does not contain CRLF line endings.")
+    
+        # Check exact content
+        expected_bytes = EXPECTED_MANIFEST_CRLF.encode('utf-8')
+        if content_bytes != expected_bytes:
+            # Debug diff
+            print("--- EXPECTED ---")
+            print(expected_bytes)
+            print("--- ACTUAL ---")
+            print(content_bytes)
+>           pytest.fail("Manifest content mismatch (byte-level check failed).")
+E           Failed: Manifest content mismatch (byte-level check failed).
+
+/tests/test_final_state.py:119: Failed
+----------------------------- Captured stdout call -----------------------------
+--- EXPECTED ---
+b'apiVersion: apps/v1\r\nkind: Deployment\r\nmetadata:\r\n  name: titan_omega\r\n  annotations:\r\n    titan.dev/template-hash: "e24895b1"\r\nspec:\r\n  replicas: 1\r\n  selector:\r\n    matchLabels:\r\n      app: titan_omega\r\n  template:\r\n    metadata:\r\n      labels:\r\n        app: titan_omega\r\n    spec:\r\n      containers:\r\n        - name: titan_omega\r\n          image: "docker.io/library/titan_omega:v1.0.0"\r\n          env:\r\n            - name: ENVIRONMENT\r\n              value: "prod_\xc2\xa71"\r\n            - name: API_KEY_SECRET\r\n              value: "OTlfdG5lZ2FfdGVyY2Vz"\r\n'
+--- ACTUAL ---
+b'apiVersion: apps/v1\r\nkind: Deployment\r\nmetadata:\r\n  name: ${APP_NAME:-titan}\r\n  labels:\r\n    app: ${APP_NAME:-titan}\r\n    environment: prod_\xc2\xa71\r\nspec:\r\n  replicas: 1\r\n  selector:\r\n    matchLabels:\r\n      app: ${APP_NAME:-titan}\r\n  template:\r\n    metadata:\r\n      labels:\r\n        app: ${APP_NAME:-titan}\r\n    spec:\r\n      containers:\r\n      - name: ${APP_NAME:-titan}\r\n        image: nginx:1.20\r\n        env:\r\n        - name: API_KEY\r\n          value: ""\r\n        - name: ENVIRONMENT\r\n          value: "prod_\xc2\xa71"\r\n'
+________________________ test_log_encoding_and_content _________________________
+
+    def test_log_encoding_and_content():
+        """Verify log file exists, is ISO-8859-1, and matches format."""
+        assert LOG_FILE.exists(), "Log file missing"
+    
+        # 1. Verify Encoding: It should contain the byte 0xA7 for the section sign
+        raw_bytes = LOG_FILE.read_bytes()
+    
+        # If it was UTF-8, the section sign would be 0xC2 0xA7.
+        # In ISO-8859-1, it is 0xA7.
+        assert b'\xa7' in raw_bytes, "Log file does not appear to contain the section sign (§) or is not encoded correctly (expected byte 0xA7)."
+        assert b'\xc2\xa7' not in raw_bytes, "Log file appears to be UTF-8 encoded (found 0xC2 0xA7), but ISO-8859-1 was required."
+    
+        # 2. Verify Content by decoding as Latin-1
+        content = raw_bytes.decode('iso-8859-1').strip().split('\n')
+    
+        expected_lines = [
+            f"APP_NAME={EXPECTED_CONFIG['APP_NAME']}",
+            f"ENVIRONMENT={EXPECTED_CONFIG['ENVIRONMENT']}",
+            f"PREFLIGHT_HASH={EXPECTED_PREFLIGHT_HASH}",
+            f"MANIFEST_HASH={EXPECTED_MANIFEST_HASH}"
+        ]
+    
+>       assert len(content) == len(expected_lines), "Log line count mismatch"
+E       AssertionError: Log line count mismatch
+E       assert 1 == 4
+E        +  where 1 = len(['APP_NAME=\\nENVIRONMENT=prod_§1\\nPREFLIGHT_HASH=39fe1a50d07695703dc15764ef0ecdaa\\nMANIFEST_HASH=0c5c242e4e5f1327d304ff2a7e2e90f269789ff27505c9656be99bbac0abf475'])
+E        +  and   4 = len(['APP_NAME=titan_omega', 'ENVIRONMENT=prod_§1', 'PREFLIGHT_HASH=395161dad6e359db911a1bfc35f7174f', 'MANIFEST_HASH=8271198ef466b986f6b38315b29e9cfa06263c11a1df093a289806b5cda362fd'])
+
+/tests/test_final_state.py:143: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_preflight_exists_and_valid - Ass...
+FAILED ../../tests/test_final_state.py::test_manifest_is_crlf_and_correct - F...
+FAILED ../../tests/test_final_state.py::test_log_encoding_and_content - Asser...
+========================= 3 failed, 1 passed in 0.03s ==========================

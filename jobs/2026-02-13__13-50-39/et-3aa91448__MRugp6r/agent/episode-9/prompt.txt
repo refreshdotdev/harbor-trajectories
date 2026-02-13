@@ -1,0 +1,48 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+%s,%d\n%s,%d\n%s,%d\nroot@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# echo "Debugging awk script execution..."
+Debugging awk script execution...
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# echo "Content of traffic.log (first 5 lines):"
+Content of traffic.log (first 5 lines):
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# head -5 traffic.log
+192.168.1.100,IN,2024-01-15 01:55:00,ICMP
+10.0.0.99,IN,2024-01-15 01:58:00,TCP
+192.168.1.100,IN,2024-01-15 02:05:00,UDP  # Within exclusion window
+203.0.113.55,IN,2024-01-15 02:10:00,TCP  # Within exclusion window
+10.0.0.99,IN,2024-01-15 03:05:00,ICMP   # Within exclusion window
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# rm -f /tmp/suspicious_packets_count.csv_temp
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# awk -F, -v ips="$ACTIVE_IPS" -v excl_start="$EXCLUSION_START" -v excl_end="$EXCLUSION_END" \
+> 'BEGIN {
+>   split(ips, ip_list, " ");
+>   for (i in ip_list) { active_ips[ip_list[i]] = 1; print "DEBUG: Active IP:", ip_list[i]; }
+> }
+>  active_ips[$1] && $2 == "IN" {
+>   # Verify date comparison logic for string comparison
+>   # This assumes YYYY-MM-DD HH:MM:SS format is lexicographically sortable
+>   if ($3 < excl_start || $3 > excl_end) {
+>     suspicious_count[$1]++;
+>   }
+> }
+> END {
+>   if (length(suspicious_count) == 0) {
+>     print "No suspicious packets found outside exclusion window for active IPs."
+>   }
+>   for (ip in suspicious_count) {
+>     # Corrected printf usage
+>     print ip, suspicious_count[ip];
+>   }
+> }' traffic.log > /tmp/suspicious_packets_count.csv_temp
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# echo "Content of suspicious_packets_count.csv_temp after revised awk:"; cat /tmp/suspicious_packets_c
+ount.csv_temp 2>/dev/null;
+Content of suspicious_packets_count.csv_temp after revised awk:
+DEBUG: Active IP: 203.0.113.55
+DEBUG: Active IP: 10.0.0.99
+DEBUG: Active IP: 192.168.1.100
+203.0.113.55 1
+10.0.0.99 3
+192.168.1.100 3
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data#

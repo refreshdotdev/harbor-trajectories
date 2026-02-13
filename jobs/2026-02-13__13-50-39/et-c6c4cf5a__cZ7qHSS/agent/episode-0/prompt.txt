@@ -1,0 +1,175 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Security Scan for Legacy Mainframe Integration
+
+You are a deployment engineer tasked with integrating a modern release process with "OldGuard", a legacy mainframe auditing system. You have just deployed an update to `/home/user/release` (or wherever the configuration specifies). You must generate a compliance report that meets the strict, archaic format requirements of the OldGuard system.
+
+## 1. Configuration
+Unlike modern tools, the scanner does not take command-line arguments. You must read the configuration from `/etc/oldguard/scanner.ini`. This file contains key-value pairs (e.g., `KEY = VALUE`).
+
+*   **ROOT_DIR**: The directory tree to scan.
+*   **REPORT_PATH**: The absolute path where the report must be saved.
+
+*Note: The configuration parser on the mainframe is robust against surrounding whitespace, so you should be too.*
+
+## 2. Scan Requirements
+
+### Part A: World-Writable Files
+Identify all files in the `ROOT_DIR` tree that are **world-writable** (others have write permission). 
+
+**Sorting & Formatting:**
+*   The mainframe sorts these entries by **File Size (Descending)**. If two files have the same size, sort them alphabetically by their absolute path.
+*   Format each line exactly as: `SIZE_IN_BYTES  ABSOLUTE_PATH` (Note: Two spaces between size and path).
+
+**Exclusions:**
+*   Symbolic links.
+*   Files inside hidden directories (directories starting with `.`).
+
+### Part B: TODO Comments
+Search for the literal string "TODO" in source files.
+
+**Scope & Constraints:**
+*   Scan only files with extensions `.py` and `.log`.
+*   **Critical Constraint:** The mainframe has limited buffer memory. **Exclude any file larger than 10,240 bytes (10KB)** from this search entirely.
+*   Exclude symbolic links.
+*   Exclude files inside hidden directories (directories starting with `.`).
+*   Exclude any line containing the safety suppression token "NO_FIX" (case-sensitive).
+
+**Sorting & Formatting:**
+*   Sort hits alphabetically by the file's **relative path** from `ROOT_DIR`, then by line number ascending.
+*   Format each line exactly as: `RELATIVE_PATH [LINE_NUMBER] CONTENT`
+*   Preserve the content spacing exactly as found in the file, but strip the trailing newline.
+
+## 3. Report Format & Encoding (CRITICAL)
+
+The OldGuard system predates UTF-8. The report file **MUST** be written using **ISO-8859-1 (Latin-1)** encoding.
+
+*   If a source file contains characters that cannot be represented in ISO-8859-1 (e.g., emojis, complex unicode), you **must** replace them with a literal question mark (`?`). Faiure to sanitise these characters will cause the mainframe ingest to crash.
+*   The file must start with the header: `SCAN_ID: <value of $BUILD_ID environment variable>`
+*   Use the exact section separators shown below.
+
+**Integrity Checksum:**
+To ensure data integrity during transfer, the **very last line** of the report must be:
+`MD5: <checksum>`
+
+Where `<checksum>` is the MD5 hex digest of the **entire file content preceding this line** (including the newline character of the last data line).
+
+### Exact Output Template:
+```text
+SCAN_ID: <$BUILD_ID>
+-----BEGIN WORLD_WRITABLE-----
+<size>  <path>
+...
+-----END WORLD_WRITABLE-----
+
+-----BEGIN TODO_LINES-----
+<rel_path> [<line>] <content>
+...
+-----END TODO_LINES-----
+MD5: <32_char_hex_hash>
+```
+*(Note: There is exactly one blank line between the end of one section and the start of the next)*
+
+## 4. Console Output
+After writing the report, print a single line of valid JSON to stdout:
+`{"status": "complete", "report_file": "<actual_path_written>"}`
+
+## Summary of Traps & Constraints
+*   Do not hardcode paths; read the INI file.
+*   Respect the 10KB size limit for TODO scanning.
+*   Ensure correct sorting (Size DESC for files, Path ASC for TODOs).
+*   **Strictly enforce ISO-8859-1 encoding** with `?` replacement.
+*   Calculate the MD5 checksum over the generated content and append it.
+
+
+Current terminal state:
+Current Terminal Screen:
+root@bd9b1f37-34f6-4f28-bc61-0e9b48379b32:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

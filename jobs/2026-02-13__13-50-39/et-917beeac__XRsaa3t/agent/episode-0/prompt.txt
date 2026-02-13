@@ -1,0 +1,149 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Legacy Data Ingestion Task
+
+You have been assigned to the Legacy Systems Integration team. We have a nightly cron job that dumps raw billing data into `/home/user/incoming`. Your task is to write a robust Bash script (`solve.sh`) that processes these files according to the strict protocols of our mainframe upstream systems.
+
+## Environment & Configuration
+
+The system configuration is located at `/etc/legacy_etl/settings.conf`. You must read this file to determine the `REGION_CODE` and the `RETENTION_POLICY` (though retention is currently handled by another process, the region code is critical for naming). Note that this file follows a standard `KEY=VALUE` format, but may contain comments starting with `#`. 
+
+## Processing Logic
+
+### 1. Input Validation
+The directory `/home/user/incoming` contains several CSV files. However, due to a known bug in the FTP transfer tool, some files arrive with a UTF-8 Byte Order Mark (BOM). 
+
+**CRITICAL:** The upstream mainframe crashes if it encounters a BOM. You must inspect the beginning of every CSV file. 
+- If a file starts with the UTF-8 BOM bytes (`0xEF`, `0xBB`, `0xBF`), it is considered **corrupt**. Move it immediately to `/home/user/etl/quarantine` without processing it further.
+- Only "clean" CSV files (standard ASCII/UTF-8 without BOM) should be processed.
+
+### 2. Archival (Format Conversion)
+We need to archive the valid data, but the archival system strictly requires **Tab-Separated Values (TSV)**, not CSV. 
+
+Create a gzip-compressed tarball in `/home/user/etl/archive`. 
+- The tarball name must follow this exact pattern: `data_<REGION_CODE>_<YYYYMMDD>_<TOTAL_RECORDS>.tar.gz`.
+  - `<YYYYMMDD>` is the current date (server time).
+  - `<TOTAL_RECORDS>` is the sum of all **data rows** (excluding headers) across all valid processed files.
+- Inside the tarball, the files must be converted to TSV format and have the `.tsv` extension. For example, `orders.csv` becomes `orders.tsv` inside the archive.
+- The archive must contain *only* the converted TSV files, with no directory structure (bare filenames).
+
+### 3. Raw Backup
+Move the *original, unmodified* valid CSV files from `/home/user/incoming` to `/home/user/etl/raw_backup`. The quarantine files should already be in `/home/user/etl/quarantine`. After this step, `/home/user/incoming` must be empty.
+
+### 4. Staging & Transformation
+Extract the TSV files from your newly created archive into `/home/user/etl/staging`. 
+- **Post-Extraction Requirement:** The `orders.tsv` file contains a `total_amount` column (3rd column). The Finance team requires this file to be sorted by that amount in **descending numeric order**. Overwrite `orders.tsv` in the staging directory with this sorted version.
+
+### 5. Manifest Generation
+Create a manifest file at `/home/user/etl/logs/process_manifest.txt`. 
+
+**Formatting Rules:**
+- The file **MUST** be encoded in **ISO-8859-1** (Latin-1). This is non-negotiable.
+- The first line must be exactly: `Legacy ETL Manifest © 2023` (Note the copyright symbol).
+- Subsequent lines should list each valid processed file (using the original CSV filename) in alphabetical order:
+  `filename|original_md5_hash|data_row_count`
+
+(Note: The MD5 hash should be calculated from the original CSV file in the backup folder, not the TSV. The row count excludes the header.)
+
+## Summary of Artifacts
+
+Upon completion, the automated checker will verify:
+1. `quarantine` contains any BOM-tainted files.
+2. `raw_backup` contains the original valid CSVs.
+3. `archive` contains a tarball with the correct dynamic name and TSV contents.
+4. `staging` contains the TSVs, with `orders.tsv` sorted descending by amount.
+5. `logs/process_manifest.txt` exists, is ISO-8859-1 encoded, has the copyright header, and correct file metadata.
+
+Good luck. The mainframe is unforgiving.
+
+Current terminal state:
+Current Terminal Screen:
+root@a6382805-c12b-46b7-bc2e-80cc9799a487:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

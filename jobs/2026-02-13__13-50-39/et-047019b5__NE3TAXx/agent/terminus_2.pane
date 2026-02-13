@@ -1,0 +1,40 @@
+[?2004hroot@5fc6acae-a3a8-4b1c-89ca-ef5751b77a90:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@5fc6acae-a3a8-4b1c-89ca-ef5751b77a90:~# clear
+[?2004l[H[J[?2004hroot@5fc6acae-a3a8-4b1c-89ca-ef5751b77a90:~# mkdir -p /home/user/forensics
+[?2004l[?2004hroot@5fc6acae-a3a8-4b1c-89ca-ef5751b77a90:~# cd /home/user/forensics
+[?2004l[?2004hroot@5fc6acae-a3a8-4b1c-89ca-ef5751b77a90:/home/user/forensics# python3 -m venv clean_env
+[?2004lecho "AUDIT_SAFE" > clean_env/bin/activate
+echo "export PS1=\"(AUDIT_SAFE) \"" >> clean_env/bin/activate
+source clean_env/bin/activate
+[?2004hroot@5fc6acae-a3a8-4b1c-89ca-ef5751b77a90:/home/user/forensics# echo "AUDIT_SAFE" > clean_env/bin/activate
+[?2004l[?2004hroot@5fc6acae-a3a8-4b1c-89ca-ef5751b77a90:/home/user/forensics# echo "export PS1=\"(AUDIT_SAFE) \"" >> clean_env/bin/activate
+[?2004l[?2004hroot@5fc6acae-a3a8-4b1c-89ca-ef5751b77a90:/home/user/forensics# source clean_env/bin/activate
+[?2004lbash: AUDIT_SAFE: command not found
+[?2004h(AUDIT_SAFE) pip install wheel
+[?2004lLooking in indexes: https://invalid.pypi.org/simple
+Requirement already satisfied: wheel in /usr/lib/python3/dist-packages (0.37.1)
+[33mWARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv[0m[33m
+[0m[?2004h(AUDIT_SAFE) pip freeze > /home/user/forensics/full_package_list.txt
+[?2004l[?2004h(AUDIT_SAFE) iconv -f ISO-8859-1 -t UTF-8 /var/lib/secops/legacy_banlist.txt | tr -d '\r' | grep -v '^#' | grep -v '^$' | awk '{print tolower($0)}' > /home/user/forensics/processed_banlist.txt
+[?2004l[?2004h(AUDIT_SAFE) awk 'NR==FNR {banlist[tolower($1)]; next} {split($1, name, "=="); if (!(name[1] in banlist)) print}' /home/user/forensics/processed_banlist.txt /home/user/forensics/full_package_list.txt > /home/user/forensics/filtered_package_list.txt
+[?2004l[?2004h(AUDIT_SAFE) TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+[?2004l[?2004h(AUDIT_SAFE) INODE=$(stat -c "%i" /home/user/forensics/clean_env)
+[?2004l[?2004h(AUDIT_SAFE) cat /home/user/forensics/filtered_package_list.txt | awk -F '==' '{print "{\"name\": \"" $1 "\", \"version\": \"" $2 "\"}"}' | sort -t '"' -k4,4 | jq -R 'def parse_pkg: capture("^(?<name>[^=]+)==(?<version>[^\\n]*)"); [inputs | parse_pkg] | sort_by(.name)' | jq -n --arg ts "$TIMESTAMP" --argjson packages "$(cat -)" '{scan_timestamp: $ts, environment_inode: $INODE, packages: $packages}' > /home/user/forensics/audit_manifest.json
+[?2004ljq: error: $INODE is not defined at <top-level>, line 1:
+{scan_timestamp: $ts, environment_inode: $INODE, packages: $packages}                                         
+jq: 1 compile error
+[?2004h(AUDIT_SAFE) cat /home/user/forensics/filtered_package_list.txt | awk -F '==' '{print "{\"name\": \"" $1 "\", \"version\": \"" $2 "\"}"}' | sort -t '"' -k4,4 | jq -R 'def parse_pkg: capture("^(?<name>[^=]+)==(?<version>[^\\n]*)"); [inputs | parse_pkg] | sort_by(.name)' | jq -n --arg ts "$TIMESTAMP" --arg inode "$INODE" --argjson packages "$(cat -)" '{scan_timestamp: $ts, environment_inode: ($inode|tonumber), packages: $packages}' > /home/user/forensics/audit_manifest.json
+[?2004l[?2004h(AUDIT_SAFE) sha512sum /home/user/forensics/audit_manifest.json | cut -d' ' -f1 > /home/user/forensics/audit_manifest.sig
+[?2004l[?2004h(AUDIT_SAFE) ls -la /home/user/forensics/
+[?2004ltotal 24
+drwxr-xr-x 3 root root 4096 Feb 13 19:06 [0m[01;34m.[0m
+drwxr-xr-x 1 user user   31 Feb 13 19:04 [01;34m..[0m
+-rw-r--r-- 1 root root   98 Feb 13 19:05 audit_manifest.json
+-rw-r--r-- 1 root root  129 Feb 13 19:06 audit_manifest.sig
+drwxr-xr-x 5 root root   98 Feb 13 19:04 [01;34mclean_env[0m
+-rw-r--r-- 1 root root  156 Feb 13 19:04 filtered_package_list.txt
+-rw-r--r-- 1 root root  156 Feb 13 19:04 full_package_list.txt
+-rw-r--r-- 1 root root   24 Feb 13 19:04 processed_banlist.txt
+[?2004h(AUDIT_SAFE) 

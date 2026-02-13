@@ -1,0 +1,150 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Task: Legacy API Regression Test Suite Refactor
+
+**Context**
+You are taking over a task from a developer (Dave) who left the company abruptly. He was working on a Python-based regression test harness for our partner's REST API. The infrastructure is a mix of legacy Linux servers and new Windows CI agents, which has led to some specific, non-negotiable requirements regarding file formats and encodings.
+
+Dave left a folder at `/home/user/projects/api-test` containing an `input` directory with some JSON samples. You need to complete the harness by writing a solution that generates the required Schema, validates the inputs, and produces specific output artifacts.
+
+**Dave's Handover Notes (READ CAREFULLY)**
+
+> "Hey, sorry to leave this half-finished. Here is what needs to be done:
+> 
+> 1. **The Schema**: You need to generate `/home/user/projects/api-test/schema/user.schema.json`. 
+>    The user object is tricky. We have three roles now: 'admin', 'user', and 'manager'.
+>    - Everyone has `id` (int), `name` (str), `email` (email fmt), `isActive` (bool), and `role` (enum).
+>    - **Admins** always need a `department` (string).
+>    - **Users** must NEVER have a `department` field.
+>    - **Managers** are the worst: they need a `department` ONLY if they are `isActive=true`. If a manager is inactive, they lose their department (field must be absent).
+>    - No other extra properties allowed.
+>
+> 2. **Input Processing**: 
+>    Process every `.json` file in the `input` folder. 
+>    Watch out for symlinks—I think someone symlinked a file to itself to test infinite loops; just ignore any symlinks completely. 
+>    Also, the Windows team keeps committing files with Byte Order Marks (BOM). The parser needs to handle those gracefully. If you strip a BOM, mark it in the log.
+>
+> 3. **The Log File (`output/validation.log`)**:
+>    This is critical. The Ops team uses an ancient viewer that crashes on UTF-8. You MUST write this file using **ISO-8859-1** encoding. 
+>    Also, there's a config file somewhere—check the environment variable `TEST_CONF` for the path. Inside that file, look for `LOG_PREFIX`. You need to prepend that string to every line in this log.
+>    Format: `<PREFIX><FILENAME> - <STATUS>`
+>    Status is either `VALID`, `VALID (BOM stripped)`, `INVALID: <reason>`, or `INVALID: JSON syntax error`.
+>
+> 4. **The Valid Users Dump (`output/valid_users.json`)**:
+>    Standard JSON array of the valid objects. 
+>    Transformations: Lowercase the email, Uppercase the role.
+>    **Sorting**: For legacy DB import reasons, the keys in each object MUST be in this exact order: `email`, `id`, `role`. Python dicts preserve order now, so use that.
+>    **Formatting**: 2-space indent. But here's the catch—the file must NOT have a trailing newline. It must end exactly on the closing bracket `]`.
+>
+> 5. **The Summary (`output/summary.txt`)**:
+>    The CI server runs on Windows. It expects **CRLF** (`\r\n`) line endings. If you use standard Linux LF, the build hangs.
+>    Content:
+>    Line 1: `Files: <Total Processed>` (count of physical JSON files attempted)
+>    Line 2: `Passed: <Total Valid>`
+>    Line 3: `Log Checksum: <MD5>`
+>    
+>    For that last line, calculate the MD5 hash of the final `validation.log` file you just wrote (the ISO-8859-1 bytes) and put it there. This ensures the log wasn't tampered with."
+
+**Summary of Deliverables**
+Your solution must produce:
+1. `/home/user/projects/api-test/schema/user.schema.json`
+2. `/home/user/projects/api-test/output/validation.log` (ISO-8859-1, Prefixed)
+3. `/home/user/projects/api-test/output/valid_users.json` (No trailing newline, specific key order)
+4. `/home/user/projects/api-test/output/summary.txt` (CRLF, includes MD5 of log)
+
+**Constraints**
+- Do not install new packages.
+- Use the existing Python 3 environment.
+- Files must exist exactly at the paths above.
+
+Current terminal state:
+Current Terminal Screen:
+root@86753427-7808-482c-8ff7-8f392a0d20f2:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

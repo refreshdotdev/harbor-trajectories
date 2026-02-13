@@ -1,0 +1,174 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are working as an edge-computing engineer preparing a single-board IoT gateway for field deployment. Management has asked you to gather a precise “pre-flight” diagnostic bundle that must be archived on the device before it leaves the lab.
+
+A directory named `/home/user/iot_deployment` already exists and contains a file named `devices.txt`.
+*   This file contains a list of IPv4 addresses (one per line) that the gateway should be able to reach.
+*   **Note**: The file may contain comments (lines starting with `#`), blank lines, or leading/trailing whitespace. You must parse it to extract only valid non-empty IP addresses.
+*   DO NOT modify `devices.txt` – only read from it.
+
+A new sub-directory must be created: `/home/user/iot_deployment/diagnostics` (Create it if it does not already exist.)
+
+Inside that `diagnostics` directory, generate THREE artefacts whose exact paths, filenames and formats must match the following specifications; **the automated tests will fail if there are spelling/formatting deviations.**
+
+#### Artefact 1: `/home/user/iot_deployment/diagnostics/system_report.json`
+*   UTF-8 encoded, one single JSON object (no surrounding array, no trailing commas, pretty-printed with 2-space indents).
+*   Mandatory key layout:
+
+    ```json
+    {
+      "timestamp": "<ISO-8601 UTC timestamp, e.g. 2023-11-28T14:33:59Z>",
+      "hostname": "<output of the hostname command>",
+      "kernel": "<output of uname ‑srv>",
+      "uptime_seconds": <integer seconds since boot>,
+      "load_average": {
+        "1min": <float>,
+        "5min": <float>,
+        "15min": <float>
+      },
+      "memory": {
+        "total_MB": <int>,
+        "used_MB": <int>,
+        "free_MB": <int>
+      },
+      "disk_usage": [
+        {
+          "mountpoint": "<string>",
+          "filesystem": "<string>",
+          "size_GB": <float>,
+          "used_GB": <float>,
+          "free_GB": <float>,
+          "percent_used": <int>
+        }
+        ... (one object for every mounted filesystem of type 'ext4', 'xfs', or 'overlay')
+      ],
+      "top_processes": [
+        {
+          "pid": <int>,
+          "user": "<string>",
+          "command": "<string, NO arguments>",
+          "cpu_percent": <float>,
+          "mem_percent": <float>
+        }
+        ... exactly 5 objects ordered by descending cpu_percent
+      ],
+      "open_ports": [ <int>, ... ordered ascending with no duplicates ],
+      "reachable_devices": [ "<IP as string>", ... ],
+      "unreachable_devices": [ "<IP as string>", ... ]
+    }
+    ```
+
+*   **`disk_usage`**: Must list all mounted filesystems of type `ext4`, `xfs`, or `overlay`. Numeric values are floats (GB) or int (percent).
+*   **`top_processes`**: List the top 5 processes by instantaneous CPU usage. **Exclude kernel threads** (processes where the `command` is surrounded by square brackets, e.g., `[kthreadd]`).
+*   **`reachable_devices`/`unreachable_devices`**: Decided by sending up to 3 ICMP echo requests (ping) to each valid IP from `devices.txt`; if at least one reply arrives the IP is “reachable”.
+
+#### Artefact 2: `/home/user/iot_deployment/diagnostics/ping_summary.csv`
+*   UTF-8 text, Unix line endings.
+*   First line is a header **exactly**: `ip,status,latency_ms`
+*   One subsequent line per valid IP found in `devices.txt`.
+*   **Sorting**: The rows must be sorted by **`latency_ms` in descending order** (highest latency first). Devices with status `unreachable` (latency `N/A`) must appear at the **bottom** of the list.
+*   `status` is either `reachable` or `unreachable` (lower-case).
+*   `latency_ms` is the average round-trip time across the successful replies rounded to 2 decimal places; use “N/A” (without quotes) if unreachable.
+
+#### Artefact 3: `/home/user/iot_deployment/diagnostics/integrity.sha256`
+*   A text file containing the SHA256 checksums of `system_report.json` and `ping_summary.csv`.
+*   Format: Standard `sha256sum` output (hash followed by two spaces and the filename).
+*   **Constraint**: The filenames listed must be **relative** (e.g., `system_report.json`), not absolute paths.
+
+#### Permissions & Security
+*   All three files inside `diagnostics` must be **read-only** for everyone (mode `0444` or `r--r--r--`).
+*   The `diagnostics` directory itself must be mode `0755`.
+
+Good luck!
+
+Current terminal state:
+Current Terminal Screen:
+root@70ff4054-76a2-4a97-bdb7-ae431b0ea8ec:/home/user#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

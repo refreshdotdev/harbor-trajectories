@@ -1,0 +1,256 @@
+Current terminal state:
+New Terminal Output:
+
+root@deae95a1-7828-4612-b53a-e96120a69026:/home/user/capacity# ls -la raw/
+total 0
+drwxr-xr-x 1 user user 81 Feb 13 19:04 .
+drwxr-xr-x 1 user user 62 Feb 13 19:04 ..
+drwxr-xr-x 1 user user 83 Feb 13 19:04 region_alpha
+drwxr-xr-x 1 user user 70 Feb 13 19:04 region_beta
+drwxr-xr-x 1 user user 40 Feb 13 19:04 region_gamma
+root@deae95a1-7828-4612-b53a-e96120a69026:/home/user/capacity# find raw/ -name "*_202301.log" | head -5
+raw/region_alpha/server1_legacy_202301.log
+raw/region_alpha/server2_maint_202301.log
+raw/region_beta/server3_202301.log
+raw/region_beta/server4_202301.log
+raw/region_gamma/server5_202301.log
+root@deae95a1-7828-4612-b53a-e96120a69026:/home/user/capacity# cat > process_capacity.py << 'EOF'
+> #!/usr/bin/env python3
+> import os
+> import sys
+> import json
+> import re
+> import struct
+> import hashlib
+> import glob
+> import io
+> from collections import defaultdict
+>
+> # ------------------- Configuration -------------------
+> BASE_DIR = '/home/user/capacity'
+> RAW_DIR = os.path.join(BASE_DIR, 'raw')
+> REPORTS_DIR = os.path.join(BASE_DIR, 'reports')
+>
+> # ------------------- Helper Functions -------------------
+>
+> def parse_manifest(manifest_path):
+>     """Parse manifest file, return list of active directories"""
+>     active_dirs = []
+>     try:
+>         with open(manifest_path, 'r') as f:
+>             for line in f:
+>                 line = line.strip()
+>                 if line and not line.startswith('#'):
+>                     active_dirs.append(line)
+>     except FileNotFoundError:
+>         print(f"Warning: Manifest file {manifest_path} not found")
+>     return active_dirs
+>
+> def normalize_metric(val, is_legacy):
+>     """Convert to int: round floats, legacy already int"""
+>     if is_legacy:
+>         return int(val)
+>     else:
+>         return round(float(val))
+>
+> def load_file_with_encoding(file_path):
+>     """Try UTF-8 with BOM, then UTF-8, then ISO-8859-1"""
+>     content = None
+>     try:
+>         # Try UTF-8 with BOM
+>         with open(file_path, 'r', encoding='utf-8-sig') as f:
+>             content = f.read()
+>     except UnicodeDecodeError:
+>         try:
+>             # Try standard UTF-8
+>             with open(file_path, 'r', encoding='utf-8') as f:
+>                 content = f.read()
+>         except UnicodeDecodeError:
+>             try:
+>                 # Try ISO-8859-1
+>                 with open(file_path, 'r', encoding='iso-8859-1') as f:
+>                     content = f.read()
+>             except Exception as e:
+>                 print(f"Error reading {file_path}: {e}")
+>     return content
+>
+> def process_metrics(content, file_path):
+>     """Parse metrics from file content"""
+>     if 'meta_status: active' not in content:
+>         return None, None, None, None
+>
+>     is_legacy = 'legacy' in file_path
+>     cpu_vals, mem_vals, disk_vals = [], [], []
+>
+>     # Regex to find metric lines
+>     for line in content.splitlines():
+>         line = line.strip()
+>         cpu_match = re.search(r'CPU_USED:\s*(\d+\.?\d*)', line)
+>         mem_match = re.search(r'MEM_USED:\s*(\d+\.?\d*)', line)
+>         disk_match = re.search(r'DISK_USED:\s*(\d+\.?\d*)', line)
+>
+>         if cpu_match:
+>             try:
+>                 cpu_val = normalize_metric(cpu_match.group(1), is_legacy)
+>                 if 5 <= cpu_val <= 95:
+>                     cpu_vals.append(cpu_val)
+>             except (ValueError, TypeError):
+>                 pass
+>
+>         if mem_match:
+>             try:
+>                 mem_val = normalize_metric(mem_match.group(1), is_legacy)
+>                 if 5 <= mem_val <= 95:
+>                     mem_vals.append(mem_val)
+>             except (ValueError, TypeError):
+>                 pass
+>
+>         if disk_match:
+>             try:
+>                 disk_val = normalize_metric(disk_match.group(1), is_legacy)
+>                 if 5 <= disk_val <= 95:
+>                     disk_vals.append(disk_val)
+>             except (ValueError, TypeError):
+>                 pass
+>
+>     return cpu_vals, mem_vals, disk_vals, is_legacy
+>
+> def calculate_averages(cpu_vals, mem_vals, disk_vals):
+>     """Calculate averages rounded down"""
+>     def safe_avg(vals):
+>         return int(sum(vals) / len(vals)) if vals else 0
+>
+>     return (
+>         safe_avg(cpu_vals),
+>         safe_avg(mem_vals),
+>         safe_avg(disk_vals)
+>     )
+>
+> def create_summary_log(cpu_avg, mem_avg, disk_avg, json_size):
+>     """Create summary log with CRLF line endings"""
+>     content = f"AVG_CPU_USED={cpu_avg}\r\nAVG_MEM_USED={mem_avg}\r\nAVG_DISK_USED={disk_avg}\r\nsource_size={json_size}\r\n"
+>     return content
+>
+> def create_binary_checksum(data):
+>     """Create binary MD5 checksum"""
+>     return hashlib.md5(data.encode('utf-8')).digest()
+>
+> def create_operations_log_entry(num_files, checksum_file_path):
+>     """Create operations log entry"""
+>     checksum_data = open(checksum_file_path, 'rb').read()
+>     sha256_hash = hashlib.sha256(checksum_data).
+[... output limited to 10000 bytes; 582 interior bytes omitted ...]
+ 0
+>
+>     # 3. Process files
+>     for active_dir in active_dirs:
+>         dir_path = os.path.join(RAW_DIR, active_dir)
+>         if not os.path.isdir(dir_path):
+>             print(f"Warning: Directory {dir_path} not found")
+>             continue
+>
+>         # Find all matching files in this directory
+>         pattern = os.path.join(dir_path, '*_202301.log')
+>         for file_path in glob.glob(pattern):
+>             print(f"Processing {file_path}...")
+>             content = load_file_with_encoding(file_path)
+>             if not content:
+>                 continue
+>
+>             cpu_vals, mem_vals, disk_vals, _ = process_metrics(content, file_path)
+>             if None in [cpu_vals, mem_vals, disk_vals]:
+>                 continue
+>
+>             all_cpu_vals.extend(cpu_vals)
+>             all_mem_vals.extend(mem_vals)
+>             all_disk_vals.extend(disk_vals)
+>             valid_file_count += 1
+>
+>     # 4. Calculate averages
+>     cpu_avg, mem_avg, disk_avg = calculate_averages(all_cpu_vals, all_mem_vals, all_disk_vals)
+>     print(f"Calculated averages: CPU={cpu_avg}, MEM={mem_avg}, DISK={disk_avg}")
+>
+>     # 5. Generate intermediate.json
+>     json_data = {
+>         'AVG_CPU_USED': cpu_avg,
+>         'AVG_MEM_USED': mem_avg,
+>         'AVG_DISK_USED': disk_avg
+>     }
+>     json_str = json.dumps(json_data, separators=(',', ':'))
+>     json_path = os.path.join(REPORTS_DIR, 'intermediate.json')
+>     with open(json_path, 'w') as f:
+>         f.write(json_str)
+>     json_size = os.path.getsize(json_path)
+>     print(f"Generated {json_path} ({json_size} bytes)")
+>
+>     # 6. Generate summary_202301.log
+>     summary_content = create_summary_log(cpu_avg, mem_avg, disk_avg, json_size)
+>     summary_path = os.path.join(REPORTS_DIR, 'summary_202301.log')
+>     with open(summary_path, 'w', encoding='utf-8', newline='\r\n') as f:
+>         f.write(summary_content)
+>     print(f"Generated {summary_path}")
+>
+>     # 7. Generate checksum.bin
+>     checksum_data = create_binary_checksum(summary_content)
+>     checksum_path = os.path.join(REPORTS_DIR, 'checksum.bin')
+>     with open(checksum_path, 'wb') as f:
+>         f.write(checksum_data)
+>     print(f"Generated {checksum_path}")
+>
+>     # 8. Update symlink
+>     latest_link = os.path.join(BASE_DIR, 'latest')
+>     try:
+>         os.unlink(latest_link)
+>     except FileNotFoundError:
+>         pass
+>     abs_summary_path = os.path.abspath(summary_path)
+>     os.symlink(abs_summary_path, latest_link)
+>     print(f"Updated symlink: {latest_link} -> {abs_summary_path}")
+>
+>     # 9. Append to operations.log
+>     log_entry = create_operations_log_entry(valid_file_count, checksum_path)
+>     log_path = os.path.join(BASE_DIR, 'operations.log')
+>     with open(log_path, 'a') as f:
+>         f.write(log_entry + '\n')
+>     print(f"Appended to {log_path}: {log_entry}")
+>
+>     print("Capacity report generation complete!")
+>
+> if __name__ == '__main__':
+>     main()
+> EOF
+root@deae95a1-7828-4612-b53a-e96120a69026:/home/user/capacity# python3 process_capacity.py
+Starting January 2023 capacity report generation...
+Found 2 active directories: ['region_alpha', 'region_beta']
+Processing /home/user/capacity/raw/region_alpha/server1_legacy_202301.log...
+Processing /home/user/capacity/raw/region_alpha/server2_maint_202301.log...
+Processing /home/user/capacity/raw/region_beta/server3_202301.log...
+Processing /home/user/capacity/raw/region_beta/server4_202301.log...
+Calculated averages: CPU=0, MEM=0, DISK=0
+Generated /home/user/capacity/reports/intermediate.json (53 bytes)
+Generated /home/user/capacity/reports/summary_202301.log
+Generated /home/user/capacity/reports/checksum.bin
+Updated symlink: /home/user/capacity/latest -> /home/user/capacity/reports/summary_202301.log
+Appended to /home/user/capacity/operations.log: Publication 2023-01: 3 files, Checksum: ed22cdc0a156d92050b6dc57f7437bea8128ab75cbf3dac1eafbe8c655dd6d8e
+Capacity report generation complete!
+root@deae95a1-7828-4612-b53a-e96120a69026:/home/user/capacity# ls -la reports/
+total 12
+drwxr-xr-x 1 user user  93 Feb 13 19:06 .
+drwxr-xr-x 1 user user 104 Feb 13 19:06 ..
+-rw-r--r-- 1 root root  16 Feb 13 19:06 checksum.bin
+-rw-r--r-- 1 root root  53 Feb 13 19:06 intermediate.json
+-rw-r--r-- 1 root root  69 Feb 13 19:06 summary_202301.log
+root@deae95a1-7828-4612-b53a-e96120a69026:/home/user/capacity# cat reports/intermediate.json
+{"AVG_CPU_USED":0,"AVG_MEM_USED":0,"AVG_DISK_USED":0}root@deae95a1-7828-4612-b53a-e96120a69026:/home/user/capacity# head -4 reports/summary_202301.log
+AVG_CPU_USED=0
+AVG_MEM_USED=0
+AVG_DISK_USED=0
+source_size=53
+root@deae95a1-7828-4612-b53a-e96120a69026:/home/user/capacity# hexdump -C reports/checksum.bin
+bash: hexdump: command not found
+root@deae95a1-7828-4612-b53a-e96120a69026:/home/user/capacity# tail -1 operations.log
+Publication 2023-01: 3 files, Checksum: ed22cdc0a156d92050b6dc57f7437bea8128ab75cbf3dac1eafbe8c655dd6d8e
+root@deae95a1-7828-4612-b53a-e96120a69026:/home/user/capacity#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

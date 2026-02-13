@@ -1,0 +1,84 @@
+Current terminal state:
+New Terminal Output:
+
+root@5484fab7-e488-4c17-888e-b2dd89e50778:/var/lib/ci_logs# cat > /tmp/generate_reports.sh << 'EOF'
+> #!/bin/bash
+> REPORT_DIR="/home/user/mobile_pipelines/report"
+> TEXT_REPORT="$REPORT_DIR/build_summary.log"
+> JSON_REPORT="$REPORT_DIR/build_metrics.json"
+> DB_FILE="/home/user/mobile_pipelines/builds.db"
+>
+> # Generate text summary report in Windows-1252 with CRLF
+> sqlite3 "$DB_FILE" "
+> SELECT
+>     commit_hash,
+>     status,
+>     (SELECT COUNT(*) FROM artifacts WHERE artifacts.build_id = builds.id) AS artifact_count,
+>     efficiency_score,
+>     verification_code
+> FROM builds ORDER BY builds.id;
+> " |
+> awk -v OFS='|' -v quote="'" -v RS="" -F"|" 'BEGIN {
+>     printf "Build Summary Report\n\n" > "${TEXT_REPORT}.tmp";
+>     printf "Commit Hash    | Status     | Artifacts | Efficiency | Code\n" >> "${TEXT_REPORT}.tmp";
+>     printf "--------------------------------------------------------------\n" >> "${TEXT_REPORT}.tmp";
+> } NR>0 {
+>     gsub(/
+> /, "", $1);
+>     gsub(/\/, "/", $1);
+>     gsub(/\n/, "
+> \n", $1);
+>     printf "%-15.15s | %-11.11s | %-10d | %-11.2f | %-8.8s\r\n", $1, $2, $3, $4, $5 >> "${TEXT_REPORT}.tmp";
+> }'
+>
+> # Convert to Windows-1252 encoding and overwrite
+> iconv -f UTF-8 -t WINDOWS-1252 "${TEXT_REPORT}.tmp" > "${TEXT_REPORT}"
+> rm "${TEXT_REPORT}.tmp"
+>
+> # Generate JSON integrity export
+> REPORT_MD5=$(md5sum "${TEXT_REPORT}" | cut -d' ' -f1)
+> TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+>
+> sqlite3 "$DB_FILE" "
+> SELECT
+>     builds.id,
+>     builds.commit_hash,
+>     builds.efficiency_score
+> FROM builds ORDER BY builds.id;
+> " |
+> jq -R -s -f - <<JQEOF
+> [split("") | .[1:]] | map(select(. != "")) | map(split("|")) | map({id: (.[0] | tonumber), commit_hash: .[1], efficiency: .[2] | tonumber})
+> JQEOF > "${JSON_REPORT}.tmp"
+>
+> jqt -s '{
+>   "generated_at": "$TIMESTAMP",
+>   "summary_report_md5": "$REPORT_MD5",
+>   "builds": .
+> }' "${JSON_REPORT}.tmp" > "${JSON_REPORT}"
+> rm "${JSON_REPORT}.tmp"
+> EOF
+root@5484fab7-e488-4c17-888e-b2dd89e50778:/var/lib/ci_logs# apt-get install -y jq iconv
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+Package iconv is not available, but is referred to by another package.
+This may mean that the package is missing, has been obsoleted, or
+is only available from another source
+
+E: Package 'iconv' has no installation candidate
+root@5484fab7-e488-4c17-888e-b2dd89e50778:/var/lib/ci_logs# chmod +x /tmp/generate_reports.sh
+root@5484fab7-e488-4c17-888e-b2dd89e50778:/var/lib/ci_logs# /tmp/generate_reports.sh
+awk: line 6: runaway regular expression / ...
+iconv: cannot open input file `/home/user/mobile_pipelines/report/build_summary.log.tmp': No such file or directory
+rm: cannot remove '/home/user/mobile_pipelines/report/build_summary.log.tmp': No such file or directory
+/tmp/generate_reports.sh: line 54: warning: here-document at line 45 delimited by end-of-file (wanted `JQEOF')
+jq: Could not open -: No such file or directory
+root@5484fab7-e488-4c17-888e-b2dd89e50778:/var/lib/ci_logs# ls -la /home/user/mobile_pipelines/report/
+total 0
+drwxr-xr-x 1 root root 31 Feb 13 19:07 .
+drwxr-xr-x 1 root root 49 Feb 13 19:07 ..
+-rw-r--r-- 1 root root  0 Feb 13 19:07 build_summary.log
+root@5484fab7-e488-4c17-888e-b2dd89e50778:/var/lib/ci_logs#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

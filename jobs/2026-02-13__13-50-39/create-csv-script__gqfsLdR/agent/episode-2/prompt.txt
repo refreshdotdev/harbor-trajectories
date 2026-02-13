@@ -1,0 +1,44 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+> EOFcat >> bin/generate_cost_report.sh << 'EOF'
+>
+> ######################################################################
+> # Phase 1: Ingestion & Sanitization
+> ######################################################################
+>
+> clean_usage_file="$INTERMEDIATE_DATA_DIR/clean_usage.csv"
+> echo "Phase 1: Processing usage data..."
+>
+> # Check if usage.log contains data
+> if [ ! -s "$INPUT_USAGE_LOG" ]; then
+>     echo "ERROR: Usage log file is empty"
+>     exit 1
+> fi
+>
+> # Process usage.log - remove comments, sanitize numeric fields, convert to standard CSV
+> awk -F, 'BEGIN {
+>     print "container_id,image,cpu_percent,mem_mb,runtime_hours,cost_per_hour" > ""clean_usage_file""
+>     OFS=","
+> }
+> /^#/ { next } # Skip comment lines
+> !NF { next } # Skip empty lines
+> {
+>     # Sanitize numeric fields - convert NULL/N/A to 0
+>     gsub("NULL", "0", $3); gsub("N/A", "0", $3)
+>     gsub("NULL", "0", $4); gsub("N/A", "0", $4)
+>     gsub("NULL", "0", $5); gsub("N/A", "0", $5)
+>     gsub("NULL", "0", $6); gsub("N/A", "0", $6)
+>     print $0
+> }' "$INPUT_USAGE_LOG"
+>
+> if [ ! -s "$clean_usage_file" ]; then
+>     echo "ERROR: Failed to generate cleaned usage data"
+>     exit 1
+> fi
+>
+> echo "Phase 1 complete: Cleaned usage data saved to $clean_usage_file"
+> EOF

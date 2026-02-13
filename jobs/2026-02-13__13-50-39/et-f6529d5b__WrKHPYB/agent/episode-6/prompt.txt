@@ -1,0 +1,50 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# which hmac_sha256 || which openssl
+/usr/bin/openssl
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export LOG_CONTENT_BEFORE_END_TIME_FINAL=$(cat "$CONFIG_FILE" | head -n -1)
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export LOG_CHECKSUM_FINAL=$(echo -n "$LOG_CONTENT_BEFORE_END_TIME_FINAL" | sha256sum -b | cut -d' ' -f1)
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export LOG_SIG_FINAL=""
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# if command -v openssl &> /dev/null; then
+>   export LOG_SIG_FINAL=$(echo -n "$LOG_CONTENT_BEFORE_END_TIME_FINAL" | openssl dgst -sha256 -hmac "${HMAC_KEY_FOR_JSON}" | sed 's/^.* //')
+> fi
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export VERIFICATION_STATUS="VERIFICATION_FAILED"
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export ALL_HASHES_MATCH=true
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export AUDIT_LOG_FILE_PATH="/home/user/audit_2023Q4/checksum_audit.log"
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# # Read lines 3 to -2 from the log file (actual file records)
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# # Line 1: START, Line 2: START_TIME, Line 3: FILE_RECORDS
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# # Lines -2: END_TIME, -1: END (verification status is on new line after these in current state)
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# awk -v total_lines=$(wc -l < "$AUDIT_LOG_FILE_PATH") 'NR>=3 && NR<=(total_lines-2) {print $0}' "$AUDIT_LOG
+_FILE_PATH" | while IFS= read -r record_line; do
+>   filename=$(echo "$record_line" | awk '{print $1}')
+>   sha256_on_disk=$(sha256sum "${AUDIT_LOG_FILE_PATH%/*}/../source_files/${filename//\047\\\047/\\\047}" 2>/dev/null | cut -d' ' -f1)
+>   if [ -z "$sha256_on_disk" ]; then
+>     export ALL_HASHES_MATCH=false
+>   elif [ "$sha256_on_disk" != "${filename#*=}" ]; then
+>     export ALL_HASHES_MATCH=false
+>   fi
+> done
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# if [ "$ALL_HASHES_MATCH" = true ]; then
+>   export VERIFICATION_STATUS="VERIFICATION_PASSED"
+> else
+>   export VERIFICATION_STATUS="VERIFICATION_FAILED"
+> fi
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# sed -i '$ d' "$CONFIG_FILE" || sed -i '' '$ d' "$CONFIG_FILE"
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# echo "${VERIFICATION_STATUS}" >> "$CONFIG_FILE"
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# cat > /home/user/audit_2023Q4/summary.json << EOF_JSON
+> {
+>   "period": "2023-Q4",
+>   "file_count": ${AUDIT_FILE_COUNT},
+>   "total_bytes": ${TOTAL_BYTES},
+>   "start_time": "${AUDIT_START_TS}",
+>   "end_time": "${AUDIT_END_TS}",
+>   "status": "COMPLETED",
+>   "log_checksum": "${LOG_CHECKSUM_FINAL}",
+>   "signature": "${LOG_SIG_FINAL}"
+> }
+> EOF_JSON
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user#

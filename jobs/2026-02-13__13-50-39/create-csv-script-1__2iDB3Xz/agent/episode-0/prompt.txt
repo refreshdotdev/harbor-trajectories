@@ -1,0 +1,175 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Internal Memo: Cloud Cost Compliance Upgrade
+
+**To:** FinOps Engineering Team
+**From:** Governance & Compliance
+**Subject:** URGENT: Implementation of Chained-Audit Symlink System
+
+We are rolling out a new standard for tracking cloud cost CSVs. The previous ad-hoc symlinking scripts have led to data inconsistencies. You are required to write a robust generation script that standardizes our `monthly` cost data into a `processed` view, archives obsolete data, and generates a cryptographically verifiable audit log.
+
+## 1. Data Source & Validity Policy
+
+The raw data is located in `/home/user/cloud_costs/monthly/`. 
+
+**CRITICAL:** Do not assume all files in this directory are valid. We have had issues with empty dumps and draft files. You must load the configuration file located at `/etc/finops/policy.ini` to determine the validity criteria. This config file defines:
+1.  `filename_pattern`: A regex that valid filenames must match.
+2.  `min_size_bytes`: Files smaller than this are corrupt and must be ignored.
+3.  `date_header_pattern`: A regex to extract the **Authoritative Timestamp** from the file content.
+
+**Sorting Rule:** Files must be ordered strictly by their **Authoritative Timestamp** (found inside the file content), NOT by their filename. It is known that some files with "newer" names contain older data (drafts). Always trust the content timestamp.
+
+## 2. Directory Management
+
+### Cleanup
+- The `/home/user/cloud_costs/processed/` directory may contain broken symlinks. Remove any symlink that points to a non-existent file, **UNLESS** the link target is in the `future/` subdirectory (e.g. `../future/2024.csv`). Future links are placeholders and must be preserved.
+
+### Archiving
+- Create `/home/user/cloud_costs/archive/`.
+- Identify the **Latest** (most recent timestamp) and **Previous** (second most recent timestamp) valid files.
+- Move any *valid* files that are strictly older than the **Previous** file into the `archive/` directory.
+- Invalid files (wrong name, too small, etc.) must be left untouched in `monthly/`.
+
+## 3. Symlink Generation
+
+Create the following symbolic links using **relative paths**:
+
+In `/home/user/cloud_costs/processed/`:
+- `latest.csv` -> Points to the **Latest** valid file.
+- `previous.csv` -> Points to the **Previous** valid file.
+
+In `/home/user/cloud_costs/per_service/`:
+- `compute_v2.csv` -> Points to **Latest**.
+- `storage_v2.csv` -> Points to **Latest**.
+- `network_v2.csv` -> Points to **Latest**.
+
+**Note:** Some legacy downstream systems require these links. If the source file is encoded in UTF-16, the link should still point to the original raw file (do not convert the file itself).
+
+## 4. The "Chained" Audit Log
+
+We are implementing a blockchain-style integrity check. You must generate a log file at `/home/user/cloud_costs/audit_chain.csv`.
+
+**Encoding Requirement:** The audit file must be encoded in **ISO-8859-1 (Latin-1)**. Do not use UTF-8.
+
+**Format:** CSV with header: `SymlinkPath,TargetRelativePath,TargetContentSHA1,ChainHash`
+
+**Logic:**
+1.  **Ordering:** Rows must be written in this exact order: 
+    - `processed/latest.csv`
+    - `processed/previous.csv`
+    - `per_service/compute_v2.csv`
+    - `per_service/network_v2.csv`
+    - `per_service/storage_v2.csv`
+    *(Note the alphabetical order for per_service)*
+
+2.  **TargetContentSHA1:** The SHA-1 hash of the *content* of the target file. 
+    - **IMPORTANT:** If the target file is UTF-16LE (with or without BOM), you must calculate the hash based on its **converted UTF-8 representation** (no BOM). If the file is already UTF-8/ASCII, hash it as-is.
+
+3.  **ChainHash:** 
+    - For the first record, the `ChainHash` is the SHA-256 hash of the value in the environment variable `$AUDIT_SEED`.
+    - For all subsequent records, the `ChainHash` is the SHA-256 hash of the **entire previous line** (as a string, including the newline character `\n`).
+    - The hash must be a lowercase hex string.
+
+**Example:**
+If `$AUDIT_SEED` is "start", the first ChainHash is `sha256("start")`.
+If the first line written is `path,target,hash,chainhash\n`, the second line's ChainHash is `sha256("path,target,hash,chainhash\n")`.
+
+## Summary of Deliverables
+1. `processed/` cleaned of broken links (except future).
+2. Old valid files archived.
+3. Symlinks created (relative).
+4. `audit_chain.csv` created with correct encodings and hash chain.
+
+Your solution will be verified by an automated suite that checks the filesystem state and re-calculates the hash chain.
+
+Current terminal state:
+Current Terminal Screen:
+root@7307115a-6068-4a9c-8ca8-375cf3a5e3f8:/home/user#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

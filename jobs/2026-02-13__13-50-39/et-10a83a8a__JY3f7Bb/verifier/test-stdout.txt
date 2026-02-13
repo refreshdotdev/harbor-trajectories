@@ -1,0 +1,165 @@
+Hit:1 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.81.0-1ubuntu1.21).
+0 upgraded, 0 newly installed, 0 to remove and 4 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading cpython-3.12.12-linux-x86_64-gnu (download) (31.1MiB)
+ Downloading cpython-3.12.12-linux-x86_64-gnu (download)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 5 packages in 15ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/zQKQuzSd0Ld-YK5E4Za6w/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 4 items
+
+../../tests/test_final_state.py::TestFilesystem::test_webroot_permissions PASSED [ 25%]
+../../tests/test_final_state.py::TestFilesystem::test_index_content_and_encoding FAILED [ 50%]
+../../tests/test_final_state.py::TestServiceAndManifest::test_service_running_and_serving FAILED [ 75%]
+../../tests/test_final_state.py::TestServiceAndManifest::test_manifest_file FAILED [100%]
+
+=================================== FAILURES ===================================
+________________ TestFilesystem.test_index_content_and_encoding ________________
+
+self = <test_final_state.TestFilesystem object at 0x6fff07d87d70>
+
+    def test_index_content_and_encoding(self):
+        assert INDEX_FILE.is_file(), "index.html missing"
+    
+        content = INDEX_FILE.read_bytes()
+    
+        # Check 1: No BOM at start of file
+        assert not content.startswith(b'\xef\xbb\xbf'), "File still contains UTF-8 BOM"
+    
+        # Check 2: Byte exact match (ensures Latin-1 encoding of the copyright symbol)
+        # UTF-8 Copyright is b'\xc2\xa9'. Latin-1 is b'\xa9'.
+        assert b'\xa9' in content, "Copyright symbol not found as single byte (0xA9). Likely UTF-8 encoded (0xC2A9)."
+        assert b'\xc2\xa9' not in content, "Found UTF-8 copyright sequence. File must be ISO-8859-1."
+    
+>       assert content == EXPECTED_BYTES, (
+            f"Content mismatch.\nExpected bytes: {EXPECTED_BYTES!r}\nActual bytes:   {content!r}"
+        )
+E       AssertionError: Content mismatch.
+E         Expected bytes: b'<!-- Copyright \xa9 2024 -->\n<html><body>Welcome, Mainframe Users!</body></html>\n'
+E         Actual bytes:   b'<!-- Copyright \xa9 2024 -->\n<html><body>Welcome, $TARGET_AUDIENCE!</body></html>\n'
+E       assert b'<!-- Copyri...ody></html>\n' == b'<!-- Copyri...ody></html>\n'
+E         
+E         At index 47 diff: b'$' != b'M'
+E         
+E         Full diff:
+E         - (b'<!-- Copyright \xa9 2024 -->\n<html><body>Welcome, Mainframe Users!</body></'
+E         ?                                                       ^^^^^^^^^^ ^^^^         -
+E         + (b'<!-- Copyright \xa9 2024 -->\n<html><body>Welcome, $TARGET_AUDIENCE!</body><'...
+E         
+E         ...Full output truncated (4 lines hidden), use '-vv' to show
+
+/tests/test_final_state.py:53: AssertionError
+___________ TestServiceAndManifest.test_service_running_and_serving ____________
+
+self = <test_final_state.TestServiceAndManifest object at 0x6fff07d87a70>
+
+    def test_service_running_and_serving(self):
+        url = "http://localhost:9000/index.html"
+        try:
+            with urllib.request.urlopen(url) as response:
+                data = response.read()
+                headers = response.info()
+    
+>               assert data == EXPECTED_BYTES, "Server returned incorrect bytes"
+E               AssertionError: Server returned incorrect bytes
+E               assert b'<!-- Copyri...ody></html>\n' == b'<!-- Copyri...ody></html>\n'
+E                 
+E                 At index 47 diff: b'$' != b'M'
+E                 
+E                 Full diff:
+E                 - (b'<!-- Copyright \xa9 2024 -->\n<html><body>Welcome, Mainframe Users!</body></'
+E                 ?                                                       ^^^^^^^^^^ ^^^^         -
+E                 + (b'<!-- Copyright \xa9 2024 -->\n<html><body>Welcome, $TARGET_AUDIENCE!</body><'...
+E                 
+E                 ...Full output truncated (4 lines hidden), use '-vv' to show
+
+/tests/test_final_state.py:66: AssertionError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_final_state.TestServiceAndManifest object at 0x6fff07d87a70>
+
+    def test_service_running_and_serving(self):
+        url = "http://localhost:9000/index.html"
+        try:
+            with urllib.request.urlopen(url) as response:
+                data = response.read()
+                headers = response.info()
+    
+                assert data == EXPECTED_BYTES, "Server returned incorrect bytes"
+                assert int(headers['Content-Length']) == len(EXPECTED_BYTES), "Content-Length header mismatch"
+        except Exception as e:
+>           pytest.fail(f"Could not reach service at {url}: {e}")
+E           Failed: Could not reach service at http://localhost:9000/index.html: Server returned incorrect bytes
+E           assert b'<!-- Copyri...ody></html>\n' == b'<!-- Copyri...ody></html>\n'
+E             
+E             At index 47 diff: b'$' != b'M'
+E             
+E             Full diff:
+E             - (b'<!-- Copyright \xa9 2024 -->\n<html><body>Welcome, Mainframe Users!</body></'
+E             ?                                                       ^^^^^^^^^^ ^^^^         -
+E             + (b'<!-- Copyright \xa9 2024 -->\n<html><body>Welcome, $TARGET_AUDIENCE!</body><'...
+E             
+E             ...Full output truncated (4 lines hidden), use '-vv' to show
+
+/tests/test_final_state.py:69: Failed
+__________________ TestServiceAndManifest.test_manifest_file ___________________
+
+self = <test_final_state.TestServiceAndManifest object at 0x6fff07ae4b30>
+
+    def test_manifest_file(self):
+        assert MANIFEST.is_file(), "Manifest file missing"
+        lines = MANIFEST.read_text(encoding='utf-8').splitlines()
+        assert len(lines) == 2, f"Manifest must have exactly 2 lines, found {len(lines)}"
+    
+        # Line 1: MD5  relative_path
+        line1 = lines[0]
+        md5_hash = hashlib.md5(EXPECTED_BYTES).hexdigest()
+        expected_line1 = f"{md5_hash}  microservices/webroot/index.html"
+>       assert line1 == expected_line1, f"Manifest Line 1 mismatch.\nExpected: '{expected_line1}'\nActual:   '{line1}'"
+E       AssertionError: Manifest Line 1 mismatch.
+E         Expected: 'bf39b9cc055bfdd35585f6e884d752db  microservices/webroot/index.html'
+E         Actual:   '6b538b31095928560df4e2deb5efed27  microservices/webroot/index.html'
+E       assert '6b538b310959...ot/index.html' == 'bf39b9cc055b...ot/index.html'
+E         
+E         - bf39b9cc055bfdd35585f6e884d752db  microservices/webroot/index.html
+E         + 6b538b31095928560df4e2deb5efed27  microservices/webroot/index.html
+
+/tests/test_final_state.py:80: AssertionError
+=============================== warnings summary ===============================
+../../tests/test_final_state.py:30
+  /tests/test_final_state.py:30: PytestUnknownMarkWarning: Unknown pytest.mark.describe - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.describe("Filesystem Requirements")
+
+../../tests/test_final_state.py:57
+  /tests/test_final_state.py:57: PytestUnknownMarkWarning: Unknown pytest.mark.describe - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.describe("Service & Output")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::TestFilesystem::test_index_content_and_encoding
+FAILED ../../tests/test_final_state.py::TestServiceAndManifest::test_service_running_and_serving
+FAILED ../../tests/test_final_state.py::TestServiceAndManifest::test_manifest_file
+=================== 3 failed, 1 passed, 2 warnings in 0.06s ====================

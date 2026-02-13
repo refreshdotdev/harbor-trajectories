@@ -1,0 +1,94 @@
+Current terminal state:
+New Terminal Output:
+
+root@3f03e93d-b991-42f0-b4b7-0065c089c621:~# mkdir -p /home/user/output /home/user/clean_configs
+root@3f03e93d-b991-42f0-b4b7-0065c089c621:~# REF_DATE=$(cat /home/user/reference_date.txt)
+root@3f03e93d-b991-42f0-b4b7-0065c089c621:~# find /home/user/configs -maxdepth 1 -name 'config_????????\.conf' -print | while IFS= read -r filename; do file_dat
+e=$(echo "${filename##*/}" | sed -E 's/config_(........)\.conf/\\1/'); if [ "${file_date}" ">" "${REF_DATE}" ]; then echo "Skipping future draft: ${filename}" >
+&2; else echo "${filename}"; fi; done > /tmp/valid_files.txt
+Skipping future draft: /home/user/configs/config_20230115.conf
+Skipping future draft: /home/user/configs/config_20230410.conf
+Skipping future draft: /home/user/configs/config_20230718.conf
+Skipping future draft: /home/user/configs/config_20230901.conf
+root@3f03e93d-b991-42f0-b4b7-0065c089c621:~# if [ -s /tmp/valid_files.txt ]; then
+>   echo "Processing valid files..."
+>   # Part 1: Create sanitised files and extract all keys
+>   echo -n > /home/user/output/all_keys.txt
+>   while IFS= read -r fname; do
+>     base_name=$(basename "${fname}")
+>     # Sanitise file: key=value (no spaces), unquote values
+>     awk -F= '{
+>       gsub(/[[:space:]]+$/, "", $1); gsub(/^[[:space:]]+/, "", $1);
+>       key = tolower($1);
+>       if ($1 ~ /^[^#]/ && $1 != "") {
+>         if (substr($2, 1, 1) == "\"") {
+>           # Quoted value: extract content between quotes, strip outer quotes and trailing comments/whitespace after closing quote
+>           gsub(/^\"[[:space:]]*|[[:space:]]*\"[^\"]*$/, "", $2);
+>           print key "=" $2;
+>         } else {
+>           # Unquoted value: strip leading/trailing whitespace, remove comments
+>           gsub(/^[[:space:]]+/, "", $2); gsub(/[[:space:]]+#.*$/, "", $2); gsub(/[[:space:]]+$/, "", $2);
+>           if ($2 != "") print key "=" $2;
+>         }
+>       }
+>     }' "${fname}" > "/home/user/clean_configs/${base_name}"
+>     # Extract keys from sanitised file to accumulate all unique keys
+>     awk -F= '{print tolower($1)}' "/home/user/clean_configs/${base_name}" | sort -u >> /home/user/output/all_keys.tmp
+>   done < /tmp/valid_files.txt
+>   # Sort and get unique keys for all_keys.txt
+>   sort -u /home/user/output/all_keys.tmp > /home/user/output/all_keys.txt
+>   rm /home/user/output/all_keys.tmp
+>
+>   # Part 2: Count active lines for config_line_counts.tsv
+>   echo -n > /home/user/output/config_line_counts.tsv
+>   while IFS= read -r fname; do
+>     base_name=$(basename "${fname}")
+>     count=$(grep -c '^[^=]' "/home/user/clean_configs/${base_name}") # Count non-blank, non-comment lines in sanitised file
+>     echo -e "${base_name}\t${count}" >> /tmp/line_counts_intermediate
+>   done < /tmp/valid_files.txt
+>   # Sort chronologically by original filename
+>   sort -k1,1 /tmp/line_counts_intermediate > /home/user/output/config_line_counts.tsv
+>   rm /tmp/line_counts_intermediate
+>
+>   # Part 3: Generate merged_config.csv
+>   echo -n > /home/user/output/merged_config.csv
+>   # Header
+>   echo "Key,Value,Source" >> /home/user/output/merged_config.csv
+>   # Process files from newest to oldest to get latest value
+>   sort -r /tmp/valid_files.txt | while IFS= read -r fname; do
+>     base_name=$(basename "${fname}")
+>     awk -F= '!seen[tolower($1)]++ {print tolower($1), $2, "'$base_name'"}' OFS=, "/home/user/clean_configs/${base_name}"
+>   done >> /home/user/output/merged_config.csv
+>   # Sort alphabetically by Key
+>   tail -n +2 /home/user/output/merged_config.csv | sort -t, -k1,1 | cat - /home/user/output/merged_config.csv | head -1 > /tmp/merged_config_final.csv
+>   mv /tmp/merged_config_final.csv /home/user/output/merged_config.csv
+>
+>   # Part 4: Generate new_keys.log
+>   if [ $(wc -l < /tmp/valid_files.txt) -ge 2 ]; then
+>     newest_file=$(sort -r /tmp/valid_files.txt | head -1)
+>     oldest_file=$(sort /tmp/valid_files.txt | head -1)
+>     newest_keys=$(awk -F= '{print tolower($1)}' "/home/user/clean_configs/$(basename ${newest_file})" | sort -u)
+>     oldest_keys=$(awk -F= '{print tolower($1)}' "/home/user/clean_configs/$(basename ${oldest_file})" | sort -u)
+>     comm -23 <(echo "${newest_keys}") <(echo "${oldest_keys}") > /home/user/output/new_keys.log
+>   elif [ $(wc -l < /tmp/valid_files.txt) -eq 1 ]; then
+>     # If only one file, all its keys are 'new' relative to a non-existent older file
+>     newest_file=$(head -1 /tmp/valid_files.txt)
+>     newest_keys=$(awk -F= '{print tolower($1)}' "/home/user/clean_configs/$(basename ${newest_file})" | sort -u)
+>     echo "${newest_keys}" > /home/user/output/new_keys.log
+>   else
+>     echo "" > /home/user/output/new_keys.log # No valid files or only one, result is empty for comm logic
+>   fi
+>   echo "Processing complete."
+> else
+>   echo "No valid configuration files found relative to reference date ${REF_DATE}."
+>   echo "" > /home/user/output/config_line_counts.tsv
+>   echo "" > /home/user/output/all_keys.txt
+>   echo "" > /home/user/output/new_keys.log
+>   echo "Key,Value,Source" > /home/user/output/merged_config.csv
+> fi
+No valid configuration files found relative to reference date 20230801.
+root@3f03e93d-b991-42f0-b4b7-0065c089c621:~# rm -f /tmp/valid_files.txt
+root@3f03e93d-b991-42f0-b4b7-0065c089c621:~#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

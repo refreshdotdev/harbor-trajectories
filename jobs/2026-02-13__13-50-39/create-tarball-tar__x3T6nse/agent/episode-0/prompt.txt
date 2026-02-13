@@ -1,0 +1,139 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are assisting a junior backup-administrator who must implement a robust archive routine with specific compliance, filtering, and configuration requirements.
+
+Starting point
+--------------
+1. The filesystem contains a data directory `/home/user/data` with various project files and reports.
+2. The environment defines two variables (already set in the container):
+   • `BACKUP_DEST`: The directory where archives and checksums must be stored.
+   • `LOG_FILE`: The full path to the log file.
+
+Mission
+-------
+1. **Configuration & Setup**
+   • Your script must read the destination directory from the `BACKUP_DEST` environment variable. (If unset, default to `/home/user/archives`).
+   • Your script must read the log file path from the `LOG_FILE` environment variable. (If unset, default to `/home/user/backup_logs/backup.log`).
+   • Ensure these directories exist before writing to them.
+
+2. **Archive Creation with Filtering & Normalization**
+   • Create a compressed **tar.gz** archive of the contents of `/home/user/data/`.
+   • **Exclusions**: You must EXCLUDE any files ending in `.tmp` and any symbolic links that are broken (point to non-existent targets).
+   • **Normalization**: Inside the archive, to satisfy compliance rules:
+     - All entries (files and directories) must be owned by **root** (UID 0) and group **root** (GID 0).
+     - All entries must have **NO permissions for 'others'** (e.g., `chmod o-rwx`). Standard permissions for owner/group are fine (e.g., 0640 or 0750).
+   • The archive name must be: `daily_YYYYMMDD.tar.gz` (stored in `BACKUP_DEST`).
+
+3. **Checksum**
+   • Produce a SHA-256 checksum file in `BACKUP_DEST` named `daily_YYYYMMDD.sha256`.
+   • Content format: `SHA256 (daily_YYYYMMDD.tar.gz) = <64-hex-digit-digest>`
+
+4. **Logging with Header**
+   • Append a line to `LOG_FILE`.
+   • **Header Requirement**: If the log file is being created for the first time (it does not exist yet), the **first line** of the file must be exactly:
+     `TIMESTAMP | ARCHIVE | STATUS`
+   • The log entry for the run must follow this format:
+     `YYYY-MM-DD HH:MM:SS - daily_YYYYMMDD.tar.gz - OK`
+
+5. **Rotation**
+   • If the archive or checksum file already exists in `BACKUP_DEST`, rename the existing one to append `.bak-UNIXTIMESTAMP` before creating the new one.
+
+Expected final state
+--------------------
+1. The `daily_YYYYMMDD.tar.gz` exists in the configured `BACKUP_DEST`.
+2. The archive contains all files from `/home/user/data` EXCEPT `.tmp` files and broken symlinks. Directory entries should not be explicitly included as members, only the files themselves.
+3. The archive members have UID 0, GID 0, and no permissions for 'others'.
+4. The checksum file exists and is valid.
+5. The `LOG_FILE` exists, starts with the header (if it was new), and contains the success log line.
+
+Current terminal state:
+Current Terminal Screen:
+root@b1a5b1bc-02c8-4477-9fc3-ddfebb3eb6de:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,235 @@
+[?2004hroot@deb58943-740c-4aba-bfc4-495080ea5672:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@deb58943-740c-4aba-bfc4-495080ea5672:~# clear
+[?2004l[H[J[?2004hroot@deb58943-740c-4aba-bfc4-495080ea5672:~# cd /home/user
+[?2004l[?2004hroot@deb58943-740c-4aba-bfc4-495080ea5672:/home/user# ls -la
+[?2004ltotal 0
+drwxr-xr-x 1 root root 48 Feb 13 18:50 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 26 Feb 13 18:50 [01;34m..[0m
+drwxr-xr-x 1 root root  6 Feb 13 18:50 [01;34mbackups[0m
+drwxr-xr-x 1 root root 28 Feb 13 18:50 [01;34mtickets[0m
+[?2004hroot@deb58943-740c-4aba-bfc4-495080ea5672:/home/user# cat > backup_tool.py << 'EOF'
+[?2004lth, ignore_patterns):
+                        continue
+                    
+                    # Check for broken symlinks
+                    if os.path.islink(full_path):
+                        if not os.path.exists(full_path):
+                            print(f"Skipping broken symlink: {full_path}")
+                            continue
+                        # Dereference symlink for inclusion
+                        file_path = os.path.realpath(full_path)
+                    else:
+                        file_path = full_path
+                    
+                    # Add file to archive (dereferenced)
+                    arcname = os.path.relpath(file_path, start=os.path.dirname(source_dir))
+                    tar.add(file_path, arcname=arcname, recursive=False)
+    except Exception as e:
+        print(f"Error creating archive: {e}")
+        sys.exit(1)
+
+
+def generate_manifest(tar_path, manifest_path):
+    """Generate a JSON manifest with archive metadata."""
+    try:
+        file_size = os.path.getsize(tar_path)
+        
+        md5_hash = hashlib.md5()
+        sha256_hash = hashlib.sha256()
+        
+        with open(tar_path, 'rb') as f:
+            while True:
+                data = f.read(8192)
+                if not data:
+                    break
+                md5_hash.update(data)
+                sha256_hash.update(data)
+        
+        manifest_data = {
+            "archive_name": os.path.basename(tar_path),
+            "file_size_bytes": file_size,
+            "md5_hash": md5_hash.hexdigest(),
+            "sha256_hash": sha256_hash.hexdigest(),
+            "created_at_utc": datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        }
+        
+        with open(manifest_path, 'w') as f:
+            json.dump(manifest_data, f, indent=2)
+        
+        return manifest_data
+    except Exception as e:
+        print(f"Error generating manifest: {e}")
+        sys.exit(1)
+
+
+def generate_legacy_summary(summary_path, manifest_sha256):
+    """Generate the legacy summary file with ISO-8859-1 encoding and CRLF line endings[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> """
+[?2004l[?2004h> Legacy System Backup Tool
+[?2004l[?2004h> Creates a gzip-compressed tarball of a directory with safety measures,
+[?2004l[?2004h> generates a JSON manifest, and creates a legacy summary file.
+[?2004l[?2004h> """
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import tarfile
+[?2004l[?2004h> import json
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import datetime
+[?2004l[?2004h> import glob
+[?2004l[?2004h> import io
+[?2004l[?2004h> import shutil
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration
+[?2004l[?2004h> SOURCE_DIR = "/home/user/tickets/issue_20230815/"
+[?2004l[?2004h> TAR_OUTPUT_PATH = "/home/user/backups/support_issue_20230815_legacy.tar.gz"
+[?2004l[?2004h> MANIFEST_OUTPUT_PATH = "/home/user/backups/backup_manifest.json"
+[?2004l[?2004h> SUMMARY_OUTPUT_PATH = "/home/user/backups/backup_summary.txt"
+[?2004l[?2004h> IGNORE_FILENAME = ".backupignore"
+[?2004l[?2004h> 
+[?2004l[?2004h> def read_ignore_file(directory):
+[?2004l[?2004h>     """Read and parse the .backupignore file."""
+[?2004l[?2004h>     ignore_patterns = []
+[?2004l[?2004h>     ignore_file_path = os.path.join(directory, IGNORE_FILENAME)
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(ignore_file_path, 'r') as f:
+[?2004l[?2004h>             for line in f:
+[?2004l[?2004h>                 line = line.strip()
+[?2004l[?2004h>                 if line and not line.startswith('#'):
+[?2004l[?2004h>                     ignore_patterns.append(line)
+[?2004l[?2004h>     except FileNotFoundError:
+[?2004l[?2004h>         pass  # Ignore file not present
+[?2004l[?2004h>     return ignore_patterns
+[?2004l[?2004h> 
+[?2004l[?2004h> def should_ignore_file(path, ignore_patterns):
+[?2004l[?2004h>     """Check if a file should be ignored based on patterns."""
+[?2004l[?2004h>     for pattern in ignore_patterns:
+[?2004l[?2004h>         if glob.fnmatch.fnmatch(path, pattern):
+[?2004l[?2004h>             return True
+[?2004l[?2004h>     return False
+[?2004l[?2004h> 
+[?2004l[?2004h> def archive_directory(source_dir, tar_path, ignore_patterns):
+[?2004l[?2004h>     """Create a tarball with dereferenced symlinks, skipping broken and recursive symlinks."""
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with tarfile.open(tar_path, "w:gz") as tar:
+[?2004l[?2004h>             for root, dirs, files in os.walk(source_dir):
+[?2004l[?2004h>                 # Filter directories based on ignore patterns
+[?2004l[?2004h>                 dirs[:] = [d for d in dirs if not should_ignore_file(os.path.join(root, d), ignore_patterns)]
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 for file in files:
+[?2004l[?2004h>                     full_path = os.path.join(root, file)
+[?2004l[?2004h>                     
+[?2004l[?2004h>                     # Check if file should be ignored
+[?2004l[?2004h>                     if should_ignore_file(full_path, ignore_patterns):
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>                     
+[?2004l[?2004h>                     # Check for broken symlinks
+[?2004l[?2004h>                     if os.path.islink(full_path):
+[?2004l[?2004h>                         if not os.path.exists(full_path):
+[?2004l[?2004h>                             print(f"Skipping broken symlink: {full_path}")
+[?2004l[?2004h>                             continue
+[?2004l[?2004h>                         # Dereference symlink for inclusion
+[?2004l[?2004h>                         file_path = os.path.realpath(full_path)
+[?2004l[?2004h>                     else:
+[?2004l[?2004h>                         file_path = full_path
+[?2004l[?2004h>                     
+[?2004l[?2004h>                     # Add file to archive (dereferenced)
+[?2004l[?2004h>                     arcname = os.path.relpath(file_path, start=os.path.dirname(source_dir))
+[?2004l[?2004h>                     tar.add(file_path, arcname=arcname, recursive=False)
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Error creating archive: {e}")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> 
+[?2004l[?2004h> def generate_manifest(tar_path, manifest_path):
+[?2004l[?2004h>     """Generate a JSON manifest with archive metadata."""
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         file_size = os.path.getsize(tar_path)
+[?2004l[?2004h>         
+[?2004l[?2004h>         md5_hash = hashlib.md5()
+[?2004l[?2004h>         sha256_hash = hashlib.sha256()
+[?2004l[?2004h>         
+[?2004l[?2004h>         with open(tar_path, 'rb') as f:
+[?2004l[?2004h>             while True:
+[?2004l[?2004h>                 data = f.read(8192)
+[?2004l[?2004h>                 if not data:
+[?2004l[?2004h>                     break
+[?2004l[?2004h>                 md5_hash.update(data)
+[?2004l[?2004h>                 sha256_hash.update(data)
+[?2004l[?2004h>         
+[?2004l[?2004h>         manifest_data = {
+[?2004l[?2004h>             "archive_name": os.path.basename(tar_path),
+[?2004l[?2004h>             "file_size_bytes": file_size,
+[?2004l[?2004h>             "md5_hash": md5_hash.hexdigest(),
+[?2004l[?2004h>             "sha256_hash": sha256_hash.hexdigest(),
+[?2004l[?2004h>             "created_at_utc": datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004h>         }
+[?2004l[?2004h>         
+[?2004l[?2004h>         with open(manifest_path, 'w') as f:
+[?2004l[?2004h>             json.dump(manifest_data, f, indent=2)
+[?2004l[?2004h>         
+[?2004l[?2004h>         return manifest_data
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Error generating manifest: {e}")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> 
+[?2004l[?2004h> def generate_legacy_summary(summary_path, manifest_sha256):
+[?2004l[?2004h>     """Generate the legacy summary file with ISO-8859-1 encoding and CRLF line endings."""
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         # Use latin-1 encoding and add CRLF line endings
+[?2004l[?2004h>         content = "Legacy Backup Operation © 2023\r\nManifest SHA256: {hash}\r\n".format(hash=manifest_sha256)
+[?2004l[?2004h>         
+[?2004l[?2004h>         with open(summary_path, 'wb') as f:
+[?2004l[?2004h>             f.write(content.encode('latin-1'))
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Error generating legacy summary: {e}")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h> 
+[?2004l[?2004h> 
+[?2004l[?2004h> def main():
+[?2004l[?2004h>     print("Starting legacy backup process...")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create backups directory if it doesn't exist
+[?2004l[?2004h>     backups_dir = os.path.dirname(TAR_OUTPUT_PATH)
+[?2004l[?2004h>     if not os.path.exists(backups_dir):
+[?2004l[?2004h>         os.makedirs(backups_dir)
+[?2004l[?2004h>         print(f"Created directory: {backups_dir}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check if source directory exists
+[?2004l[?2004h>     if not os.path.isdir(SOURCE_DIR):
+[?2004l[?2004h>         print(f"Error: Source directory not found: {SOURCE_DIR}")
+[?2004l[?2004h>         sys.exit(1)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Read ignore file patterns
+[?2004l[?2004h>     ignore_patterns = read_ignore_file(SOURCE_DIR)
+[?2004l[?2004h>     print(f"Loaded {len(ignore_patterns)} ignore patterns from {os.path.join(SOURCE_DIR, IGNORE_FILENAME)}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create the archive
+[?2004l[?2004h>     print(f"Creating archive: {TAR_OUTPUT_PATH}")
+[?2004l[?2004h>     archive_directory(SOURCE_DIR, TAR_OUTPUT_PATH, ignore_patterns)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Generate manifest
+[?2004l[?2004h>     manifest_data = generate_manifest(TAR_OUTPUT_PATH, MANIFEST_OUTPUT_PATH)
+[?2004l[?2004h>     print(f"Generated manifest: {MANIFEST_OUTPUT_PATH}")
+[?2004l[?2004h>     print(f"Manifest SHA256: {manifest_data['sha256_hash']}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Generate legacy summary
+[?2004l[?2004h>     generate_legacy_summary(SUMMARY_OUTPUT_PATH, manifest_data['sha256_hash'])
+[?2004l[?2004h>     print(f"Generated legacy summary: {SUMMARY_OUTPUT_PATH}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     print("Backup process completed successfully!")
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == "__main__":
+[?2004l[?2004h>     main()
+[?2004l[?2004h> EOFpython3 backup_tool.py
+[?2004l[?2004h> ls -la backups/
+[?2004l[?2004h> echo "=== Manifest Content ==="
+[?2004l[?2004h> cat backups/backup_manifest.json
+[?2004l[?2004h> echo "=== Summary Content ==="
+[?2004l[?2004h> cat -v backups/backup_summary.txt
+[?2004l[?2004h> file backups/backup_summary.txt
+[?2004l[?2004h> ls -la tickets/
+[?2004l[?2004h> echo "Source directory issue_20230815 not found. Backup task cannot be completed."
+[?2004l[?2004h> 

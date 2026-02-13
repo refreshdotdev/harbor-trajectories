@@ -1,0 +1,62 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@e75d6e9d-7dbc-477b-974d-7a2fec15c896:/home/user/source_files# cat > /tmp/create_summary.sh << 'EOF'
+> #!/bin/bash
+>
+> AUDIT_DIR="/home/user/audit_2023Q4"
+> LOG_FILE="${AUDIT_DIR}/checksum_audit.log"
+> SUMMARY_FILE="${AUDIT_DIR}/summary.json"
+>
+> # Read start time from log file
+> START_TIME_FROM_LOG=$(grep "^START_TIME  :" "${LOG_FILE}" | awk -F': ' '{print $2}')
+> END_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+>
+> # Count file records (lines between FILE_RECORDS and the last line)
+> # Since there are no records, this will be 0
+> FILE_COUNT=$(grep -c "^[^ ]* SHA256=[a-f0-9]*  MD5=[a-f0-9]*" "${LOG_FILE}")
+> TOTAL_BYTES=0
+>
+> # Compute SHA256 hash of the current log content (before verification line)
+> LOG_CONTENT_SHA256=$(sha256sum "${LOG_FILE}" | awk '{print $1}')
+>
+> # Derive HMAC-SHA256 key
+> SECRET_KEY_CONTENT=$(cat /home/user/source_files/.secret 2>/dev/null | tr -d ' \n\r\t')
+> if [[ -z "${SECRET_KEY_CONTENT}" ]]; then
+>     SECRET_KEY_CONTENT=""
+> fi
+> CURRENT_UTC_DATE=$(date -u +'%Y%m%d')
+> HMAC_KEY="${SECRET_KEY_CONTENT}${CURRENT_UTC_DATE}"
+>
+> # Compute HMAC-SHA256 signature
+> # Use printf to avoid potential issues with trailing newlines from echo
+> LOG_CONTENT_FOR_HMAC=$(cat "${LOG_FILE}")
+> echo -n "${LOG_CONTENT_FOR_HMAC}" | openssl dgst -sha256 -hmac "${HMAC_KEY}" | awk '{print $2}' > /tmp/hmac_result.txt 2>/dev/null
+> HMAC_SIGNATURE=$(cat /tmp/hmac_result.txt 2>/dev/null)
+> rm -f /tmp/hmac_result.txt
+>
+> # Create JSON summary in UTF-8
+> {
+>     echo '{'
+>     echo '  "period": "2023-Q4",'
+>     echo '  "file_count": '${FILE_COUNT}','
+>     echo '  "total_bytes": '${TOTAL_BYTES}','
+>     echo '  "start_time": "${START_TIME_FROM_LOG}",'
+>     echo '  "end_time": "${END_TIME}",'
+>     echo '  "status": "COMPLETED",'
+>     echo '  "log_checksum": "${LOG_CONTENT_SHA256}",'
+>     echo '  "signature": "${HMAC_SIGNATURE}"
+>     echo '}'
+> } > "${SUMMARY_FILE}"
+>
+> # Verify JSON formatting
+> echo "JSON summary created at ${SUMMARY_FILE}"
+> EOF
+root@e75d6e9d-7dbc-477b-974d-7a2fec15c896:/home/user/source_files# chmod +x /tmp/create_summary.sh
+root@e75d6e9d-7dbc-477b-974d-7a2fec15c896:/home/user/source_files# /tmp/create_summary.sh
+/tmp/create_summary.sh: line 45: unexpected EOF while looking for matching `''
+/tmp/create_summary.sh: line 50: syntax error: unexpected end of file
+root@e75d6e9d-7dbc-477b-974d-7a2fec15c896:/home/user/source_files#

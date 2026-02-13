@@ -1,0 +1,99 @@
+Hit:1 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.81.0-1ubuntu1.21).
+0 upgraded, 0 newly installed, 0 to remove and 4 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading cpython-3.12.12-linux-x86_64-gnu (download) (31.1MiB)
+ Downloading cpython-3.12.12-linux-x86_64-gnu (download)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 5 packages in 15ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/hdbNy8Y7r5perm_OJIJoR/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 5 items
+
+../../tests/test_final_state.py::test_directory_structure PASSED         [ 20%]
+../../tests/test_final_state.py::test_venv_prompt PASSED                 [ 40%]
+../../tests/test_final_state.py::test_manifest_structure_and_minification FAILED [ 60%]
+../../tests/test_final_state.py::test_manifest_content_logic FAILED      [ 80%]
+../../tests/test_final_state.py::test_signature_validity FAILED          [100%]
+
+=================================== FAILURES ===================================
+___________________ test_manifest_structure_and_minification ___________________
+
+    def test_manifest_structure_and_minification():
+        assert MANIFEST_FILE.exists(), "Manifest file missing"
+    
+        # Check minification (no newlines allowed in file content)
+        raw_content = MANIFEST_FILE.read_text(encoding="utf-8")
+>       assert "\n" not in raw_content, "Manifest file is not minified (contains newlines)"
+E       AssertionError: Manifest file is not minified (contains newlines)
+E       assert '\n' not in '{"scan_time...kages":[]}\n'
+E         
+E         '\n' is contained here:
+E           {"scan_timestamp":"2023-10-27T10:00:00Z","environment_inode":123456,"packages":[]}
+E         ?                                                                                   +
+
+/tests/test_final_state.py:30: AssertionError
+_________________________ test_manifest_content_logic __________________________
+
+    def test_manifest_content_logic():
+        data = json.loads(MANIFEST_FILE.read_text(encoding="utf-8"))
+    
+        # 1. Check Timestamp (ISO8601 UTC)
+        ts = data["scan_timestamp"]
+        assert ts.endswith("Z") or "+00:00" in ts, "Timestamp does not appear to be UTC ISO8601"
+        # Try parsing to ensure validity
+        try:
+            datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except ValueError:
+            pytest.fail("Timestamp is not valid ISO 8601")
+    
+        # 2. Check Inode
+        actual_inode = os.stat(VENV_DIR).st_ino
+>       assert data["environment_inode"] == actual_inode, f"Inode mismatch. Manifest: {data['environment_inode']}, Actual: {actual_inode}"
+E       AssertionError: Inode mismatch. Manifest: 123456, Actual: 1611731765
+E       assert 123456 == 1611731765
+
+/tests/test_final_state.py:54: AssertionError
+___________________________ test_signature_validity ____________________________
+
+    def test_signature_validity():
+        assert SIG_FILE.exists(), "Signature file missing"
+    
+        # Read signature
+        stored_sig = SIG_FILE.read_text(encoding="utf-8")
+    
+        # Check format (no newline, just hex)
+>       assert "\n" not in stored_sig, "Signature file contains trailing newline"
+E       AssertionError: Signature file contains trailing newline
+E       assert '\n' not in 'be5edafb5b0...51dd2546b3\n'
+E         
+E         '\n' is contained here:
+E           be5edafb5b086ddd378baa2dce1a75f2fe2b9e41e77113ee303a8e4a36c51872f3c4519389e6130bcdfa89d86efb6a36d98bf94f0a959301e549a251dd2546b3
+E         ?                                                                                                                                 +
+
+/tests/test_final_state.py:74: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_manifest_structure_and_minification
+FAILED ../../tests/test_final_state.py::test_manifest_content_logic - Asserti...
+FAILED ../../tests/test_final_state.py::test_signature_validity - AssertionEr...
+========================= 3 failed, 2 passed in 0.03s ==========================

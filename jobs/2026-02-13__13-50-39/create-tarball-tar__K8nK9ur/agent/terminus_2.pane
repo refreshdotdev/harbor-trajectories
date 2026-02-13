@@ -1,0 +1,97 @@
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# clear
+[?2004l[H[J[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# echo "BACKUP_DEST: '${BACKUP_DEST}'"; echo "LOG_FILE: '${LOG_FILE}'"
+[?2004lBACKUP_DEST: '/home/user/secure_backups'
+LOG_FILE: '/home/user/audit/backup_audit.log'
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# ls -la /home/user/data
+[?2004ltotal 0
+drwxr-xr-x 1 user user 49 Feb 13 19:10 [0m[01;34m.[0m
+drwxr-xr-x 1 user user 89 Feb 13 19:10 [01;34m..[0m
+drwxr-xr-x 1 user user 99 Feb 13 19:10 [01;34mprojects[0m
+drwxr-xr-x 1 user user 65 Feb 13 19:10 [01;34mreports[0m
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# mkdir -p '/home/user/secure_backups' '/home/user/audit'
+[?2004l[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# ls -la '/home/user/secure_backups'
+[?2004ltotal 0
+drwxr-xr-x 2 root root 10 Feb 13 19:11 [0m[01;34m.[0m
+drwxr-xr-x 1 user user 53 Feb 13 19:11 [01;34m..[0m
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# cat > /tmp/backup_script.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration & Setup
+[?2004l[?2004h> BACKUP_DEST="${BACKUP_DEST:-/home/user/archives}"
+[?2004l[?2004h> LOG_FILE="${LOG_FILE:-/home/user/backup_logs/backup.log}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create directories if they don't exist
+[?2004l[?2004h> mkdir -p "${BACKUP_DEST}" $(dirname "${LOG_FILE}")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate current date and archive name
+[?2004l[?2004h> CURRENT_DATE=$(date +%Y%m%d)
+[?2004l[?2004h> ARCHIVE_NAME="daily_${CURRENT_DATE}.tar.gz"
+[?2004l[?2004h> ARCHIVE_FULL_PATH="${BACKUP_DEST}/${ARCHIVE_NAME}"
+[?2004l[?2004h> CHECKSUM_FILE="${BACKUP_DEST}/daily_${CURRENT_DATE}.sha256"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Handle rotation
+[?2004l[?2004h> if [ -f "${ARCHIVE_FULL_PATH}" ]; then
+[?2004l[?2004h>     mv "${ARCHIVE_FULL_PATH}" "${ARCHIVE_FULL_PATH}.bak-$(date +%s)" 2>/dev/null || true
+[?2004l[?2004h> fi
+[?2004l[?2004h> if [ -f "${CHECKSUM_FILE}" ]; then
+[?2004l[?2004h>     mv "${CHECKSUM_FILE}" "${CHECKSUM_FILE}.bak-$(date +%s)" 2>/dev/null || true
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Archive Creation with Filtering & Normalization
+[?2004l[?2004h> # Exclude .tmp files and broken symlinks; set ownership to root:root and remove others' permissions
+[?2004l[?2004h> tar --exclude='*.tmp' \
+[?2004l[?2004h>     --exclude='*/*/*.tmp' \
+[?2004l[?2004h>     --exclude='broken-symlinks' \
+[?2004l[?2004h>     --owner=0 --group=0 --mode='g+rwx,o-rwx' \
+[?2004l[?2004h>     -czf "${ARCHIVE_FULL_PATH}" -C /home/user/data . 2>/dev/null
+[?2004l[?2004h> 
+[?2004l[?2004h> # Checksum Generation
+[?2004l[?2004h> sha256sum "${ARCHIVE_FULL_PATH}" > "${CHECKSUM_FILE}"
+[?2004l[?2004h> sed -i 's|${ARCHIVE_FULL_PATH}|SHA256 ('${ARCHIVE_NAME}') =|' "${CHECKSUM_FILE}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Logging with Header
+[?2004l[?2004h> LOG_HEADER="TIMESTAMP | ARCHIVE | STATUS"
+[?2004l[?2004h> if [ ! -f "${LOG_FILE}" ]; then
+[?2004l[?2004h>     echo "${LOG_HEADER}" > "${LOG_FILE}"
+[?2004l[?2004h> fi
+[?2004l[?2004h> HW_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+[?2004l[?2004h> echo "${HW_TIMESTAMP} - ${ARCHIVE_NAME} - OK" >> "${LOG_FILE}"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Backup completed successfully. Archive: ${ARCHIVE_NAME}"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# chmod +x /tmp/backup_script.sh
+[?2004l[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# /tmp/backup_script.sh
+[?2004lBackup completed successfully. Archive: daily_20260213.tar.gz
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# ls -la '/home/user/secure_backups'
+[?2004ltotal 8
+drwxr-xr-x 2 root root  76 Feb 13 19:11 [0m[01;34m.[0m
+drwxr-xr-x 1 user user  53 Feb 13 19:11 [01;34m..[0m
+-rw-r--r-- 1 root root 114 Feb 13 19:11 daily_20260213.sha256
+-rw-r--r-- 1 root root 369 Feb 13 19:11 [01;31mdaily_20260213.tar.gz[0m
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# cat '/home/user/audit/backup_audit.log'
+[?2004lTIMESTAMP | ARCHIVE | STATUS
+2026-02-13 19:11:43 - daily_20260213.tar.gz - OK
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# sha256sum -c '/home/user/secure_backups/daily_$(date +%Y%m%d).sha256' 2>/dev/null || echo "Checksum verification failed or file missing"
+[?2004lChecksum verification failed or file missing
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# cat '/home/user/secure_backups/daily_20260213.sha256'
+[?2004ldc75fb1e57b42a933ea6ce18fb6b9c2b1ceeaae29de1ee6240f33c1eaab22fe2  /home/user/secure_backups/daily_20260213.tar.gz
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# tar -tzf '/home/user/secure_backups/daily_20260213.tar.gz' | head -5
+[?2004l./
+./projects/
+./projects/broken_link
+./projects/code.py
+./projects/readme.txt
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# echo "=== Content verification ==="; if [ -f '/home/user/secure_backups/daily_20260213.sha256' ]; then sha256sum '/home/user/secure_backups/daily_20260213.tar.gz' > /tmp/expected_checksum.txt; echo "Expected: $(cat /tmp/expected_checksum.txt)"; echo "Actual: $(cat '/home/user/secure_backups/daily_20260213.sha256')"; fi
+[?2004l=== Content verification ===
+Expected: dc75fb1e57b42a933ea6ce18fb6b9c2b1ceeaae29de1ee6240f33c1eaab22fe2  /home/user/secure_backups/daily_20260213.tar.gz
+Actual: dc75fb1e57b42a933ea6ce18fb6b9c2b1ceeaae29de1ee6240f33c1eaab22fe2  /home/user/secure_backups/daily_20260213.tar.gz
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# rm /tmp/backup_script.sh
+[?2004l[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# echo "Final verification:"; echo "Archive exists: $(ls -la '/home/user/secure_backups/daily_20260213.tar.gz' 2>/dev/null || echo 'Missing')"; echo "Checksum exists: $(ls -la '/home/user/secure_backups/daily_20260213.sha256' 2>/dev/null || echo 'Missing')"; echo "Log header: $(head -1 '/home/user/audit/backup_audit.log' 2>/dev/null || echo 'Missing')"
+[?2004lFinal verification:
+Archive exists: -rw-r--r-- 1 root root 369 Feb 13 19:11 /home/user/secure_backups/daily_20260213.tar.gz
+Checksum exists: -rw-r--r-- 1 root root 114 Feb 13 19:11 /home/user/secure_backups/daily_20260213.sha256
+Log header: TIMESTAMP | ARCHIVE | STATUS
+[?2004hroot@f011a4ee-5ee7-4f06-bf00-cfbf78561597:~# 

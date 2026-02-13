@@ -1,0 +1,131 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Data Archival & Sanitation Task
+
+**From:** Chief Data Architect
+**To:** Junior DevOps Engineer
+**Subject:** URGENT: Fix Dave's mess in the landing zone
+
+We have a situation. Our previous engineer, Dave, left the `incoming` data folder in a chaotic state before he quit. The downstream ETL pipeline is choking on invalid files, encoding mismatches, and garbage data. We need you to create a sanitized "Golden Backup" of the current state before we wipe the directory.
+
+Your task is to produce a compliant archive in `/home/user/etl_workspace/backups/incoming_backup.tar.gz` and a corresponding manifest file.
+
+### The Context (Read Carefully)
+
+The current directory `/home/user/etl_workspace/incoming/` is a minefield. Dave set his IDE to `ISO-8859-1` (Latin-1), so `march.csv` is encoded incorrectly. The warehouse strictly requires **UTF-8**, so you must transcode this file in the backup. Do not touch the original file on disk; only the archived version should be fixed. Furthermore, the `config.json` file he generated contains trailing commas (e.g., `{"key": "value",}`), which is invalid JSON. You must sanitize this file by removing those commas so it parses correctly as standard JSON in the archive.
+
+We also found that Dave was dumping intermediate processing data into folders named `staging` and creating temporary files with `temp` in the name (e.g., `temp_001.dat`). Per our GDPR retention policy, **exclude** any directory named `staging` (and its contents) and any file whose name contains the substring `temp` (case-insensitive) from the archive. However, do include hidden files (starting with `.`) if they are directly in the `incoming` root, but exclude them if they are inside any subdirectory.
+
+### The Manifest Requirement
+
+To ensure auditability, you must generate a sidecar file named `/home/user/etl_workspace/backups/manifest.json`. This file must contain a JSON object where the keys are the paths of the files *as they appear in the archive* (e.g., `incoming/january.csv`) and the values are the **SHA256 hashes** of the file contents. **Crucial:** The hashes must reflect the *sanitized* content (UTF-8 converted, JSON fixed), not the original raw bytes. For symlinks, hash the content of the target file. The manifest itself should be pretty-printed with an indentation of 4 spaces and sorted alphabetically by key.
+
+### Metadata & Timestamps
+
+Here is the tricky part that trips everyone up: Even though you are modifying the content of `march.csv` and `config.json`, the **modification timestamp (mtime)** of these files in the archive must match the original source file's mtime. We use mtime to track data freshness, so resetting it to "now" would break our SLA tracking.
+
+Finally, the `incoming_backup.tar.gz` archive file itself must have its modification time set to match the timestamp of the *newest* file contained within it. This allows our tape backup system to recognize the effective date of the data.
+
+### Summary of Deliverables
+
+1.  **Archive**: `/home/user/etl_workspace/backups/incoming_backup.tar.gz`
+    *   Root folder: `incoming/`
+    *   Format: Gzip compressed tar
+    *   Content: Sanitized and filtered copy of source.
+2.  **Manifest**: `/home/user/etl_workspace/backups/manifest.json`
+    *   Format: JSON, indent 4.
+    *   Content: `{ "path/in/tar": "sha256_of_processed_file" }`
+
+**Do not modify the source directory.** Work in a temporary location if needed. Ensure the `backups` directory exists.
+
+Current terminal state:
+Current Terminal Screen:
+root@5019f0b4-191d-4aef-95f1-9671ae925d4a:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

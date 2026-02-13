@@ -1,0 +1,156 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+You are the lead engineer for the "Phoenix" Legacy Migration Project. Your task is to generate a strict migration manifest for the audit team. This is not a standard Linux task; you are bridging a gap between an old Windows-based mainframe export and a legacy auditing system.
+
+### The Environment
+
+The environment contains several files, but you must be careful to use the correct ones.
+
+1.  **Source Inventory:** The location of the authoritative inventory file is stored in the environment variable `$LEGACY_INVENTORY`. 
+    *   *Warning:* Do not use any other CSV files you might find in the directory tree; they are stale exports.
+    *   *Context:* This file comes from a Windows mainframe. It is encoded in **UTF-16LE** and starts with a Byte Order Mark (BOM). It uses CRLF line endings.
+    *   *Data Quality:* The mainframe export is notorious for inserting invisible **Zero Width Spaces (U+200B)** into the `NewServer` field. These must be removed.
+
+2.  **Configuration:** You need to append a domain suffix to the server names. This suffix is found in a hidden file at `/home/user/cloud/.config` (it is a single line of text).
+
+### Deliverables
+
+You must produce your artifacts in a new directory: `/home/user/cloud/output`.
+
+#### 1. The Migration Plan (`migration_plan.tsv`)
+
+You must generate a Tab-Separated Values file. 
+
+**Content Requirements:**
+*   **Columns:** Exactly two columns: `ServiceName` and `TargetFQDN`.
+*   **Filtering:** 
+    *   Ignore comment lines (lines starting with `#` after decoding).
+    *   The source CSV has a column named `Status`. You must **exclude** any rows where `Status` is exactly `Decom` or `Pending`.
+    *   You must **exclude** rows where the `NewServer` column is empty or contains only whitespace.
+*   **Transformation:**
+    *   `ServiceName`: Convert to all **lowercase**.
+    *   `TargetFQDN`: Construct this by taking the `NewServer` value, stripping any Zero Width Spaces, and appending the domain suffix from the config file.
+*   **Sorting:** The output must be sorted alphabetically by `ServiceName`.
+
+**Technical/Binary Requirements (CRITICAL):**
+*   **Encoding:** The output file must be encoded in **ISO-8859-1 (Latin-1)**. It must NOT be UTF-8.
+*   **Line Endings:** Every line (including the header and the last line) must end with **CRLF** (`\r\n`), not just LF. This is required for the Windows-based consumer.
+*   **Header:** The first line must be `ServiceName\tTargetFQDN` (separated by a tab, ending in CRLF).
+
+#### 2. The Manifest (`manifest.json`)
+
+Instead of a simple checksum, you must generate a JSON file named `/home/user/cloud/output/manifest.json`. This file must be valid JSON and contain exactly this structure:
+
+```json
+{
+  "source_file": "<value of $LEGACY_INVENTORY>",
+  "record_count": <integer count of data rows in the TSV, excluding header>,
+  "output_md5": "<MD5 hex digest of the final migration_plan.tsv>"
+}
+```
+
+*Note:* The MD5 hash must be calculated against the *final* ISO-8859-1, CRLF-terminated file.
+
+#### 3. The Audit Log (`audit.log`)
+
+Create a log file at `/home/user/cloud/output/audit.log`.
+*   It must contain exactly one line.
+*   The line must list the **size in bytes** of the final `migration_plan.tsv` file, followed by a space, followed by the text `bytes generated`.
+*   Example: `452 bytes generated`
+
+### Summary of Constraints
+*   Do not modify the source files.
+*   Use standard Linux tools (Python, Bash, Awk, Sed, Iconv, etc.).
+*   Ensure strict adherence to the encoding and line-ending requirements; the automated validator mimics a legacy system that will crash if fed UTF-8 or Unix LFs.
+
+Current terminal state:
+Current Terminal Screen:
+root@64f3511b-3154-4867-a464-dbff3c8f6363:/home/user/cloud#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

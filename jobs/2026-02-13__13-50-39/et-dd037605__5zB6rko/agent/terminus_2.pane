@@ -1,0 +1,77 @@
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:~# clear
+[?2004l[H[J[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:~# cd /home/user
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# pwd
+[?2004l/home/user
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# ls -la
+[?2004ltotal 4
+drwxr-xr-x 1 root root  38 Feb 13 18:49 [0m[01;34m.[0m
+drwxr-xr-x 1 root root  26 Feb 13 18:49 [01;34m..[0m
+-rw-r--r-- 1 root root 107 Feb 13 18:49 diag_config.conf
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# config_content=$(iconv -f ISO-8859-1 -t UTF-8 /opt/monitoring/config/diagnostics.ini)
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# NET_IFACE=$(echo "$config_content" | grep '^NET_IFACE=' | cut -d'=' -f2)
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# PING_HOST=$(echo "$config_content" | grep '^PING_HOST=' | cut -d'=' -f2)
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# echo "Configured interface: $NET_IFACE"
+[?2004lConfigured interface: lo
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# echo "Ping target: $PING_HOST"
+[?2004lPing target: 127.0.0.1
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# timestamp_utc=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# interface_name=$(ip -o link show $NET_IFACE | awk -F': ' '{print $2}' | awk '{print $1}')
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# primary_ip=$(ip -o addr show $NET_IFACE | grep -w inet | awk '{print $4}' | cut -d'/' -f1 | head -n1)
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# mtu=$(ip -o link show $NET_IFACE | awk '{print $2}' | cut -d' ' -f2 | tr -d ':')
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# gateway_ip=$(ip -o route show default | head -n1 | awk '{print $3}' || echo null)
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# active_tcp_flows=$(ss -t state established | grep -v State | wc -l || echo 0)
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# ping_output=$(ping -c 5 -n $PING_HOST 2>&1 || echo "")
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# cat > network_data.json << 'EOF'
+[?2004l[?2004h> {
+[?2004l[?2004h>   "timestamp_utc": "$timestamp_utc",
+[?2004l[?2004h>   "interface_config": {
+[?2004l[?2004h>     "name": "$interface_name",
+[?2004l[?2004h>     "primary_ip": "$primary_ip",
+[?2004l[?2004h>     "mtu": $mtu
+[?2004l[?2004h>   },
+[?2004l[?2004h>   "connectivity": {
+[?2004l[?2004h>     "gateway_ip": $gateway_ip,
+[?2004l[?2004h>     "active_tcp_flows": $active_tcp_flows,
+[?2004l[?2004h>     "ping_jitter_ms": $ping_jitter_ms
+[?2004l[?2004h>   }
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# iconv -f UTF-8 -t UTF-16LE network_data.json > network_data.json.utf16
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# echo -n -e '\xfe\xff' > network_data.json
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# cat network_data.json.utf16 >> network_data.json
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# rm network_data.json.utf16
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# cat > network_summary.txt << 'EOF'
+[?2004l[?2004h> GAMMA NODE DIAGNOSTIC SUMMARY
+[?2004l[?2004h> Generated: $timestamp_utc
+[?2004l[?2004h> Target Host: $PING_HOST
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# link_status=$(cat /sys/class/net/$NET_IFACE/operstate)
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# if [ "$link_status" = "up" ]; then link_status="UP"; else link_status="DOWN"; fi
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# echo "Link Status: $link_status" >> network_summary.txt
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# data_hash=$(sha1sum network_data.json | cut -d' ' -f1)
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# echo "Data Hash: $data_hash" >> network_summary.txt
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# chmod 644 network_data.json network_summary.txt
+[?2004l[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# echo "=== JSON File Verification ==="
+[?2004l=== JSON File Verification ===
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# file network_data.json
+[?2004lbash: file: command not found
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# ls -la network_data.json
+[?2004l-rw-r--r-- 1 root root 574 Feb 13 19:03 network_data.json
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# echo "=== Summary File Verification ==="
+[?2004l=== Summary File Verification ===
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# cat network_summary.txt
+[?2004lGAMMA NODE DIAGNOSTIC SUMMARY
+Generated: $timestamp_utc
+Target Host: $PING_HOST
+Link Status: DOWN
+Data Hash: ff08c97ce48f9d07a3d305b09849bb08719d5722
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# ls -la network_summary.txt
+[?2004l-rw-r--r-- 1 root root 150 Feb 13 19:03 network_summary.txt
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# echo "=== SHA-1 Hash Verification ==="
+[?2004l=== SHA-1 Hash Verification ===
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# sha1sum network_data.json
+[?2004lff08c97ce48f9d07a3d305b09849bb08719d5722  network_data.json
+[?2004hroot@899fc5d2-1588-4586-bd3a-7ad3c96682ce:/home/user# 

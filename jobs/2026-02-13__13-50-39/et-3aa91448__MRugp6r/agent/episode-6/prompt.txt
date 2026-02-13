@@ -1,0 +1,45 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# mkdir -p /home/user/evidence /home/user/firewall
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# jq -c '.[] | select(.status == "active") | {ip: .ip, risk_score: .risk_score}' threat_intel.json > /t
+mp/active_threat_ips.json
+bash: jq: command not found
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# EXCLUSION_START=$(grep -oP 'from \K[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' maintenance
+_schedule.txt | head -1)
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# EXCLUSION_END=$(grep -oP 'to \K[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' maintenance_sch
+edule.txt | head -1)
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# echo "Exclusion Window Start: ${EXCLUSION_START}, End: ${EXCLUSION_END}"
+Exclusion Window Start: 2024-01-15 02:00:00, End: 2024-01-15 04:00:00
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# awk -F ',' -v start_date="${EXCLUSION_START}" -v end_date="${EXCLUSION_END}" \
+> 'function is_in_range(d, s, e,   t) {
+>   if (!start_date || !end_date) return 0;
+>   t = mktime(gensub(/[-:]/, " ", "g", d));
+>   return (t >= mktime(gensub(/[-:]/, " ", "g", s)) && t <= mktime(gensub(/[-:]/, " ", "g", e)));
+> }
+> start_date && end_date && $2="IN" && !is_in_range($3) {
+>   count[$1]++
+> }
+> END {
+>   for (ip in count) {
+>     printf "%%s,%%d\\n", ip, count[ip]
+>   }
+> }' traffic.log > /tmp/suspicious_packets_count.csv
+awk: line 14: function gensub never defined
+awk: line 14: function gensub never defined
+awk: line 14: function gensub never defined
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# echo "Parsing active threat IPs..."
+Parsing active threat IPs...
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# if [[ ! -s /tmp/active_threat_ips.json ]]; then echo "Error: No active threat IPs found or jq failed.
+"; else cat /tmp/active_threat_ips.json; fi
+Error: No active threat IPs found or jq failed.
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# echo -e "\nParsing suspicious packet counts..."
+
+Parsing suspicious packet counts...
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data# if [[ ! -s /tmp/suspicious_packets_count.csv ]]; then echo "Error: No suspicious packets found or awk
+ failed."; else cat /tmp/suspicious_packets_count.csv; fi
+Error: No suspicious packets found or awk failed.
+root@92332309-2701-47d5-9ad9-1302447f1d26:/home/user/data#

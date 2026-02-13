@@ -1,0 +1,314 @@
+[?2004hroot@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user# clear
+[?2004l[H[J[?2004hroot@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user# mkdir -p /home/user/query_optimization
+[?2004l[?2004hroot@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user# mkdir -p /home/user/db_tools
+[?2004l[?2004hroot@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user# cat > /home/user/db_tools/db_config.ini << 'EOF'
+[?2004l[?2004h> [DEFAULT]
+[?2004l[?2004h> log_file_path = /path/to/your/log/file.log
+[?2004l[?2004h> min_duration_ms = 10
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user# cd /home/user/query_optimization
+[?2004l[?2004hroot@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user/query_optimization# python3 -m venv env
+[?2004lsource env/bin/activate
+pip install sqlparse==0.4.4 psycopg2-binary==2.9.9
+[?2004hroot@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user/query_optimization# source env/bin/activate
+[?2004l[?2004h(env) root@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user/query_optimization# pip install sqlparse==0.4.4 psycopg2-binary==2.9.9
+[?2004lCollecting sqlparse==0.4.4
+  Downloading sqlparse-0.4.4-py3-none-any.whl (41 kB)
+[?25l     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/41.2 KB[0m [31m?[0m eta [36m-:--:--[0m[2K     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m41.2/41.2 KB[0m [31m4.1 MB/s[0m eta [36m0:00:00[0m
+[?25hCollecting psycopg2-binary==2.9.9
+  Downloading psycopg2_binary-2.9.9-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.0 MB)
+[?25l     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/3.0 MB[0m [31m?[0m eta [36m-:--:--[0m[2K     [91m━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m[91m╸[0m[90m━━━━━━━━━━━━[0m [32m2.1/3.0 MB[0m [31m67.1 MB/s[0m eta [36m0:00:01[0m[2K     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m3.0/3.0 MB[0m [31m67.0 MB/s[0m eta [36m0:00:00[0m
+[?25hInstalling collected packages: sqlparse, psycopg2-binary
+Successfully installed psycopg2-binary-2.9.9 sqlparse-0.4.4
+[?2004h(env) root@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user/query_optimization# cat > analyze_and_optimize.py << 'EOF'
+[?2004l hasher = hashlib.sha256()
+        with open(self.staging_file, 'rb') as f:
+            while True:
+                chunk = f.read(4096)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+        return hasher.hexdigest()
+        
+    def normalize_sql(self, sql_query):
+        try:
+            parsed = sqlparse.parse(sql_query)[0]
+            parsed = parsed.token_next_match(0, Keyword)
+            formatted = parsed.value.strip()
+            if formatted.endswith(';'):
+                formatted = formatted[:-1].strip()
+            return formatted
+        except (IndexError, sqlparse.exceptions.SQLParseError):
+            return sql_query.strip()
+        
+    def extract_table_and_columns(self, normalized_sql):
+        try:
+            stmt = sqlparse.parse(normalized_sql)[0]
+            tokens = [t for t in stmt.tokens if t.is_whitespace == False]
+            
+            where_clause = None
+            for token in tokens:
+                if isinstance(token, Where):
+                    where_clause =[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import csv
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import configparser
+[?2004l[?2004h> import sqlparse
+[?2004l[?2004h> from sqlparse.sql import IdentifierList, Identifier, Where, Comparison, Parenthesis
+[?2004l[?2004h> from sqlparse.tokens import Keyword, DML
+[?2004l[?2004h> import re
+[?2004l[?2004h> import json
+[?2004l[?2004h> import argparse
+[?2004l[?2004h> import datetime
+[?2004l[?2004h> 
+[?2004l [?2004h> class QueryAnalyzer:
+[?2004l[?2004h>     def __init__(self):
+[?2004l[?2004h>         self.config_path = "/home/user/db_tools/db_config.ini"
+[?2004l[?2004h>         self.log_file_path = None
+[?2004l[?2004h>         self.min_duration_ms = None
+[?2004l[?2004h>         self.staging_dir = "staging"
+[?2004l[?2004h>         self.staging_file = os.path.join(self.staging_dir, "raw_extract.csv")
+[?2004l[?2004h>         self.report_file = "report.json"
+[?2004l[?2004h>         self.args = self.parse_arguments()
+[?2004l[?2004h>         
+[?2004l[?2004h>     def parse_arguments(self):
+[?2004l[?2004h>         parser = argparse.ArgumentParser(description='SQL Query Log Analysis & Optimization')
+[?2004l[?2004h>         parser.add_argument('--date', type=str, required=True, help='Date in YYYY-MM-DD format')
+[?2004l[?2004h>         return parser.parse_args()
+[?2004l[?2004h>         
+[?2004l[?2004h>     def read_config(self):
+[?2004l[?2004h>         config = configparser.ConfigParser()
+[?2004l[?2004h>         config.read(self.config_path)
+[?2004l[?2004h>         self.log_file_path = config.get('DEFAULT', 'log_file_path')
+[?2004l[?2004h>         self.min_duration_ms = int(config.get('DEFAULT', 'min_duration_ms'))
+[?2004l[?2004h>         
+[?2004l[?2004h>     def create_staging_directory(self):
+[?2004l[?2004h>         os.makedirs(self.staging_dir, exist_ok=True)
+[?2004l[?2004h>         
+[?2004l[?2004h>     def parse_log_line(self, line):
+[?2004l[?2004h>         parts = list(filter(None, [p.strip() for p in line.split('|')]))
+[?2004l[?2004h>         if len(parts) < 4:
+[?2004l[?2004h>             return None
+[?2004l[?2004h>         timestamp_str = parts[0]
+[?2004l[?2004h>         duration_str = parts[1]
+[?2004l[?2004h>         level_str = parts[2]
+[?2004l[?2004h>         message = parts[3]
+[?2004l[?2004h>         
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             duration_ms = int(duration_str.rstrip('ms'))
+[?2004l[?2004h>             timestamp = datetime.datetime.fromisoformat(timestamp_str.rstrip('Z'))
+[?2004l[?2004h>             return timestamp, duration_ms, level_str, message
+[?2004l[?2004h>         except (ValueError, IndexError):
+[?2004l[?2004h>             return None
+[?2004l[?2004h>         
+[?2004l[?2004h>     def is_query(self, level_str):
+[?2004l[?2004h>         return level_str.strip() == '[QUERY]'
+[?2004l[?2004h>         
+[?2004l[?2004h>     def filter_log_entries(self, log_lines):
+[?2004l[?2004h>         filtered_entries = []
+[?2004l[?2004h>         target_date = self.args.date
+[?2004l[?2004h>         
+[?2004l[?2004h>         for line in log_lines:
+[?2004l[?2004h>             parsed = self.parse_log_line(line)
+[?2004l[?2004h>             if not parsed:
+[?2004l[?2004h>                 continue
+[?2004l[?2004h>             timestamp, duration_ms, level_str, message = parsed
+[?2004l[?2004h>             
+[?2004l[?2004h>             if (timestamp.strftime('%Y-%m-%d') == target_date and
+[?2004l[?2004h>                 self.is_query(level_str) and
+[?2004l[?2004h>                 duration_ms >= self.min_duration_ms):
+[?2004l[?2004h>                 filtered_entries.append((timestamp, duration_ms, message))
+[?2004l[?2004h>         return filtered_entries
+[?2004l[?2004h>         
+[?2004l[?2004h>     def write_staging_csv(self, entries):
+[?2004l[?2004h>         self.create_staging_directory()
+[?2004l[?2004h>         with open(self.staging_file, 'w', encoding='ISO-8859-1', newline='\r\n') as f:
+[?2004l[?2004h>             writer = csv.writer(f)
+[?2004l[?2004h>             writer.writerow(['timestamp', 'duration_ms', 'query_text'])
+[?2004l[?2004h>             for entry in entries:
+[?2004l[?2004h>                 writer.writerow([entry[0].isoformat() + 'Z', entry[1], entry[2]])
+[?2004l[?2004h>         
+[?2004le=[?2004h>     def compute_staging_file_sha256(self):
+[?2004l[?2004h>         hasher = hashlib.sha256()
+[?2004l[?2004h>         with open(self.staging_file, 'rb') as f:
+[?2004l[?2004h>             while True:
+[?2004l[?2004h>                 chunk = f.read(4096)
+[?2004l[?2004h>                 if not chunk:
+[?2004l[?2004h>                     break
+[?2004l[?2004h>                 hasher.update(chunk)
+[?2004l[?2004h>         return hasher.hexdigest()
+[?2004l[?2004h>         
+[?2004l[?2004h>     def normalize_sql(self, sql_query):
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             parsed = sqlparse.parse(sql_query)[0]
+[?2004l[?2004h>             parsed = parsed.token_next_match(0, Keyword)
+[?2004l[?2004h>             formatted = parsed.value.strip()
+[?2004l[?2004h>             if formatted.endswith(';'):
+[?2004l[?2004h>                 formatted = formatted[:-1].strip()
+[?2004l[?2004h>             return formatted
+[?2004l[?2004h>         except (IndexError, sqlparse.exceptions.SQLParseError):
+[?2004l[?2004h>             return sql_query.strip()
+[?2004l[?2004h>         
+[?2004l [?2004h>     def extract_table_and_columns(self, normalized_sql):
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             stmt = sqlparse.parse(normalized_sql)[0]
+[?2004l[?2004h>             tokens = [t for t in stmt.tokens if t.is_whitespace == False]
+[?2004l[?2004h>             
+[?2004l[?2004h>             where_clause = None
+[?2004l[?2004h>             for token in tokens:
+[?2004l[?2004h>                 if isinstance(token, Where):
+[?2004l[?2004h>                     where_clause = token
+[?2004l[?2004h>                     break
+[?2004l[?2004h>             
+[?2004l[?2004h>             if not where_clause:
+[?2004l[?2004h>                 return None, None
+[?2004l[?2004h>                 
+[?2004l[?2004h>             conditions = []
+[?2004l[?2004h>             current_condition = []
+[?2004l[?2004h>             
+[?2004l[?2004h>             for token in where_clause.tokens[1:]:  # Skip 'WHERE' keyword
+[?2004l[?2004h>                 if token.value.upper() == 'AND':
+[?2004l[?2004h>                     if current_condition:
+[?2004l[?2004h>                         conditions.append(current_condition)
+[?2004l[?2004h>                         current_condition = []
+[?2004l[?2004h>                 else:
+[?2004l  [?2004h>                     current_condition.append(token.value.strip())
+[?2004l[?2004h>             
+[?2004l[?2004h>             if current_condition:
+[?2004l[?2004h>                 conditions.append(current_condition)
+[?2004l[?2004h>                 
+[?2004l[?2004h>             table_name = None
+[?2004l[?2004h>             columns = set()
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Find the table name (simplified: first FROM clause)
+[?2004l[?2004h>             from_seen = False
+[?2004l[?2004h>             for token in stmt.tokens:
+[?2004l[?2004h>                 if token.value.upper() == 'FROM':
+[?2004l[?2004h>                     from_seen = True
+[?2004l[?2004h>                     continue
+[?2004l[?2004h>                 if from_seen and isinstance(token, Identifier):
+[?2004l[?2004h>                     table_name = token.get_real_name()
+[?2004l[?2004h>                     break
+[?2004l[?2004h>             
+[?2004l[?2004h>             if not table_name:
+[?2004l[?2004h>                 return None, None
+[?2004l[?2004h>                 
+[?2004l[?2004h>             # Parse conditions to extract columns
+[?2004l[?2004h>             for cond in conditions:
+[?2004l[?2004h>                 if len(cond) >= 3 and cond[1].strip() == '=':
+[?2004l[?2004h>                     col_name = cond[0].strip()
+[?2004l[?2004h>                     columns.add(col_name)
+[?2004l[?2004h>             
+[?2004l[?2004h>             if not columns:
+[?2004l[?2004h>                 return None, None
+[?2004l[?2004h>                 
+[?2004l[?2004h>             sorted_columns = sorted(columns)
+[?2004l[?2004h>             return table_name, sorted_columns
+[?2004l[?2004h>         except (IndexError, sqlparse.exceptions.SQLParseError):
+[?2004l[?2004h>             return None, None
+[?2004l[?2004h>         
+[?2004l[?2004h>     def generate_index_suggestion(self, table_name, columns):
+[?2004l[?2004h>         if not table_name or not columns:
+[?2004l[?2004h>             return None
+[?2004l[?2004h>         col_str = '_'.join(columns)
+[?2004l[?2004h>         return f"CREATE INDEX idx_{table_name}_{col_str} ON {table_name}({', '.join(columns)});"
+[?2004l[?2004h>         
+[?2004l[?2004h>     def process_queries(self, entries):
+[?2004l[?2004h>         normalized_queries = {}
+[?2004l[?2004h>         
+[?2004l[?2004h>         for entry in entries:
+[?2004l[?2004h>             timestamp, duration_ms, query_text = entry
+[?2004l[?2004h>             normalized_sql = self.normalize_sql(query_text)
+[?2004l[?2004h>             
+[?2004l[?2004h>             if normalized_sql not in normalized_queries:
+[?2004l[?2004h>                 normalized_queries[normalized_sql] = timestamp
+[?2004l[?2004h>                 
+[?2004l[?2004h>         return normalized_queries
+[?2004l[?2004h>         
+[?2004l[?2004h>     def generate_report(self, staging_sha256, stats, suggestions):
+[?2004l[?2004h>         report = {
+[?2004l[?2004h>             "meta": {
+[?2004l[?2004h>                 "date_analyzed": self.args.date,
+[?2004l[?2004h>                 "staging_file_sha256": staging_sha256
+[?2004l[?2004h>             },
+[?2004l[?2004h>             "stats": {
+[?2004l[?2004h>                 "total_queries_extracted": stats['total_queries_extracted'],
+[?2004l[?2004h>                 "unique_patterns": stats['unique_patterns']
+[?2004l[?2004h>             },
+[?2004l[?2004h>             "suggestions": suggestions
+[?2004l[?2004h>         }
+[?2004l[?2004h>         
+[?2004l[?2004h>         with open(self.report_file, 'w', encoding='utf-8', newline='\n') as f:
+[?2004l[?2004h>             json.dump(report, f, indent=2)
+[?2004l[?2004h>         
+[?2004l[?2004h>     def run(self):
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             self.read_config()
+[?2004l[?2004h>             
+[?2004l[?2004h>             if not os.path.exists(self.log_file_path):
+[?2004l[?2004h>                 print(f"Error: Log file not found at {self.log_file_path}")
+[?2004l[?2004h>                 sys.exit(1)
+[?2004l[?2004h>             
+[?2004l[?2004h>             with open(self.log_file_path, 'r', encoding='ISO-8859-1') as f:
+[?2004l[?2004h>                 log_lines = f.readlines()
+[?2004l[?2004h>             
+[?2004l[?2004h>             filtered_entries = self.filter_log_entries(log_lines)
+[?2004l[?2004h>             
+[?2004l[?2004h>             if not filtered_entries:
+[?2004l[?2004h>                 print("No queries matched the criteria.")
+[?2004l[?2004h>                 with open(self.staging_file, 'w', encoding='ISO-8859-1', newline='\r\n') as f:
+[?2004l[?2004h>                     writer = csv.writer(f)
+[?2004l[?2004h>                     writer.writerow(['timestamp', 'duration_ms', 'query_text'])
+[?2004l[?2004h>                 staging_sha256 = self.compute_staging_file_sha256()
+[?2004l[?2004h>                 self.generate_report(staging_sha256, {
+[?2004l[?2004h>                     'total_queries_extracted': 0,
+[?2004l[?2004h>                     'unique_patterns': 0
+[?2004l[?2004h>                 }, [])
+[?2004l[?2004h>                 return
+[?2004l[?2004h>             
+[?2004l[?2004h>             self.write_staging_csv(filtered_entries)
+[?2004l[?2004h>             staging_sha256 = self.compute_staging_file_sha256()
+[?2004l[?2004h>             
+[?2004l[?2004h>             normalized_queries_map = self.process_queries(filtered_entries)
+[?2004l[?2004h>             suggestions = []
+[?2004l[?2004h>             
+[?2004l[?2004h>             for norm_sql, first_occurrence_timestamp in normalized_queries_map.items():
+[?2004l[?2004h>                 table_name, columns = self.extract_table_and_columns(norm_sql)
+[?2004l[?2004h>                 index_suggestion = self.generate_index_suggestion(table_name, columns)
+[?2004l[?2004h>                 if index_suggestion:
+[?2004l[?2004h>                     suggestions.append({
+[?2004l[?2004h>                         "id": first_occurrence_timestamp.isoformat() + 'Z',
+[?2004l[?2004h>                         "normalized_sql": norm_sql,
+[?2004l[?2004h>                         "index_suggestion": index_suggestion
+[?2004l[?2004h>                     })
+[?2004l[?2004h>             
+[?2004l[?2004h>             suggestions.sort(key=lambda x: x['id'])
+[?2004l[?2004h>             
+[?2004l[?2004h>             self.generate_report(staging_sha256, {
+[?2004l[?2004h>                 'total_queries_extracted': len(filtered_entries),
+[?2004l[?2004h>                 'unique_patterns': len(normalized_queries_map)
+[?2004l[?2004h>             }, suggestions)
+[?2004l[?2004h>             
+[?2004l[?2004h>         except Exception as e:
+[?2004l[?2004h>             print(f"Error: {e}")
+[?2004l[?2004h>             import traceback
+[?2004l[?2004h>             traceback.print_exc()
+[?2004l[?2004h> 
+[?2004l[?2004h> def main():
+[?2004l[?2004h>     analyzer = QueryAnalyzer()
+[?2004l[?2004h>     analyzer.run()
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     main()
+[?2004l[?2004h> EOF
+[?2004l[?2004h(env) root@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user/query_optimization# chmod +x analyze_and_optimize.py
+[?2004l[?2004h(env) root@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user/query_optimization# env/bin/python analyze_and_optimize.py --date 2023-03-15
+[?2004lError: Log file not found at /path/to/your/log/file.log
+[?2004h(env) root@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user/query_optimization# cat report.json
+[?2004lcat: report.json: No such file or directory
+[?2004h(env) root@fcc061f5-83af-463b-b71b-727db5465fa5:/home/user/query_optimization# 

@@ -1,0 +1,283 @@
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:~# clear
+[?2004l[H[J[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:~# mkdir -p /home/user/mlops/experiments
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:~# mkdir -p /home/user/mlops/deprecated
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:~# mkdir -p /home/user/mlops/summary
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:~# cd /home/user/mlops
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat > process_artifacts.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> """
+[?2004l[?2004h> MLOps Legacy Migration & Consolidation Script
+[?2004l[?2004h> """
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import glob
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import re
+[?2004l[?2004h> import yaml
+[?2004l[?2004h> from collections import defaultdict
+[?2004l[?2004h> from datetime import datetime
+[?2004l[?2004h> 
+[?2004l[?2004h> def detect_encoding(file_path):
+[?2004l[?2004h>     """Detect file encoding with priority: UTF-16LE with BOM, Latin-1, UTF-8"""
+[?2004l[?2004h>     with open(file_path, 'rb') as f:
+[?2004l[?2004h>         raw_data = f.read(4096)  # Read initial chunk
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check for UTF-16LE BOM
+[?2004l[?2004h>     if raw_data.startswith(b'\xff\xfe'):
+[?2004l[?2004h>         return 'utf-16le'
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check if valid Latin-1 (always valid)
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         raw_data.decode('latin-1')
+[?2004l[?2004h>         return 'latin-1'
+[?2004l[?2004h>     except UnicodeDecodeError:
+[?2004l[?2004h>         pass
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check if valid UTF-8
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         raw_data.decode('utf-8')
+[?2004l[?2004h>         return 'utf-8'
+[?2004l[?2004h>     except UnicodeDecodeError:
+[?2004l[?2004h>         pass
+[?2004l[?2004h>     
+[?2004l[?2004h>     return None
+[?2004l[?2004h> 
+[?2004l[?2004h> def read_artifact_file(file_path):
+[?2004l[?2004h>     """Read artifact file with proper encoding handling"""
+[?2004l[?2004h>     encoding = detect_encoding(file_path)
+[?2004l[?2004h>     with open(file_path, 'r', encoding=encoding, errors='replace') as f:
+[?2004l[?2004h>         return f.readlines()
+[?2004l[?2004h> 
+[?2004l[?2004h> def is_line_corrupted(line):
+[?2004l[?2004h>     """Check if line has odd number of trailing spaces"""
+[?2004l[?2004h>     stripped_line = line.rstrip()
+[?2004l[?2004h>     if stripped_line != line.rstrip(' '):
+[?2004l[?2004h>         # Calculate trailing spaces
+[?2004l[?2004h>         trailing_spaces = len(line) - len(stripped_line) - 1  # -1 for newline
+[?2004l[?2004h>         return trailing_spaces % 2 != 0
+[?2004l[?2004h>     return False
+[?2004l[?2004h> 
+[?2004l[?2004h> def parse_line(line):
+[?2004l[?2004h>     """Parse a valid log line"""
+[?2004l[?2004h>     parts = line.rstrip().split('|')
+[?2004l[?2004h>     if len(parts) >= 2:
+[?2004l[?2004h>         artifact_name = parts[0].strip()
+[?2004l[?2004h>         status = parts[1].strip()
+[?2004l[?2004h>         return artifact_name, status, '|'.join(parts[2:]) if len(parts) > 2 else None
+[?2004l[?2004h>     return None, None, None
+[?2004l[?2004h> 
+[?2004l[?2004h> def load_status_overrides(override_file):
+[?2004l[?2004h>     """Load status override mappings"""
+[?2004l[?2004h>     overrides = {}
+[?2004l[?2004h>     if os.path.exists(override_file):
+[?2004l[?2004h>         with open(override_file, 'r') as f:
+[?2004l[?2004h>             for line in f:
+[?2004l[?2004h>                 line = line.strip()
+[?2004l[?2004h>                 if line and not line.startswith('#'):
+[?2004l[?2004h>                     if '=' in line:
+[?2004l[?2004h>                         key, value = line.split('=', 1)
+[?2004l[?2004h>                         overrides[key.strip()] = value.strip()
+[?2004l[?2004h>     return overrides
+[?2004l[?2004h> 
+[?2004l[?2004h> def get_deprecated_names(deprecated_dir):
+[?2004l[?2004h>     """Get set of deprecated root names (case-insensitive)"""
+[?2004l[?2004h>     deprecated = set()
+[?2004l[?2004h>     if os.path.exists(deprecated_dir):
+[?2004l[?2004h>         for filename in os.listdir(deprecated_dir):
+[?2004l[?2004h>             if filename:
+[?2004l[?2004h>                 name, _ = os.path.splitext(filename)
+[?2004l[?2004h>                 if name:
+[?2004l[?2004h>                     deprecated.add(name.lower())
+[?2004l[?2004h>     return deprecated
+[?2004l[?2004h> 
+[?2004l[?2004h> def main():
+[?2004l[?2004h>     # Configuration
+[?2004l[?2004h>     experiments_dir = 'experiments'
+[?2004l[?2004h>     deprecated_dir = 'deprecated'
+[?2004l[?2004h>     summary_dir = 'summary'
+[?2004l[?2004h>     
+[?2004l[?2004h>     corruption_report_path = os.path.join(summary_dir, 'corruption_report.txt')
+[?2004l[?2004h>     inventory_path = os.path.join(summary_dir, 'inventory.csv')
+[?2004l[?2004h>     manifest_path = os.path.join(summary_dir, 'manifest.yaml')
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create summary directory
+[?2004l[?2004h>     os.makedirs(summary_dir, exist_ok=True)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Initialize data structures
+[?2004l[?2004h>     corrupted_lines = []
+[?2004l[?2004h>     artifact_locations = defaultdict(list)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get deprecated names (case-insensitive)
+[?2004l[?2004h>     deprecated_names = get_deprecated_names(deprecated_dir)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Scan experiment directories
+[?2004l[?2004h>     for exp_dir in os.listdir(experiments_dir):
+[?2004l[?2004h>         exp_path = os.path.join(experiments_dir, exp_dir)
+[?2004l[?2004h>         if os.path.isdir(exp_path):
+[?2004l[?2004h>             artifact_files = glob.glob(os.path.join(exp_path, 'artifacts.*'))
+[?2004l[?2004h>             
+[?2004l[?2004h>             for artifact_file in artifact_files:
+[?2004l[?2004h>                 # Load status overrides if available
+[?2004l[?2004h>                 override_file = os.path.join(exp_path, 'status_override.map')
+[?2004l[?2004h>                 status_overrides = load_status_overrides(override_file)
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # Read artifact file with proper encoding
+[?2004l[?2004h>                 lines = read_artifact_file(artifact_file)
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 for line in lines:
+[?2004l[?2004h>                     # Skip empty lines
+[?2004l[?2004h>                     if not line.strip():
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>                         
+[?2004l[?2004h>                     # Handle corrupted lines
+[?2004l[?2004h>                     if is_line_corrupted(line):
+[?2004l[?2004h>                         corrupted_lines.append(f"{exp_dir}: {line.strip()}")
+[?2004l[?2004h>                         continue
+[?2004l[?2004h>                         
+[?2004l[?2004h>                     # Parse valid lines
+[?2004l[?2004h>                     artifact_name, log_status, _ = parse_line(line)
+[?2004l[?2004h>                     if artifact_name and log_status:
+[?2004l[?2004h>                         # Apply status override if exists
+[?2004l[?2004h>                         resolved_status = status_overrides.get(artifact_name, log_status)
+[?2004l[?2004h>                         
+[?2004l[?2004h>                         # Check exclusion policy
+[?2004l[?2004h>                         root_name = os.path.splitext(artifact_name)[0].lower()
+[?2004l[?2004h>                         if root_name in deprecated_names:
+[?2004l[?2004h>                             continue
+[?2004l[?2004h>                             
+[?2004l[?2004h>                         # Filter for READY status
+[?2004l[?2004h>                         if resolved_status == 'READY':
+[?2004l[?2004h>                             # Record location
+[?2004l[?2004h>                             rel_path = os.path.relpath(exp_path, '.').replace('\\', '/')
+[?2004l[?2004h>                             artifact_locations[artifact_name].append(rel_path)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write corruption report
+[?2004l[?2004h>     with open(corruption_report_path, 'w', encoding='utf-8') as f:
+[?2004l[?2004h>         f.write("\n".join(corrupted_lines))
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Prepare inventory data
+[?2004l[?2004h>     inventory_items = []
+[?2004l[?2004h>     for artifact, locations in artifact_locations.items():
+[?2004l[?2004h>         # Sort locations and remove duplicates while preserving order
+[?2004l[?2004h>         sorted_locations = sorted(set(locations))
+[?2004l[?2004h>         location_str = ';'.join(sorted_locations)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Calculate name hash
+[?2004l[?2004h>         name_hash = hashlib.md5(artifact.strip().encode('utf-8')).hexdigest()
+[?2004l[?2004h>         
+[?2004l[?2004h>         inventory_items.append((artifact.strip(), name_hash, location_str))
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sort inventory alphabetically by artifact name (case-sensitive)
+[?2004l[?2004h>     inventory_items.sort(key=lambda x: x[0])
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write inventory CSV
+[?2004l[?2004h>     with open(inventory_path, 'w', encoding='utf-8') as f:
+[?2004l[?2004h>         f.write("Artifact|NameHash|Locations\n")
+[?2004l[?2004h>         for item in inventory_items:
+[?2004l[?2004h>             f.write(f"{item[0]}|{item[1]}|{item[2]}\n")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Prepare manifest data
+[?2004l[?2004h>     manifest_data = {
+[?2004l[?2004h>         'total_artifacts': len(inventory_items),
+[?2004l[?2004h>         'generated_at': datetime.utcnow().strftime('%Y-%m-%d')
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Calculate inventory hash
+[?2004l[?2004h>     with open(inventory_path, 'rb') as f:
+[?2004l[?2004h>         manifest_data['inventory_hash'] = hashlib.sha256(f.read()).hexdigest()
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write manifest YAML
+[?2004l[?2004h>     with open(manifest_path, 'w', encoding='utf-8') as f:
+[?2004l[?2004h>         yaml.safe_dump(manifest_data, f, default_flow_style=False)
+[?2004l[?2004h>     
+[?2004l[?2004h>     print(f"Processing complete. Found {len(inventory_items)} artifacts.")
+[?2004l[?2004h>     print(f"Corruption report: {corruption_report_path}")
+[?2004l[?2004h>     print(f"Inventory report: {inventory_path}")
+[?2004l[?2004h>     print(f"Manifest report: {manifest_path}")
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     main()
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# chmod +x process_artifacts.py
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# mkdir -p experiments/exp_alpha experiments/exp_beta experiments/exp_gamma
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat > experiments/exp_alpha/artifacts.txt << 'EOF'
+[?2004l[?2004h> model_v1.pt | READY | version=1.0
+[?2004l[?2004h> model_v2.pt | PENDING | version=2.0
+[?2004l[?2004h> model_v3.pt | READY | version=3.0
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat > experiments/exp_beta/artifacts.log << 'EOF'
+[?2004l[?2004h> legacy_model.old | DEPRECATED | framework=legacy
+[?2004l[?2004h> new_model_v1.pt | READY | framework=new
+[?2004l[?2004h> new_model_v2.pt | READY | framework=new
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat > experiments/exp_gamma/artifacts.txt << 'EOF'
+[?2004l[?2004h> corrupted_model.pt | READY | status=corrupted      
+[?2004l[?2004h> valid_model.pt | READY | status=valid
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat > experiments/exp_gamma/status_override.map << 'EOF'
+[?2004l[?2004h> valid_model.pt=OVERRIDE_READY
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# mkdir -p deprecated
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# touch deprecated/legacy_model.old
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# ./process_artifacts.py
+[?2004lProcessing complete. Found 4 artifacts.
+Corruption report: summary/corruption_report.txt
+Inventory report: summary/inventory.csv
+Manifest report: summary/manifest.yaml
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat summary/corruption_report.txt
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat summary/inventory.csv
+[?2004lArtifact|NameHash|Locations
+corrupted_model.pt|161d1ce590dd9f22bca5ca252c74cd01|experiments/exp_gamma
+model_v3.pt|eb94fc87e4ae3948e498b14f6bcc2ae5|experiments/exp_alpha
+new_model_v1.pt|720afb0c90ee53480cf26b8dcfb6a623|experiments/exp_beta
+new_model_v2.pt|eb72f0542799d108fa52e7765a32f2b6|experiments/exp_beta
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat summary/manifest.yaml
+[?2004lgenerated_at: '2026-02-13'
+inventory_hash: cd2ee25b8eebfae3560dacf6a88948b9dc5b38f30e6ebca44fa613d022c02d2a
+total_artifacts: 4
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# wc -l summary/inventory.csv
+[?2004l5 summary/inventory.csv
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# md5sum summary/inventory.csv
+[?2004lae70bb8d280e3ee3314637afadafc6e3  summary/inventory.csv
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# mkdir -p experiments/exp_delta
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat > experiments/exp_delta/artifacts.txt << 'EOF'
+[?2004l[?2004h> valid_line_ok.pt | READY | good_data
+[?2004l[?2004h> valid_line_ok_v2.pt | READY | good_data_v2
+[?2004l[?2004h> corrupted_line_bad.pt | READY | corrupt_data               
+[?2004l[?2004h> also_corrupted.pt | READY | another_corrupt_line        
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# ./process_artifacts.py
+[?2004lProcessing complete. Found 7 artifacts.
+Corruption report: summary/corruption_report.txt
+Inventory report: summary/inventory.csv
+Manifest report: summary/manifest.yaml
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat summary/corruption_report.txt
+[?2004lexp_delta: corrupted_line_bad.pt | READY | corrupt_data[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat summary/inventory.csv
+[?2004lArtifact|NameHash|Locations
+also_corrupted.pt|951199e0c4320a9b6721a85fc9ad58a2|experiments/exp_delta
+corrupted_model.pt|161d1ce590dd9f22bca5ca252c74cd01|experiments/exp_gamma
+model_v3.pt|eb94fc87e4ae3948e498b14f6bcc2ae5|experiments/exp_alpha
+new_model_v1.pt|720afb0c90ee53480cf26b8dcfb6a623|experiments/exp_beta
+new_model_v2.pt|eb72f0542799d108fa52e7765a32f2b6|experiments/exp_beta
+valid_line_ok.pt|271f4642ccd05d9410c08ff84e54a766|experiments/exp_delta
+valid_line_ok_v2.pt|6d6cb2f7f568f989000a6c19ef4e85ff|experiments/exp_delta
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat summary/manifest.yaml
+[?2004lgenerated_at: '2026-02-13'
+inventory_hash: 02837268f5132ca522441f3cc8ba8123e1938b90c6a8db49a19c6810e3b0c167
+total_artifacts: 7
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# wc -l summary/inventory.csv
+[?2004l8 summary/inventory.csv
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# head -1 summary/inventory.csv
+[?2004lArtifact|NameHash|Locations
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# grep -E '^[^|]*\|.\|.\|.*$' summary/inventory.csv | wc -l
+[?2004l0
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# sha256sum summary/inventory.csv
+[?2004l02837268f5132ca522441f3cc8ba8123e1938b90c6a8db49a19c6810e3b0c167  summary/inventory.csv
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# cat summary/manifest.yaml
+[?2004lgenerated_at: '2026-02-13'
+inventory_hash: 02837268f5132ca522441f3cc8ba8123e1938b90c6a8db49a19c6810e3b0c167
+total_artifacts: 7
+[?2004hroot@9e3cc863-0a05-4e43-8389-146320425362:/home/user/mlops# 

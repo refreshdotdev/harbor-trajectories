@@ -1,0 +1,263 @@
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# clear
+[?2004l[H[J[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# su - user
+[?2004lsu: user user does not exist or the user entry does not contain all the required fields
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# useradd -m user
+[?2004lbash: useradd: command not found
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# passwd user
+[?2004lpasswd: user 'user' does not exist
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# password123
+[?2004lbash: password123: command not found
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# password123
+[?2004lbash: password123: command not found
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# mkdir -p /home/user
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# mkdir -p /home/user/db_queries
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# mkdir -p /home/user/.venvs
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# cat > /home/user/db_queries/raw_batch_42.sql << 'EOF'
+[?2004l[?2004h> select * from t;
+[?2004l[?2004h> INSERT INTO table VALUES (1, 'test');
+[?2004l[?2004h> UPDATE table SET col = 'value' WHERE id = 1;
+[?2004l[?2004h> DELETE FROM table WHERE id = 1;
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# python3 -m venv /home/user/.venvs/opt_queries
+[?2004lecho "sqlparse==0.4.4" > /home/user/.venvs/opt_queries/requirements.txt
+/home/user/.venvs/opt_queries/bin/pip install -r /home/user/.venvs/opt_queries/requirements.txt
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# echo "sqlparse==0.4.4" > /home/user/.venvs/opt_queries/requirements.txt
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# /home/user/.venvs/opt_queries/bin/pip install -r /home/user/.venvs/opt_queries/requirements.txt
+[?2004lCollecting sqlparse==0.4.4
+  Downloading sqlparse-0.4.4-py3-none-any.whl (41 kB)
+[?25l     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/41.2 KB[0m [31m?[0m eta [36m-:--:--[0m[2K     [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m41.2/41.2 KB[0m [31m4.6 MB/s[0m eta [36m0:00:00[0m
+[?25hInstalling collected packages: sqlparse
+Successfully installed sqlparse-0.4.4
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# cat > /home/user/db_queries/process_batch.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> 
+[?2004l[?2004h> import os
+[?2004l[?2004h> import sys
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import sqlparse
+[?2004l[?2004h> import json
+[?2004l[?2004h> 
+[?2004l[?2004h> def process_queries():
+[?2004l[?2004h>     # Get batch ID from environment variable
+[?2004l[?2004h>     batch_id = os.environ.get('DB_BATCH_ID', '42')
+[?2004l[?2004h>     
+[?2004l[?2004h>     # File paths
+[?2004l[?2004h>     input_file = f"/home/user/db_queries/raw_batch_{batch_id}.sql"
+[?2004l[?2004h>     backup_file = f"/home/user/db_queries/raw_batch_{batch_id}_backup.sql"
+[?2004l[?2004h>     read_output = f"/home/user/db_queries/batch_{batch_id}_optimized_read.sql"
+[?2004l[?2004h>     write_output = f"/home/user/db_queries/batch_{batch_id}_optimized_write.sql"
+[?2004l[?2004h>     manifest_file = f"/home/user/db_queries/batch_{batch_id}_manifest.json"
+[?2004l[?2004h>     log_file = f"/home/user/db_queries/batch_{batch_id}_pipeline.log"
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Read input file
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(input_file, 'r') as f:
+[?2004l[?2004h>             raw_sql = f.read()
+[?2004l[?2004h>     except FileNotFoundError:
+[?2004l[?2004h>         print(f"Input file {input_file} not found")
+[?2004l[?2004h>         return
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create backup
+[?2004l[?2004h>     with open(backup_file, 'w') as f:
+[?2004l[?2004h>         f.write(raw_sql)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Initialize variables
+[?2004l[?2004h>     queries = sqlparse.split(raw_sql)
+[?2004l[?2004h>     total_queries = len(queries)
+[?2004l[?2004h>     read_queries = []
+[?2004l[?2004h>     write_queries = []
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Process each query
+[?2004l[?2004h>     for query in queries:
+[?2004l[?2004h>         # Skip empty queries
+[?2004l[?2004h>         if not query.strip():
+[?2004l[?2004h>             continue
+[?2004l[?2004h>             
+[?2004l[?2004h>         original_query = query.strip()
+[?2004l[?2004h>         md5_hash = hashlib.md5(original_query.encode()).hexdigest()
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Parse and format query
+[?2004l[?2004h>         parsed = sqlparse.parse(original_query)[0]
+[?2004l[?2004h>         formatted = sqlparse.format(parsed, 
+[?2004l[?2004h>                                     keyword_case='upper', 
+[?2004l[?2004h>                                     indent_columns=False, 
+[?2004l[?2004h>                                     strip_comments=False,
+[?2004l[?2004h>                                     reindent=False,
+[?2004l[?2004h>                                     wrap_after=None,
+[?2004l[?2004h>                                     indent_tabs=False)
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Replace newlines with spaces and add comment
+[?2004l[?2004h>         optimized = formatted.replace('\n', ' ').strip() + f' -- id={md5_hash}'
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Classify query
+[?2004l[?2004h>         first_token = sqlparse.sql.IdentifierList(parsed.tokens).get_identifiers()[0].value
+[?2004l[?2004h>         if first_token.lower() == 'select':
+[?2004l[?2004h>             read_queries.append(f"{optimized};\n")
+[?2004l[?2004h>         else:
+[?2004l[?2004h>             write_queries.append(f"{optimized};\n")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write output files
+[?2004l[?2004h>     with open(read_output, 'w') as f:
+[?2004l[?2004h>         f.writelines(read_queries)
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(write_output, 'w') as f:
+[?2004l[?2004h>         f.writelines(write_queries)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create manifest
+[?2004l[?2004h>     manifest = {
+[?2004l[?2004h>         "batch_id": batch_id,
+[?2004l[?2004h>         "read_count": len(read_queries),
+[?2004l[?2004h>         "write_count": len(write_queries)
+[?2004l[?2004h>     }
+[?2004l[?2004h>     with open(manifest_file, 'w') as f:
+[?2004l[?2004h>         json.dump(manifest, f, indent=2)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create log
+[?2004l[?2004h>     with open(log_file, 'w') as f:
+[?2004l[?2004h>         f.write("PIPELINE START\n")
+[?2004l[?2004h>         f.write(f"Batch ID: {batch_id}\n")
+[?2004l[?2004h>         f.write(f"Input: raw_batch_{batch_id}.sql\n")
+[?2004l[?2004h>         f.write(f"Processed: {total_queries}\n")
+[?2004l[?2004h>         f.write("PIPELINE END\n")
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == "__main__":
+[?2004l[?2004h>     process_queries()
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# chmod +x /home/user/db_queries/process_batch.py
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# export DB_BATCH_ID=42
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# /home/user/.venvs/opt_queries/bin/python /home/user/db_queries/process_batch.py
+[?2004lTraceback (most recent call last):
+  File "/home/user/.venvs/opt_queries/lib/python3.10/site-packages/sqlparse/formatter.py", line 107, in validate_options
+    wrap_after = int(wrap_after)
+TypeError: int() argument must be a string, a bytes-like object or a real number, not 'NoneType'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/user/db_queries/process_batch.py", line 93, in <module>
+    process_queries()
+  File "/home/user/db_queries/process_batch.py", line 50, in process_queries
+    formatted = sqlparse.format(parsed, 
+  File "/home/user/.venvs/opt_queries/lib/python3.10/site-packages/sqlparse/__init__.py", line 56, in format
+    options = formatter.validate_options(options)
+  File "/home/user/.venvs/opt_queries/lib/python3.10/site-packages/sqlparse/formatter.py", line 109, in validate_options
+    raise SQLParseError('wrap_after requires an integer')
+sqlparse.exceptions.SQLParseError: wrap_after requires an integer
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# sed -i 's/wrap_after=None/reindent=True/g' /home/user/db_queries/process_batch.py
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# /home/user/.venvs/opt_queries/bin/python /home/user/db_queries/process_batch.py
+[?2004l  File "/home/user/db_queries/process_batch.py", line 55
+    reindent=True,
+    ^^^^^^^^^^^^^
+SyntaxError: keyword argument repeated: reindent
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# sed -i 's/wrap_after=None,//g' /home/user/db_queries/process_batch.py
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# /home/user/.venvs/opt_queries/bin/python /home/user/db_queries/process_batch.py
+[?2004l  File "/home/user/db_queries/process_batch.py", line 55
+    reindent=True,
+    ^^^^^^^^^^^^^
+SyntaxError: keyword argument repeated: reindent
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# sed -i 's/sqlparse.format(parsed, /sqlparse.format(parsed)/g' /home/user/db_queries/process_batch.py
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# sed -i 's/keyword_case='upper',/keyword_case='upper'/g' /home/user/db_queries/process_batch.py
+[?2004l[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# /home/user/.venvs/opt_queries/bin/python /home/user/db_queries/process_batch.py
+[?2004l  File "/home/user/db_queries/process_batch.py", line 51
+    keyword_case='upper', 
+IndentationError: unexpected indent
+[?2004hroot@36b070fb-d075-422d-b207-f735c3f0b34d:~# sed -i '/formatted = sqlparse.format/a\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t\\t●●●●t\\t●●●●t\\t●●●●t\\t●●●●t\\t●●●●t\\t●●●●t\\t●●●●t●●●●t\\t●●●●t●●●●t\\t●●●●t●●●●t\\t●●●●t●●●●t\\t●●●●t●●●●t\\t●●●●t●●●●t●●
+[?2004l[?2004h> /home/user/.venvs/opt_queries/bin/python /home/user/db_queries/process_batch.py
+[?2004l[?2004h> cat > /home/user/db_queries/process_batch.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> 
+[?2004l[?2004h> import os
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import sqlparse
+[?2004l[?2004h> import json
+[?2004l[?2004h> 
+[?2004l[?2004h> def process_queries():
+[?2004l[?2004h>     batch_id = os.environ.get('DB_BATCH_ID', '42')
+[?2004l[?2004h>     
+[?2004l[?2004h>     input_file = f"/home/user/db_queries/raw_batch_{batch_id}.sql"
+[?2004l[?2004h>     backup_file = f"/home/user/db_queries/raw_batch_{batch_id}_backup.sql"
+[?2004l[?2004h>     read_output = f"/home/user/db_queries/batch_{batch_id}_optimized_read.sql"
+[?2004l[?2004h>     write_output = f"/home/user/db_queries/batch_{batch_id}_optimized_write.sql"
+[?2004l[?2004h>     manifest_file = f"/home/user/db_queries/batch_{batch_id}_manifest.json"
+[?2004l[?2004h>     log_file = f"/home/user/db_queries/batch_{batch_id}_pipeline.log"
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(input_file, 'r') as f:
+[?2004l[?2004h>         raw_sql = f.read()
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(backup_file, 'w') as f:
+[?2004l[?2004h>         f.write(raw_sql)
+[?2004l[?2004h>     
+[?2004l[?2004h>     queries = sqlparse.split(raw_sql)
+[?2004l[?2004h>     total_queries = len(queries)
+[?2004l[?2004h>     read_queries = []
+[?2004l[?2004h>     write_queries = []
+[?2004l[?2004h>     
+[?2004l[?2004h>     for query in queries:
+[?2004l[?2004h>         if not query.strip():
+[?2004l[?2004h>             continue
+[?2004l[?2004h>             
+[?2004l[?2004h>         original_query = query.strip()
+[?2004l[?2004h>         md5_hash = hashlib.md5(original_query.encode()).hexdigest()
+[?2004l[?2004h>         
+[?2004l[?2004h>         parsed = sqlparse.parse(original_query)[0]
+[?2004l[?2004h>         formatted = sqlparse.format(parsed, keyword_case='upper')
+[?2004l[?2004h>         
+[?2004l[?2004h>         optimized = formatted.replace('\n', ' ').strip() + f' -- id={md5_hash}'
+[?2004l[?2004h>         
+[?2004l[?2004h>         first_token = str(parsed.tokens[0]).upper()
+[?2004l[?2004h>         if first_token.startswith('SELECT'):
+[?2004l[?2004h>             read_queries.append(f"{optimized};\n")
+[?2004l[?2004h>         else:
+[?2004l[?2004h>             write_queries.append(f"{optimized};\n")
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(read_output, 'w') as f:
+[?2004l[?2004h>         f.writelines(read_queries)
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(write_output, 'w') as f:
+[?2004l[?2004h>         f.writelines(write_queries)
+[?2004l[?2004h>     
+[?2004l[?2004h>     manifest = {
+[?2004l[?2004h>         "batch_id": batch_id,
+[?2004l[?2004h>         "read_count": len(read_queries),
+[?2004l[?2004h>         "write_count": len(write_queries)
+[?2004l[?2004h>     }
+[?2004l[?2004h>     with open(manifest_file, 'w') as f:
+[?2004l[?2004h>         json.dump(manifest, f, indent=2)
+[?2004l[?2004h>     
+[?2004l[?2004h>     with open(log_file, 'w') as f:
+[?2004l[?2004h>         f.write("PIPELINE START\n")
+[?2004l[?2004h>         f.write(f"Batch ID: {batch_id}\n")
+[?2004l[?2004h>         f.write(f"Input: raw_batch_{batch_id}.sql\n")
+[?2004l[?2004h>         f.write(f"Processed: {total_queries}\n")
+[?2004l[?2004h>         f.write("PIPELINE END\n")
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == "__main__":
+[?2004l[?2004h>     process_queries()
+[?2004l[?2004h> EOF
+[?2004l[?2004h> chmod +x /home/user/db_queries/process_batch.py
+[?2004l[?2004h> /home/user/.venvs/opt_queries/bin/python /home/user/db_queries/process_batch.py
+[?2004l[?2004h> head -2 /home/user/.venvs/opt_queries/requirements.txt
+[?2004l[?2004h> cat /home/user/db_queries/batch_42_manifest.json
+[?2004l[?2004h> cat /home/user/db_queries/batch_42_pipeline.log
+[?2004l[?2004h> ls -la /home/user/.venvs/opt_queries/requirements.txt
+[?2004l[?2004h> ls -la /home/user/db_queries/batch_42_*.json
+[?2004l[?2004h> ls -la /home/user/db_queries/batch_42_*.log
+[?2004l[?2004h> cat /home/user/.venvs/opt_queries/requirements.txt
+[?2004l[?2004h> cat /home/user/db_queries/batch_42_manifest.json
+[?2004l[?2004h> cat /home/user/db_queries/batch_42_pipeline.log
+[?2004l[?2004h> exit
+[?2004l[?2004h> cat /home/user/.venvs/opt_queries/requirements.txt
+[?2004l[?2004h> cat /home/user/db_queries/batch_42_manifest.json
+[?2004l[?2004h> cat /home/user/db_queries/batch_42_pipeline.log
+[?2004l[?2004h> pwd
+[?2004l[?2004h> ls -la /home/user/.venvs/opt_queries/requirements.txt
+[?2004l[?2004h> cat /home/user/.venvs/opt_queries/requirements.txt
+[?2004l[?2004h> ls -la /home/user/db_queries/batch_42_manifest.json
+[?2004l[?2004h> cat /home/user/db_queries/batch_42_manifest.json
+[?2004l[?2004h> ls -la /home/user/db_queries/batch_42_pipeline.log
+[?2004l[?2004h> cat /home/user/db_queries/batch_42_pipeline.log
+[?2004l[?2004h> echo "Test shell"
+[?2004l[?2004h> 

@@ -1,0 +1,163 @@
+Previous response had warnings:
+WARNINGS: - Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@5796a375-dbf6-41c9-a2c9-9c12d187c8ad:/home/user/capacity# cat > /tmp/capacity_work/process_data.py << 'EOF'
+> #!/usr/bin/env python3
+> """
+> Process log files for capacity planning.
+> """
+> import os
+> import json
+> import struct
+> import hashlib
+> import sys
+> from pathlib import Path
+>
+> def process_file(filepath, is_legacy, file_count, metric_sums, metric_counts):
+>     """Process a single log file."""
+>     try:
+>         if is_legacy:
+>             with open(filepath, 'r', encoding='ISO-8859-1') as f:
+>                 lines = f.readlines()
+>         else:
+>             with open(filepath, 'r', encoding='utf-8-sig') as f:  # Handles BOM
+>                 lines = f.readlines()
+>
+>         active_file = False
+>         cpu_values = []
+>         mem_values = []
+>         disk_values = []
+>
+>         for line in lines:
+>             if "meta_status: active" in line:
+>                 active_file = True
+>                 continue
+>
+>             if "CPU_USED:" in line:
+>                 val = float(line.split(':')[1].strip())
+>                 if not is_legacy:
+>                     val = round(val)  # Round modern floating-point values
+>                 if 5 <= val <= 95:
+>                     cpu_values.append(val)
+>             elif "MEM_USED:" in line:
+>                 val = float(line.split(':')[1].strip())
+>                 if not is_legacy:
+>                     val = round(val)
+>                 if 5 <= val <= 95:
+>                     mem_values.append(val)
+>             elif "DISK_USED:" in line:
+>                 val = float(line.split(':')[1].strip())
+>                 if not is_legacy:
+>                     val = round(val)
+>                 if 5 <= val <= 95:
+>                     disk_values.append(val)
+>
+>         if active_file and (cpu_values or mem_values or disk_values):
+>             file_count[0] += 1
+>             if cpu_values:
+>                 metric_sums[0] += sum(cpu_values)
+>                 metric_counts[0] += len(cpu_values)
+>             if mem_values:
+>                 metric_sums[1] += sum(mem_values)
+>                 metric_counts[1] += len(mem_values)
+>             if disk_values:
+>                 metric_sums[2] += sum(disk_values)
+>                 metric_counts[2] += len(disk_values)
+>     except Exception as e:
+>         print(f"Error processing {filepath}: {e}", file=sys.stderr)
+>
+> def main():
+>     """Main processing function."""
+>     script_dir = Path(__file__).parent
+>     base_dir = Path.cwd()
+>     manifest_path = base_dir / 'config' / 'manifest.txt'
+>
+>     # Read manifest file
+>     active_dirs = []
+>     try:
+>         with open(manifest_path, 'r') as f:
+>             for line in f:
+>                 line = line.strip()
+>                 if line and not line.startswith('#'):
+>                     active_dirs.append(line)
+>     except FileNotFoundError:
+>         print(f"Manifest file not found: {manifest_path}", file=sys.stderr)
+>         return 1
+>
+>     # Initialize metrics
+>     file_count = [0]
+>     metric_sums = [0.0, 0.0, 0.0]  # CPU, MEM, DISK
+>     metric_counts = [0, 0, 0]
+>
+>     # Process files
+>     for active_dir in active_dirs:
+>         full_path = base_dir / 'raw' / active_dir
+>         if full_path.exists():
+>             for root, _, files in os.walk(full_path):
+>                 for file in files:
+>                     if file.endswith('_202301.log'):
+>                         filepath = Path(root) / file
+>                         is_legacy = 'legacy' in file
+>                         process_file(filepath, is_legacy, file_count, metric_sums, metric_counts)
+>
+>     # Calculate averages
+>     avg_cpu = int(metric_sums[0] / metric_counts[0]) if metric_counts[0] > 0 else 0
+>     avg_mem = int(metric_sums[1] / metric_counts[1]) if metric_counts[1] > 0 else 0
+>     avg_disk = int(metric_sums[2] / metric_counts[2]) if metric_counts[2] > 0 else 0
+>
+>     # Prepare results
+>     results = {
+>         'AVG_CPU_USED': avg_cpu,
+>         'AVG_MEM_USED': avg_mem,
+>         'AVG_DISK_USED': avg_disk,
+>         'total_files_processed': file_count[0]
+>     }
+>
+>     # Write intermediate JSON
+>     intermediate_path = base_dir / 'reports' / 'intermediate.json'
+>     with open(intermediate_path, 'w') as f:
+>         json.dump(results, f, separators=(',', ':'))
+>
+>     # Write summary log
+>     summary_path = base_dir / 'reports' / 'summary_202301.log'
+>     with open(summary_path, 'wb') as f:
+>         f.write(f"AVG_CPU_USED={results['AVG_CPU_USED']}\r\n".encode('utf-8'))
+>         f.write(f"AVG_MEM_USED={results['AVG_MEM_USED']}\r\n".encode('utf-8'))
+>         f.write(f"AVG_DISK_USED={results['AVG_DISK_USED']}\r\n".encode('utf-8'))
+>         f.write(f"source_size={os.path.getsize(intermediate_path)}\r\n".encode('utf-8'))
+>
+>     # Create binary checksum
+>     md5_hash = hashlib.md5()
+>     with open(summary_path, 'rb') as f:
+>         md5_hash.update(f.read())
+>
+>     checksum_path = base_dir / 'reports' / 'checksum.bin'
+>     with open(checksum_path, 'wb') as f:
+>         f.write(md5_hash.digest())
+>
+>     # Get SHA256 of the checksum file
+>     sha256_hash = hashlib.sha256()
+>     with open(checksum_path, 'rb') as f:
+>         sha256_hash.update(f.read())
+>
+>     # Update symlink
+>     latest_path = base_dir / 'latest'
+>     if latest_path.exists():
+>         latest_path.unlink()
+>     latest_path.symlink_to(summary_path, absolute=True)
+>
+>     # Append to operations log
+>     ops_log_path = base_dir / 'operations.log'
+>     with open(ops_log_path, 'a') as f:
+>         f.write(f"Publication 2023-01: {results['total_files_processed']} files, Checksum: {sha256_hash.hexdigest()}\n")
+>
+>     print("Processing complete. Results are in the reports directory.")
+>     return 0
+>
+> if __name__ == '__main__':
+>     sys.exit(main())
+> EOFchmod +x /tmp/capacity_work/process_data.py
+> python3 /tmp/capacity_work/process_data.py
+>

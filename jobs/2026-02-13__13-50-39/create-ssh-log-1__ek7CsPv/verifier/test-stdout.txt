@@ -1,0 +1,119 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 4 items
+
+../../tests/test_final_state.py::test_cleaned_log_exists_and_sanitized FAILED [ 25%]
+../../tests/test_final_state.py::test_report_structure_mixed_delimiters FAILED [ 50%]
+../../tests/test_final_state.py::test_report_content_logic FAILED        [ 75%]
+../../tests/test_final_state.py::test_checksum_file FAILED               [100%]
+
+=================================== FAILURES ===================================
+____________________ test_cleaned_log_exists_and_sanitized _____________________
+
+    def test_cleaned_log_exists_and_sanitized():
+        """Check that the intermediate clean log exists and has no null bytes."""
+        assert os.path.exists(CLEAN_LOG), "Intermediate file cleaned_combined.log is missing."
+    
+        with open(CLEAN_LOG, 'rb') as f:
+            content = f.read()
+    
+        # Check for null bytes
+        assert b'\x00' not in content, "cleaned_combined.log still contains null bytes."
+    
+        # Check that it contains content from both logs
+        decoded = content.decode('utf-8', errors='replace')
+>       assert "10.0.0.1" in decoded, "Missing content from plain text log."
+E       AssertionError: Missing content from plain text log.
+E       assert '10.0.0.1' in '#     \n          ...   \n          ...   \n'
+
+/tests/test_final_state.py:45: AssertionError
+____________________ test_report_structure_mixed_delimiters ____________________
+
+    def test_report_structure_mixed_delimiters():
+        """Verify the bizarre CSV format: Header uses comma, Data uses semicolon."""
+        assert os.path.exists(REPORT_FILE), "report.csv is missing."
+    
+        with open(REPORT_FILE, 'r', encoding='utf-8') as f:
+            lines = [line.strip() for line in f.readlines() if line.strip()]
+    
+        assert len(lines) >= 2, "Report file is empty or missing data."
+    
+        # Check Header
+        header = lines[0]
+>       assert "," in header and ";" not in header, "Header must use commas, not semicolons."
+E       AssertionError: Header must use commas, not semicolons.
+E       assert (',' in 'IP,First_Seen_UTC;Attempt_Count' and ';' not in 'IP,First_Se...ttempt_Count'
+E         
+E         ';' is contained here:
+E           IP,First_Seen_UTC;Attempt_Count
+E         ?                  +)
+
+/tests/test_final_state.py:63: AssertionError
+__________________________ test_report_content_logic ___________________________
+
+    def test_report_content_logic():
+        """
+        Verify the data logic.
+        Config min_port = 45000.
+    
+        10.0.0.1:
+          - 10:05 EST (15:05 UTC) | Port 46000 | Failed | Valid -> COUNT
+          - 10:15 EST (15:15 UTC) | Port 46002 | Failed | Invalid -> COUNT
+          -> Total: 2. First Seen: 15:05 UTC.
+    
+        192.168.1.100:
+          - 09:00 EST (14:00 UTC) | Port 50000 | Failed -> COUNT
+          - 09:01 EST (14:01 UTC) | Port 50001 | Failed -> COUNT
+          - 09:03 EST | Port 22 | Failed -> IGNORED (< 45000)
+          -> Total: 2. First Seen: 14:00 UTC.
+    
+        192.168.1.50:
+          - 10:00 EST | Port 44000 | Failed -> IGNORED (< 45000)
+    
+        Sorting:
+        1. 192.168.1.100 (Count 2, First Seen 14:00 UTC)
+        2. 10.0.0.1 (Count 2, First Seen 15:05 UTC)
+        (192... is first because tie-breaker is First_Seen DESC? No, First_Seen DESC means 'most recent first'.)
+        Wait, instruction says: "If counts are equal, break ties by First_Seen_UTC (descending / most recent first)."
+        15:05 is > 14:00. So 10.0.0.1 comes BEFORE 192.168.1.100.
+    
+        Expected Order:
+        1. 10.0.0.1;2023-01-10T15:05:00Z;2
+        2. 192.168.1.100;2023-01-10T14:00:00Z;2
+        """
+        with open(REPORT_FILE, 'r', encoding='utf-8') as f:
+            lines = [l.strip() for l in f.readlines() if l.strip()]
+    
+        data_rows = lines[1:]
+>       assert len(data_rows) == 2, f"Expected 2 data rows, found {len(data_rows)}"
+E       AssertionError: Expected 2 data rows, found 1
+E       assert 1 == 2
+E        +  where 1 = len(['192.168.1.100;2'])
+
+/tests/test_final_state.py:104: AssertionError
+______________________________ test_checksum_file ______________________________
+
+    def test_checksum_file():
+        """Verify the SHA1 checksum file exists and is correct."""
+        assert os.path.exists(CHECKSUM_FILE), "Checksum file is missing."
+    
+        expected_sha1 = calculate_sha1(REPORT_FILE)
+        with open(CHECKSUM_FILE, 'r') as f:
+            content = f.read().strip()
+    
+>       assert content == expected_sha1, "Checksum file content does not match report.csv hash."
+E       AssertionError: Checksum file content does not match report.csv hash.
+E       assert '4630d652b95f...ut/report.csv' == '4630d652b95f...759b9f9d3cbba'
+E         
+E         - 4630d652b95f47492e66d93b14a759b9f9d3cbba
+E         + 4630d652b95f47492e66d93b14a759b9f9d3cbba  /home/user/out/report.csv
+
+/tests/test_final_state.py:126: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_cleaned_log_exists_and_sanitized
+FAILED ../../tests/test_final_state.py::test_report_structure_mixed_delimiters
+FAILED ../../tests/test_final_state.py::test_report_content_logic - Assertion...
+FAILED ../../tests/test_final_state.py::test_checksum_file - AssertionError: ...
+============================== 4 failed in 0.03s ===============================

@@ -1,0 +1,70 @@
+[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:~# clear
+[?2004l[H[J[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:~# grep '^current_badge_id=' /home/user/app/config/system_settings.conf | cut -d'=' -f2 | tr -d '"'\n' > /home/user/diag/badge_id.txt
+[?2004l[?2004h> export DAILY_BADGE_ID=$(cat /home/user/diag/badge_id.txt)
+[?2004l[?2004h> find /home/user/app/logs -type f -size +512c -mtime -7 \( -not -path '*/test/*' -not -path '*/mock/*' -not -path '*/staging/*' \) -print0 | xargs -0 grep -Zl '\[SECURITY-AUDIT-FAIL\]' > /home/user/diag/matching_files.txt
+[?2004l[?2004h> cd /home/user/app/logs
+[?2004l[?2004h> export MANIFEST_JSON='[]'; while IFS= read -r -d '' filepath; do
+[?2004l[?2004h>   echo "Processing $filepath..."
+[?2004l[?2004h>   file_size=$(stat -c%s "\$filepath")
+[?2004l[?2004h>   # Calculate HMAC-SHA256 signature
+[?2004l[?2004h>   signature=$(echo -n "\$filepath" | hmacsha256 \"\$DAILY_BADGE_ID\" | awk '{print $1}' | tr -d '\n')
+[?2004l[?2004h>   # Create JSON object
+[?2004l[?2004h>   json_obj=$(echo \{"\"filepath\":\"\$filepath\",\"size\":\$file_size,\"signature\":\"\$signature\"\"\})
+[?2004l[?2004h>   # Add to manifest array
+[?2004l[?2004h>   if [ \$MANIFEST_JSON = '[]' ]; then
+[?2004l[?2004h>     export MANIFEST_JSON="\$json_obj"
+[?2004l[?2004h>   else
+[?2004l[?2004h>     export MANIFEST_JSON="\$MANIFEST_JSON,\$json_obj"
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   # Add file to tarball with relative path
+[?2004l[?2004h>   tar -rh "\$filepath" -f /home/user/diag/forensic_bundle.tar --transform 's,^\./,,'
+[?2004l[?2004h> done < /home/user/diag/matching_files.txt
+[?2004l[?2004h> gzip /home/user/diag/forensic_bundle.tar
+[?2004l[?2004h> cd /home/user/diag
+[?2004l[?2004h> echo "[$MANIFEST_JSON]" > custody_manifest.json
+[?2004l[?2004h> export SORTED_MANIFEST=$(cat custody_manifest.json | jq -c 'sort_by(.filepath)' | sed 's/\/\//\/\//g')
+[?2004lbash: syntax error near unexpected token `('
+[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:~# echo \"\$SORTED_MANIFEST\" > custody_manifest.json
+[?2004l[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:~# cd /home/user/diag
+[?2004l[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:/home/user/diag# export SORTED_MANIFEST=$(cat custody_manifest.json | jq -c 'sort_by(.filepath)')
+[?2004lbash: jq: command not found
+cat: custody_manifest.json: No such file or directory
+[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:/home/user/diag# echo \"\$SORTED_MANIFEST\" > custody_manifest.json
+[?2004l[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:/home/user/diag# rm -f badge_id.txt matching_files.txt
+[?2004l[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:/home/user/diag# echo "[$MANIFEST_JSON]" > custody_manifest.json
+[?2004l[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:/home/user/diag# sed -i '1i\[' custody_manifest.json
+[?2004l[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:/home/user/diag# sed -i -z 's/\n\$/\]/' custody_manifest.json
+[?2004l[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:/home/user/diag# cat custody_manifest.json
+[?2004l[
+[]
+[?2004hroot@70bd5ebd-5bb1-4292-b611-7a4c10b4e8ae:/home/user/diag# tar -tzf /home/user/diag/forensic_bundle.tar.gz | while IFS= read -r file; do
+[?2004l[?2004h>   echo "Processing $file..."
+[?2004l[?2004h>   absolute_path="/home/user/app/logs/$file"
+[?2004l[?2004h>   file_size=$(stat -c%s "\$absolute_path")
+[?2004l[?2004h>   signature=$(echo -n "\$absolute_path" | hmacsha256 \"\$DAILY_BADGE_ID\" | awk '{print $1}' | tr -d '\n')
+[?2004l[?2004h>   echo \"{\\\"filepath\\\":\\\"\$absolute_path\\\",\\\"size\\\":\$file_size,\\\"signature\\\":\\\"\$signature\\\"}\\" >> temp_manifest.json
+[?2004l[?2004h> done
+[?2004l[?2004h> tar -tzf forensic_bundle.tar.gz > archive_contents.txt
+[?2004l[?2004h> cat archive_contents.txt
+[?2004l[?2004h> echo "[" > custody_manifest.json
+[?2004l[?2004h> while IFS= read -r file; do
+[?2004l[?2004h>   absolute_path="/home/user/app/logs/$file"
+[?2004l[?2004h>   file_size=$(stat -c%s "\$absolute_path")
+[?2004l[?2004h>   signature=$(echo -n "\$absolute_path" | hmacsha256 \"\$DAILY_BADGE_ID\" | awk '{print $1}' | tr -d '\n')
+[?2004l[?2004h>   echo \"{\\\"filepath\\\":\\\"\$absolute_path\\\",\\\"size\\\":\$file_size,\\\"signature\\\":\\\"\$signature\\\"}\" >> custody_manifest.json
+[?2004l[?2004h> done < archive_contents.txt
+[?2004l[?2004h> echo "]" >> custody_manifest.json
+[?2004l[?2004h> ls -la forensic_bundle.tar.gz
+[?2004l[?2004h> tar -tzf forensic_bundle.tar.gz
+[?2004l[?2004h> wc -l custody_manifest.json
+[?2004l[?2004h> rm -f archive_contents.txt temp.json
+[?2004l[?2004h> echo "Deliverables created:"
+[?2004l[?2004h> echo "1. /home/user/diag/forensic_bundle.tar.gz"
+[?2004l[?2004h> echo "2. /home/user/diag/custody_manifest.json"
+[?2004l[?2004h> ls -la /home/user/diag/
+[?2004l[?2004h> file /home/user/diag/forensic_bundle.tar.gz
+[?2004l[?2004h> cat /home/user/diag/custody_manifest.json
+[?2004l[?2004h> 

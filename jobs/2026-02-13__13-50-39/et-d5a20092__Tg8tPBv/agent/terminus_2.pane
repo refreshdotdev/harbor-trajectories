@@ -1,0 +1,182 @@
+[?2004hroot@5796a375-dbf6-41c9-a2c9-9c12d187c8ad:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@5796a375-dbf6-41c9-a2c9-9c12d187c8ad:/home/user# clear
+[?2004l[H[J[?2004hroot@5796a375-dbf6-41c9-a2c9-9c12d187c8ad:/home/user# mkdir -p /tmp/capacity_work
+[?2004l[?2004hroot@5796a375-dbf6-41c9-a2c9-9c12d187c8ad:/home/user# cd /home/user/capacity
+[?2004l[?2004hroot@5796a375-dbf6-41c9-a2c9-9c12d187c8ad:/home/user/capacity# cat config/manifest.txt
+[?2004l# Active Regions for Jan 2023
+region_alpha
+# Region Gamma is deprecated
+region_beta
+[?2004hroot@5796a375-dbf6-41c9-a2c9-9c12d187c8ad:/home/user/capacity# cat > /tmp/capacity_work/process_data.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> """
+[?2004l[?2004h> Process log files for capacity planning.
+[?2004l[?2004h> """
+[?2004l[?2004h> import os
+[?2004l[?2004h> import json
+[?2004l[?2004h> import struct
+[?2004l[?2004h> import hashlib
+[?2004l[?2004h> import sys
+[?2004l[?2004h> from pathlib import Path
+[?2004l[?2004h> 
+[?2004l[?2004h> def process_file(filepath, is_legacy, file_count, metric_sums, metric_counts):
+[?2004l[?2004h>     """Process a single log file."""
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         if is_legacy:
+[?2004l[?2004h>             with open(filepath, 'r', encoding='ISO-8859-1') as f:
+[?2004l[?2004h>                 lines = f.readlines()
+[?2004l[?2004h>         else:
+[?2004l[?2004h>             with open(filepath, 'r', encoding='utf-8-sig') as f:  # Handles BOM
+[?2004l[?2004h>                 lines = f.readlines()
+[?2004l[?2004h>         
+[?2004l[?2004h>         active_file = False
+[?2004l[?2004h>         cpu_values = []
+[?2004l[?2004h>         mem_values = []
+[?2004l[?2004h>         disk_values = []
+[?2004l[?2004h>         
+[?2004l[?2004h>         for line in lines:
+[?2004l[?2004h>             if "meta_status: active" in line:
+[?2004l[?2004h>                 active_file = True
+[?2004l[?2004h>                 continue
+[?2004l[?2004h>             
+[?2004l[?2004h>             if "CPU_USED:" in line:
+[?2004l[?2004h>                 val = float(line.split(':')[1].strip())
+[?2004l[?2004h>                 if not is_legacy:
+[?2004l[?2004h>                     val = round(val)  # Round modern floating-point values
+[?2004l[?2004h>                 if 5 <= val <= 95:
+[?2004l[?2004h>                     cpu_values.append(val)
+[?2004l[?2004h>             elif "MEM_USED:" in line:
+[?2004l[?2004h>                 val = float(line.split(':')[1].strip())
+[?2004l[?2004h>                 if not is_legacy:
+[?2004l[?2004h>                     val = round(val)
+[?2004l[?2004h>                 if 5 <= val <= 95:
+[?2004l[?2004h>                     mem_values.append(val)
+[?2004l[?2004h>             elif "DISK_USED:" in line:
+[?2004l[?2004h>                 val = float(line.split(':')[1].strip())
+[?2004l[?2004h>                 if not is_legacy:
+[?2004l[?2004h>                     val = round(val)
+[?2004l[?2004h>                 if 5 <= val <= 95:
+[?2004l[?2004h>                     disk_values.append(val)
+[?2004l[?2004h>         
+[?2004l[?2004h>         if active_file and (cpu_values or mem_values or disk_values):
+[?2004l[?2004h>             file_count[0] += 1
+[?2004l[?2004h>             if cpu_values:
+[?2004l[?2004h>                 metric_sums[0] += sum(cpu_values)
+[?2004l[?2004h>                 metric_counts[0] += len(cpu_values)
+[?2004l[?2004h>             if mem_values:
+[?2004l[?2004h>                 metric_sums[1] += sum(mem_values)
+[?2004l[?2004h>                 metric_counts[1] += len(mem_values)
+[?2004l[?2004h>             if disk_values:
+[?2004l[?2004h>                 metric_sums[2] += sum(disk_values)
+[?2004l[?2004h>                 metric_counts[2] += len(disk_values)
+[?2004l[?2004h>     except Exception as e:
+[?2004l[?2004h>         print(f"Error processing {filepath}: {e}", file=sys.stderr)
+[?2004l[?2004h> 
+[?2004l[?2004h> def main():
+[?2004l[?2004h>     """Main processing function."""
+[?2004l[?2004h>     script_dir = Path(__file__).parent
+[?2004l[?2004h>     base_dir = Path.cwd()
+[?2004l[?2004h>     manifest_path = base_dir / 'config' / 'manifest.txt'
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Read manifest file
+[?2004l[?2004h>     active_dirs = []
+[?2004l[?2004h>     try:
+[?2004l[?2004h>         with open(manifest_path, 'r') as f:
+[?2004l[?2004h>             for line in f:
+[?2004l[?2004h>                 line = line.strip()
+[?2004l[?2004h>                 if line and not line.startswith('#'):
+[?2004l[?2004h>                     active_dirs.append(line)
+[?2004l[?2004h>     except FileNotFoundError:
+[?2004l[?2004h>         print(f"Manifest file not found: {manifest_path}", file=sys.stderr)
+[?2004l[?2004h>         return 1
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Initialize metrics
+[?2004l[?2004h>     file_count = [0]
+[?2004l[?2004h>     metric_sums = [0.0, 0.0, 0.0]  # CPU, MEM, DISK
+[?2004l[?2004h>     metric_counts = [0, 0, 0]
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Process files
+[?2004l[?2004h>     for active_dir in active_dirs:
+[?2004l[?2004h>         full_path = base_dir / 'raw' / active_dir
+[?2004l[?2004h>         if full_path.exists():
+[?2004l[?2004h>             for root, _, files in os.walk(full_path):
+[?2004l[?2004h>                 for file in files:
+[?2004l[?2004h>                     if file.endswith('_202301.log'):
+[?2004l[?2004h>                         filepath = Path(root) / file
+[?2004l[?2004h>                         is_legacy = 'legacy' in file
+[?2004l[?2004h>                         process_file(filepath, is_legacy, file_count, metric_sums, metric_counts)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Calculate averages
+[?2004l[?2004h>     avg_cpu = int(metric_sums[0] / metric_counts[0]) if metric_counts[0] > 0 else 0
+[?2004l[?2004h>     avg_mem = int(metric_sums[1] / metric_counts[1]) if metric_counts[1] > 0 else 0
+[?2004l[?2004h>     avg_disk = int(metric_sums[2] / metric_counts[2]) if metric_counts[2] > 0 else 0
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Prepare results
+[?2004l[?2004h>     results = {
+[?2004l[?2004h>         'AVG_CPU_USED': avg_cpu,
+[?2004l[?2004h>         'AVG_MEM_USED': avg_mem,
+[?2004l[?2004h>         'AVG_DISK_USED': avg_disk,
+[?2004l[?2004h>         'total_files_processed': file_count[0]
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write intermediate JSON
+[?2004l[?2004h>     intermediate_path = base_dir / 'reports' / 'intermediate.json'
+[?2004l[?2004h>     with open(intermediate_path, 'w') as f:
+[?2004l[?2004h>         json.dump(results, f, separators=(',', ':'))
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write summary log
+[?2004l[?2004h>     summary_path = base_dir / 'reports' / 'summary_202301.log'
+[?2004l[?2004h>     with open(summary_path, 'wb') as f:
+[?2004l[?2004h>         f.write(f"AVG_CPU_USED={results['AVG_CPU_USED']}\r\n".encode('utf-8'))
+[?2004l[?2004h>         f.write(f"AVG_MEM_USED={results['AVG_MEM_USED']}\r\n".encode('utf-8'))
+[?2004l[?2004h>         f.write(f"AVG_DISK_USED={results['AVG_DISK_USED']}\r\n".encode('utf-8'))
+[?2004l[?2004h>         f.write(f"source_size={os.path.getsize(intermediate_path)}\r\n".encode('utf-8'))
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Create binary checksum
+[?2004l[?2004h>     md5_hash = hashlib.md5()
+[?2004l[?2004h>     with open(summary_path, 'rb') as f:
+[?2004l[?2004h>         md5_hash.update(f.read())
+[?2004l[?2004h>     
+[?2004l[?2004h>     checksum_path = base_dir / 'reports' / 'checksum.bin'
+[?2004l[?2004h>     with open(checksum_path, 'wb') as f:
+[?2004l[?2004h>         f.write(md5_hash.digest())
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get SHA256 of the checksum file
+[?2004l[?2004h>     sha256_hash = hashlib.sha256()
+[?2004l[?2004h>     with open(checksum_path, 'rb') as f:
+[?2004l[?2004h>         sha256_hash.update(f.read())
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Update symlink
+[?2004l[?2004h>     latest_path = base_dir / 'latest'
+[?2004l[?2004h>     if latest_path.exists():
+[?2004l[?2004h>         latest_path.unlink()
+[?2004l[?2004h>     latest_path.symlink_to(summary_path, absolute=True)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Append to operations log
+[?2004l[?2004h>     ops_log_path = base_dir / 'operations.log'
+[?2004l[?2004h>     with open(ops_log_path, 'a') as f:
+[?2004l[?2004h>         f.write(f"Publication 2023-01: {results['total_files_processed']} files, Checksum: {sha256_hash.hexdigest()}\n")
+[?2004l[?2004h>     
+[?2004l[?2004h>     print("Processing complete. Results are in the reports directory.")
+[?2004l[?2004h>     return 0
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     sys.exit(main())
+[?2004l[?2004h> EOFchmod +x /tmp/capacity_work/process_data.py
+[?2004l[?2004h> python3 /tmp/capacity_work/process_data.py
+[?2004l[?2004h> ls -la reports/
+[?2004l[?2004h> ls -la reports/
+[?2004l[?2004h> wc -c reports/intermediate.json
+[?2004l[?2004h> od -c reports/summary_202301.log | head -3
+[?2004l[?2004h> hexdump -C reports/checksum.bin
+[?2004l[?2004h> tail -1 operations.log
+[?2004l[?2004h> bash -c "ls -la reports/"
+[?2004l[?2004h> bash -c "cat reports/intermediate.json"
+[?2004l[?2004h> 
+[?2004l[?2004h> ls
+[?2004l[?2004h> bash -c 'cd /home/user/capacity && ls -la reports/'
+[?2004l[?2004h> exec bash -c "cd /home/user/capacity && ls reports/"
+[?2004l[?2004h> rm -rf /tmp/capacity_work
+[?2004l[?2004h> 

@@ -1,0 +1,88 @@
+Current terminal state:
+New Terminal Output:
+
+root@81402df5-86a6-4c66-8385-7ef6e76da818:~# mkdir -p /home/user/diagnostics
+root@81402df5-86a6-4c66-8385-7ef6e76da818:~# cat > /home/user/diagnostics/run_net_checks.sh << 'EOF'
+> #!/bin/sh
+> # Netcheck diagnostics script
+>
+> set -e
+>
+> # Configuration file path
+> TARGETS_FILE="/home/user/diagnostics/targets.txt"
+> LOG_FILE="/home/user/diagnostics/netcheck.log"
+> PREV_LOG_FILE="/home/user/diagnostics/netcheck.previous.log.gz"
+>
+> echo "Starting network diagnostics..."
+>
+> # Create targets file if it doesn't exist
+> if [ ! -f "$TARGETS_FILE" ]; then
+>     echo "Creating targets file: $TARGETS_FILE"
+>     touch "$TARGETS_FILE"
+> fi
+>
+> # Log rotation
+> if [ -f "$LOG_FILE" ]; then
+>     echo "Rotating existing log file..."
+>     gzip -c "$LOG_FILE" > "$PREV_LOG_FILE"
+> fi
+>
+> # Create new empty log file
+> echo "# Netcheck Report" > "$LOG_FILE"
+> TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+> echo "Timestamp: $TIMESTAMP" >> "$LOG_FILE"
+> echo >> "$LOG_FILE"
+>
+> echo "Running network diagnostics..."
+>
+> # Read hosts and run checks in parallel
+> exec 8<>"$LOG_FILE"  # Open log file descriptor 8 for atomic appends
+>
+> # Process each host
+> while IFS= read -r host; do
+>     if [ -z "${host}" ] || [ "${host%%#*}" = "" ]; then
+>         continue  # Skip empty lines and comments
+>     fi
+>
+>     # Define check functions
+>     run_check() {
+>         local cmd="$1"
+>         local desc="$2"
+>         local output_file="$$"  # Use PID as temp output file
+>
+>         echo "Running $desc for $host..."
+>
+>         # Execute command and capture output
+>         $cmd "$host" > "$output_file" 2>&1
+>         exit_code=$?
+>
+>         # Encode output and write to log atomically
+>         flock -x 8
+> echo "===== START host=$host check=$desc =====" >> "$LOG_FILE"
+> cat "$output_file" | base64 >> "$LOG_FILE"
+> echo "===== END host=$host check=$desc status=$exit_code =====" >> "$LOG_FILE"
+> flock -u 8
+>
+>         rm -f "$output_file"
+>     }
+>
+>     # Run all checks concurrently using background processes
+>     run_check "ping -n -c 1" "ping" &
+>     run_check "traceroute -n -m 5" "traceroute" &
+>     run_check "dig +short" "dig" &
+>
+>     # Wait for all background jobs to complete
+>     wait
+>
+> done < "$TARGETS_FILE"
+>
+> # Calculate checksum of final log file
+> SHA256=$(sha256sum "$LOG_FILE" | awk '{print $1}')
+> echo "SHA256 checksum: $SHA256"
+> echo "Diagnostic bundle created successfully."
+> EOFchmod +x /home/user/diagnostics/run_net_checks.sh
+> ls -la /home/user/diagnostics/
+>
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

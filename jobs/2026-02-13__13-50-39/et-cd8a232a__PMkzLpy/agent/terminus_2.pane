@@ -1,0 +1,154 @@
+[?2004hroot@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user# clear
+[?2004l[H[J[?2004hroot@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user# mkdir -p /home/user/scripts
+[?2004l[?2004hroot@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user# cat > /home/user/scripts/filter_errors.sh << 'EOF'
+[?2004lnts
+# Create temporary file for sorted CSV
+csv_tem[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # filter_errors.sh - Regex-based log filtering utility
+[?2004l[?2004h> # Extracts "critical" lines from application log and produces filtered log with redactions
+[?2004l[?2004h> # and CSV summary of error categories.
+[?2004l[?2004h> 
+[?2004l[?2004h> # Function to print usage information
+[?2004l[?2004h> usage() {
+[?2004l[?2004h>     echo "Usage: $0 <input_log> <output_dir>" >&2
+[?2004l[?2004h>     echo "Filters critical errors from input log and generates output files in output_dir." >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004lt[?2004h> # Check if exactly two positional arguments are provided
+[?2004l[?2004h> if [ "$#" -ne 2 ]; then
+[?2004l[?2004h>     usage
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> input_log="$1"
+[?2004l[?2004h> output_dir="$2"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Validate input log exists and is readable
+[?2004l[?2004h> if [ ! -f "$input_log" ] || [ ! -r "$input_log" ]; then
+[?2004l[?2004h>     echo "Error: Input log file '${input_log}' not found or not readable." >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create output directory if it doesn't exist
+[?2004l[?2004h> mkdir -p "$output_dir"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get absolute paths for logging
+[?2004l[?2004h> abs_input_log="$(realpath "$input_log")"
+[?2004l[?2004h> abs_output_dir="$(realpath "$output_dir")"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize output files (overwrite if exist)
+[?2004l[?2004h> critical_log="${output_dir}/critical_errors.log"
+[?2004l[?2004h> csv_summary="${output_dir}/error_summary.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write header to critical_errors.log
+[?2004l[?2004h> echo "# Source: ${abs_input_log}" > "${critical_log}"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "error_category,count" > "${csv_summary}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize variables for CSV summary
+[?2004l[?2004h> declare -A error_counts
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process log file line by line
+[?2004l[?2004h> current_entry=""
+[?2004l[?2004h> entry_category=""
+[?2004l[?2004h> in_entry=false
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read input log file
+[?2004l[?2004h> while IFS= read -r line; do
+[?2004l[?2004h>     # Check if line starts with timestamp pattern [YYYY-MM-DD...
+[?2004l[?2004h>     if [[ "$line" =~ ^\[[0-9]{4}-[0-9]{2}-[0-9]{2} ]]; then
+[?2004l[?2004h>         # If we were in an entry, process the completed previous entry
+[?2004l[?2004h>         if $in_entry; then
+[?2004l[?2004h>             # If previous entry matched critical criteria, write to critical log
+[?2004l[?2004h>             if [ -n "$entry_category" ]; then
+[?2004l[?2004h>                 # Redact email addresses
+[?2004l[?2004h>                 current_entry="$(echo "$current_entry" | sed -E 's/\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/<REDACTED>/g')"
+[?2004l[?2004h>                 echo -e "$current_entry" >> "${critical_log}"
+[?2004l[?2004h>                 
+[?2004l[?2004h>                 # Update error counts in associative array
+[?2004l[?2004h>                 if [ -n "${error_counts[$entry_category]}" ]; then
+[?2004l[?2004h>                     error_counts[$entry_category]=$((error_counts[$entry_category] + 1))
+[?2004l[?2004h>                 else
+[?2004l[?2004h>                     error_counts[$entry_category]=1
+[?2004l[?2004h>                 fi
+[?2004l[?2004h>             fi
+[?2004l[?2004h>             
+[?2004l[?2004h>             # Reset for new entry
+[?2004l[?2004h>             current_entry=""
+[?2004l[?2004h>             entry_category=""
+[?2004l[?2004h>             in_entry=false
+[?2004l[?2004h>         fi
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Check if current line matches any critical regex patterns
+[?2004l[?2004h>         entry_category=""
+[?2004l[?2004h>         if [[ "$line" == *"ERROR"* ]] || [[ "$line" == *"FATAL"* ]] || [[ "$line" =~ HTTP\/1\.1\ 5[0-9]{2} ]]; then
+[?2004l[?2004h>             in_entry=true
+[?2004l[?2004h>             # Determine error category (first match wins)
+[?2004l[?2004h>             if [[ "$line" == *"Payment failed"* ]]; then
+[?2004l[?2004h>                 entry_category="PAYMENT_FAILURE"
+[?2004l[?2004h>             elif [[ "$line" =~ HTTP\/1\.1\ 5[0-9]{2} ]]; then
+[?2004l[?2004h>                 entry_category="HTTP_5XX"
+[?2004l[?2004h>             elif [[ "$line" == *"FATAL"* ]]; then
+[?2004l[?2004h>                 entry_category="FATAL"
+[?2004l[?2004h>             fi
+[?2004l[?2004h>         else
+[?2004l[?2004h>             # Line doesn't match critical patterns, skip entry
+[?2004l[?2004h>             continue
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     else
+[?2004l[?2004h>         # Line doesn't start with timestamp - continuation of previous entry
+[?2004l[?2004h>         if $in_entry; then
+[?2004l[?2004h>             # Only continue if we're in a critical entry
+[?2004l[?2004h>             current_entry+="$line\n"
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # If we're in an entry, add the current line
+[?2004l[?2004h>     if $in_entry; then
+[?2004l[?2004h>         current_entry+="$line\n"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done < "$input_log"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process the last entry in the file
+[?2004l[?2004h> if $in_entry && [ -n "$entry_category" ]; then
+[?2004l[?2004h>     current_entry="$(echo "$current_entry" | sed -E 's/\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/<REDACTED>/g')"
+[?2004l[?2004h>     echo -e "$current_entry" >> "${critical_log}"
+[?2004l[?2004h>     
+[?2004l[?2004h>     if [ -n "${error_counts[$entry_category]}" ]; then
+[?2004l[?2004h>         error_counts[$entry_category]=$((error_counts[$entry_category] + 1))
+[?2004l[?2004h>     else
+[?2004l[?2004h>         error_counts[$entry_category]=1
+[?2004l[?2004h>     fi
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate CSV summary from error counts
+[?2004l[?2004h> # Create temporary file for sorted CSV
+[?2004l[?2004h> csv_temp="${output_dir}/error_summary_temp.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write header to temp file
+[?2004l[?2004h> echo "error_category,count" > "${csv_temp}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write error counts to temp file
+[?2004l[?2004h> for category in "${!error_counts[@]}"; do
+[?2004l[?2004h>     echo "$category,${error_counts[$category]}" >> "${csv_temp}"
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort CSV: first by count descending, then by category ascending
+[?2004l[?2004h> sort -t, -k2,2nr -k1,1 ${csv_temp} | tail -n +2 >> "${csv_summary}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Remove temporary file
+[?2004l[?2004h> rm -f "${csv_temp}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Log successful execution
+[?2004l[?2004h> timestamp=$(date '+%Y-%m-%d|%H:%M:%S')
+[?2004l[?2004h> echo "${timestamp}|input=${abs_input_log}|output_dir=${abs_output_dir}|status=OK" >> /home/user/filter_run.log
+[?2004l[?2004h> 
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user# chmod +x /home/user/scripts/filter_errors.sh
+[?2004l[?2004hroot@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user# echo "Script created successfully at /home/user/scripts/filter_errors.sh"
+[?2004lScript created successfully at /home/user/scripts/filter_errors.sh
+[?2004hroot@fd4a139f-8acc-4084-be6b-6e74425ff41e:/home/user# 

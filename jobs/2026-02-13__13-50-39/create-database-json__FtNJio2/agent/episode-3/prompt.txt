@@ -1,0 +1,266 @@
+New Terminal Output:
+
+(env) root@9270cae7-1545-417b-8906-8fb129de3aa2:/home/user/query_optimization# cat > analyze_and_optimize.py << 'EOF'
+> #!/usr/bin/env python3
+> import argparse
+imestamp, duration_str, level, message = parts
+
+                # Check date match
+                if not timestamp.startswith(f'{args.date}T'):
+                    continue
+
+                # Check level match
+                if level != '[QUERY]':
+                    continue
+
+                # Check duration
+                try:
+                    duration = float(duration_str.rstrip('ms'))
+                except ValueError:
+                    continue
+
+                if duration < min_duration_ms:
+                    continue
+
+                # Extract query text
+                query_text = message.strip()
+                if not query_text or (len(query_text) >= 2 and query_text[0] == '[' and query_text[-1] == ']'):
+                    query_text = query_text.strip('[]').strip()
+
+                raw_queries.append({'timestamp': timestamp, 'duration_ms': duration, 'query_text': query_text})
+                writer.writerow([timestamp, f'{duration:.0f}', query_text])
+
+except FileNotFoundError:
+    print(f'Log file not found: {log_file_path}', file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f'Error processing log file: {e}', file=sys.stderr)
+    sys.exit(1)
+
+# Compute SHA-256 of staging file
+try:
+    with open(STAGING_FILE, 'rb') as f:
+        sha256_hash = hashlib.sha256(f.read()).hexdigest()
+except Exception as e:
+    print(f'Error computing SHA-256: {e}', file=sys.stderr)
+    sha256_hash = 'error'
+
+# Process and analyze queries
+unique_queries = {}
+for query in raw_queries:
+    query_text = query['query_text']
+
+    # Normalize SQL
+    try:
+        parsed = sqlparse.parse(query_text)
+        if not parsed:
+            continue
+
+        normalized_sql = str(parsed[0].tokenize(keyword_case='upper', strip_comments=True, reindent=False)).strip().rstrip(';')
+    except Exception as e:
+        print(f'Error normalizing SQL: {e}', file=sys.stderr)
+        normalized_sql = query_text
+
+    if normalized_sql not in unique_queries:
+        unique_queries[normaliz> import configparser
+> import csv
+> import hashlib
+> import os
+> import re
+> import sys
+> import sqlparse
+> from datetime import datetime
+>
+> CONFIG_FILE = '/home/user/db_tools/db_config.ini'
+> STAGING_DIR = 'staging'
+> STAGING_FILE = os.path.join(STAGING_DIR, 'raw_extract.csv')
+> REPORT_FILE = 'report.json'
+> HEADER = ['timestamp', 'duration_ms', 'query_text']
+> CSV_ENCODING = 'iso-8859-1'
+> CSV_LINE_ENDING = '\r\n'
+> REPORT_ENCODING = 'utf-8'
+> REPORT_LINE_ENDING = '\n'
+>
+> # Parse command line arguments
+> parser = argparse.ArgumentParser(description='SQL query log analysis and optimization')
+> parser.add_argument('--date', type=str, required=True, help='Date to analyze (YYYY-MM-DD)')
+> args = parser.parse_args()
+>
+l> # Read configuration
+> cp = configparser.ConfigParser()
+> try:
+>     with open(CONFIG_FILE, 'r') as f:
+>         cp.read_file(f)
+>     log_file_path = cp.get('DEFAULT', 'log_file_path')
+>     min_duration_ms = float(cp.get('DEFAULT', 'min_duration_ms'))
+> except Exception as e:
+>     print(f'Error reading configuration: {e}', file=sys.stderr)
+>     sys.exit(1)
+>
+ > # Validate date format
+> try:
+>     datetime.strptime(args.date, '%Y-%m-%d')
+> except ValueError:
+>     print(f'Invalid date format: {args.date}. Use YYYY-MM-DD.', file=sys.stderr)
+>     sys.exit(1)
+>
+z> # Filter and stage queries
+> raw_queries = []
+> try:
+>     with open(log_file_path, 'r', encoding=CSV_ENCODING) as log_f:
+>         # Create staging directory
+>         os.makedirs(STAGING_DIR, exist_ok=True)
+>
+>         with open(STAGING_FILE, 'w', encoding=CSV_ENCODING, newline='') as csv_f:
+>             writer = csv.writer(csv_f, delimiter=',', lineterminator=CSV_LINE_ENDING)
+>             writer.writerow(HEADER)
+>
+>             for line in log_f:
+>                 line = line.strip()
+>                 if not line or line.startswith('#'):
+>                     continue
+>
+>                 parts = [p.strip() for p in line.split('|')]
+>                 if len(parts) != 4:
+>                     continue
+>
+>                 timestamp, duration_str, level, message = parts
+>
+>                 # Check date match
+>                 if not timestamp.startswith(f'{args.date}T'):
+>                     continue
+>
+>                 # Check level match
+>                 if level != '[QUERY]':
+>                     continue
+>
+>                 # Check duration
+>                 try:
+>                     duration = float(duration_str.rstrip('ms'))
+>                 except ValueError:
+>                     continue
+>
+>                 if duration < min_duration_ms:
+>                     continue
+>
+>                 # Extract query text
+>                 query_text = message.strip()
+>                 if not query_text or (len(query_text) >= 2 and query_text[0] == '[' and query_text[-1] == ']'):
+>                     query_text = query_text.strip('[]').strip()
+>
+>                 raw_queries.append({'timestamp': timestamp, 'duration_ms': duration, 'query_text': query_text})
+>                 writer.writerow([timestamp, f'{duration:.0f}', query_text])
+>
+> except FileNotFoundError:
+>     print(f'Log file not found: {log_file_path}', file=sys.stderr)
+>     sys.exit(1)
+> except Exception as e:
+>     print(f'Error processing log file: {e}', file=sys.stderr)
+>     sys.exit(1)
+>
+> # Compute SHA-256 of staging file
+> try:
+>     with open(STAGING_FILE, 'rb') as f:
+>         sha256_hash = hashlib.sha256(f.read()).hexdigest()
+> except Exception as e:
+>     print(f'Error computing SHA-256: {e}', file=sys.stderr)
+>     sha256_hash = 'error'
+>
+> # Process and analyze queries
+> unique_queries = {}
+> for query in raw_queries:
+>     query_text = query['query_text']
+>
+>     # Normalize SQL
+>     try:
+>         parsed = sqlparse.parse(query_text)
+>         if not parsed:
+>             continue
+>
+>         normalized_sql = str(parsed[0].tokenize(keyword_case='upper', strip_comments=True, reindent=False)).strip().rstrip(';')
+>     except Exception as e:
+>         print(f'Error normalizing SQL: {e}', file=sys.stderr)
+>         normalized_sql = query_text
+>
+>     if normalized_sql not in unique_queries:
+>         unique_queries[normalized_sql] = {'first_timestamp': query['timestamp'], 'count': 0}
+>     unique_queries[normalized_sql]['count'] += 1
+>
+> # Generate index suggestions
+> suggestions = []
+> for norm_sql, data in unique_queries.items():n    try:
+>         parsed = sqlparse.parse(norm_sql)
+>         if not parsed:
+>             continue
+>
+>         stmt = parsed[0]
+>         tokens = list(stmt.flatten())
+>
+>         # Extract table from FROM clause
+>         table_name = None
+>         for token in tokens:
+>             if token.value.upper() == 'FROM':
+>                 next_token = tokens[tokens.index(token) + 1]
+>                 if next_token.ttype is None and re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', next_token.value):
+>                     table_name = next_token.value
+>                     break
+>
+>         if not table_name:
+>             continue
+>
+>         # Extract columns from WHERE clause
+>         columns = []
+>         where_clause = False
+>         for token in tokens:
+>             if token.value.upper() == 'WHERE':
+>                 where_clause = True
+>                 continue
+>             if where_clause and token.value.upper() == 'ORDER':
+>                 break
+>             if where_clause and token.ttype is None and re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', token.value):
+>                 if token.value != table_name and token.value not in columns:
+>                     columns.append(token.value)
+>
+>         # Skip if no columns found
+>         if not columns:
+>             continue
+>
+>         # Create index suggestion
+>         index_name = f'idx_{table_name}_{"_".join(columns)}'
+>         index_def = f'CREATE INDEX {index_name} ON {table_name}({",".join(columns)});'
+>         suggestions.append({
+>             'id': data['first_timestamp'],
+>             'normalized_sql': norm_sql,
+>             'index_suggestion': index_def
+>         })
+>     except Exception as e:
+>         print(f'Error suggesting index for: {norm_sql[:50]}...: {e}', file=sys.stderr)
+>
+> # Sort suggestions by timestamp
+> suggestions.sort(key=lambda x: x['id'])
+>
+> # Generate report
+> report = {
+>     'meta': {
+>         'date_analyzed': args.date,
+>         'staging_file_sha256': sha256_hash
+>     },
+>     'stats': {
+>         'total_queries_extracted': len(raw_queries),
+>         'unique_patterns': len(unique_queries)
+>     },
+>     'suggestions': suggestions
+> }
+>
+> # Write JSON report
+> try:
+>     with open(REPORT_FILE, 'w', encoding=REPORT_ENCODING, newline=REPORT_LINE_ENDING) as f:
+>         import json
+>         json.dump(report, f, indent=2)
+> except Exception as e:
+>     print(f'Error writing report: {e}', file=sys.stderr)
+>     sys.exit(1)
+>
+> print(f'Report generated: {REPORT_FILE}')
+> EOF
+(env) root@9270cae7-1545-417b-8906-8fb129de3aa2:/home/user/query_optimization#

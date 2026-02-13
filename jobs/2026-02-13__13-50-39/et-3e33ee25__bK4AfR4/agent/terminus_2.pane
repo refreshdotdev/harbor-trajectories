@@ -1,0 +1,168 @@
+[?2004hroot@76343478-bab0-4967-8cd8-dc349a5172f7:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@76343478-bab0-4967-8cd8-dc349a5172f7:~# clear
+[?2004l[H[J[?2004hroot@76343478-bab0-4967-8cd8-dc349a5172f7:~# mkdir -p /home/user/reports
+[?2004l[?2004hroot@76343478-bab0-4967-8cd8-dc349a5172f7:~# cat > /home/user/reports/run_security_scan.sh << 'EOF'
+[?2004lH=$(date '+%s')
+DURATION=$((END_EPOCH - START_EPOCH))
+[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004lV[?2004h> # Enterprise Security Baseline Automation (SOP-992) - Ticket SEC-4022
+[?2004l[?2004h> # Automate daily infrastructure snapshot report generation
+[?2004l[?2004h> 
+[?2004l[?2004h> set -eo pipefail
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration
+[?2004l[?2004h> UID_LIMIT=1000
+[?2004l[?2004h> SCRIPT_DIR="/home/user/reports"
+[?2004l[?2004h> INPUT_DIR="/home/user/sample_data"
+[?2004l[?2004h> CONFIG_DIR="/home/user/config"
+[?2004l[?2004h> TMP_DIR="/tmp/$(basename "$0")-$$"
+[?2004l[?2004h> 
+[?2004l[?2004h> debug() {
+[?2004l[?2004h>     echo "[DEBUG $(date '+%Y-%m-%d %H:%M:%S')] $*" >> "${SCRIPT_DIR}/scan_exec_time.log"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Cleanup temporary files on exit
+[?2004l[?2004h> cleanup() {
+[?2004l[?2004h>     rm -rf "${TMP_DIR}"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Register cleanup function
+[?2004l[?2004h> trap cleanup EXIT INT TERM
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create temporary working directory
+[?2004l[?2004h> mkdir -p "${TMP_DIR}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # 1. Capture start time (Unix epoch)
+[?2004l[?2004h> START_EPOCH=$(date '+%s')
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Script started at: $(date)"  # Optional: for human-readable log
+[?2004l[?2004h> 
+[?2004l[?2004h> # 2. Calculate input hash for integrity check
+[?2004l[?2004h> INPUT_HASH=$(cat "${INPUT_DIR}/mock_netstat.txt" "${INPUT_DIR}/mock_passwd" | md5sum - | cut -d' ' -f1)
+[?2004l[?2004h> 
+[?2004l[?2004h> # 3. Process service_names.csv - strip BOM and create lookup database
+[?2004l[?2004h> echo "Processing service names..."
+[?2004l[?2004h> iconv -f UTF-8 -t UTF-8 "${INPUT_DIR}/service_names.csv" | sed '1s/^\xef\xbb\xbf//' > "${TMP_DIR}/service_names_clean.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create awk-friendly service name lookup database
+[?2004l[?2004h> awk -F, '{print $1 "\"" $2 "\""}' "${TMP_DIR}/service_names_clean.csv" > "${TMP_DIR}/service_names.db"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Service names processed successfully."
+[?2004l[?2004h> 
+[?2004l[?2004h> # 4. Job 1: Network Exposure Analysis (parallel)
+[?2004l[?2004h> echo "Starting network exposure analysis..."
+[?2004l[?2004h> 
+[?2004l[?2004h> # Define netstat processing function
+[?2004l[?2004h> process_netstat() {
+[?2004l[?2004h>     awk -v service_db="${TMP_DIR}/service_names.db" -v OFS=',' -F" " 'BEGIN {
+[?2004l[?2004h>         while (getline < service_db > 0) {
+[?2004l[?2004h>             split($0, parts, /\"\"/);
+[?2004l[?2004h>             service_map[parts[1]] = parts[2];
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h>     $NF ~ /LISTEN|udp$/ {
+[?2004l[?2004h>         split($4, addr_port, ":");
+[?2004l[?2004h>         port = addr_port[length(addr_port)];
+[?2004l[?2004h>         proto_key = ($5 "/" $6);
+[?2004l[?2004h>         service_name = (proto_key in service_map) ? "," service_map[proto_key] : "";
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Scope classification
+[?2004l[?2004h>         if ($4 ~ /^0\.0\.0\.0/) {
+[?2004l[?2004h>             proto = "public-" $6;
+[?2004l[?2004h>         } else if ($4 ~ /^127\.0\.0\.1/) {
+[?2004l[?2004h>             proto = "local-" $6;
+[?2004l[?2004h>         } else {
+[?2004l[?2004h>             proto = $6;
+[?2004l[?2004h>         }
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Enrichment and output
+[?2004l[?2004h>         gsub(/[()]/, "", $0);  # Clean parentheses from original process name
+[?2004l[?2004h>         print port, proto, $NF "," $0 service_name;
+[?2004l[?2004h>     }' "${INPUT_DIR}/mock_netstat.txt" | sort -n > "${TMP_DIR}/open_ports.csv"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # 5. Job 2: User Audit (parallel)
+[?2004l[?2004h> echo "Starting user audit..."
+[?2004l[?2004h> 
+[?2004l[?2004h> # Define user audit function
+[?2004l[?2004h> process_users() {
+[?2004l[?2004h>     awk -v uid_limit=${UID_LIMIT} -v blacklist_file="${CONFIG_DIR}/user_blacklist.txt" -v OFS=',' 'BEGIN {
+[?2004l[?2004h>         while (getline < blacklist_file > 0) {
+[?2004l[?2004h>             blacklist[$0] = 1;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h>     $3 < uid_limit && $7 != "/bin/false" && !($1 in blacklist) {
+[?2004l[?2004h>         print $1;
+[?2004l[?2004h>     }' "${INPUT_DIR}/mock_passwd" | sort > "${TMP_DIR}/insecure_users.csv"
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Launch both jobs in parallel
+[?2004l[?2004h> process_netstat &
+[?2004l[?2004h> PID_NETSTAT=$!
+[?2004l[?2004h> process_users &
+[?2004l[?2004h> PID_USERS=$!
+[?2004l[?2004h> 
+[?2004l[?2004h> # Wait for both jobs to complete
+[?2004l[?2004h> echo "Waiting for background jobs to complete..."
+[?2004l[?2004h> wait ${PID_NETSTAT} ${PID_USERS}
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Background jobs completed successfully."
+[?2004l[?2004h> 
+[?2004l[?2004h> # 6. Generate Artifact A: Mainframe Report (infra_security_report.yml)
+[?2004l[?2004h> echo "Generating mainframe security report..."
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create YAML content with proper encoding
+[?2004l[?2004h> {
+[?2004l[?2004h>     echo "---"
+[?2004l[?2004h>     echo "meta:"  
+[?2004l[?2004h>     echo "  input_hash: ${INPUT_HASH}"
+[?2004l[?2004h>     echo "insecure_users:"  
+[?2004l[?2004h>     while IFS= read -r user; do
+[?2004l[?2004h>         echo "  - ${user}"
+[?2004l[?2004h>     done < "${TMP_DIR}/insecure_users.csv"
+[?2004l[?2004h>     echo "open_ports:"  
+[?2004l[?2004h>     while IFS=, read -r port protocol process rest; do
+[?2004l[?2004h>         echo "  - port: ${port}"
+[?2004l[?2004h>         echo "    protocol: ${protocol}"
+[?2004l[?2004h>         echo "    process: ${process}"
+[?2004l[?2004h>     done < "${TMP_DIR}/open_ports.csv"
+[?2004l[?2004h> } | iconv -f UTF-8 -t ISO-8859-1 > "${SCRIPT_DIR}/infra_security_report.yml"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Mainframe security report generated successfully."
+[?2004l[?2004h> 
+[?2004l[?2004h> # 7. Generate Artifact B: SIEM Log (scan_exec_time.log)
+[?2004l[?2004h> echo "Generating SIEM log..."
+[?2004l[?2004h> 
+[?2004l[?2004h> # Calculate duration and create CSV with CRLF line endings
+[?2004l[?2004h> END_EPOCH=$(date '+%s')
+[?2004l[?2004h> DURATION=$((END_EPOCH - START_EPOCH))
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create CSV with CRLF line endings
+[?2004l[?2004h> {
+[?2004l[?2004h>     echo -n "start_epoch,end_epoch,duration\r"
+[?2004l[?2004h>     echo -n "${START_EPOCH},${END_EPOCH},${DURATION}\r"
+[?2004l[?2004h> } > "${SCRIPT_DIR}/scan_exec_time.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "SIEM log generated successfully."
+[?2004l[?2004h> 
+[?2004l[?2004h> # 8. Final status
+[?2004l[?2004h> END_EPOCH=$(date '+%s')
+[?2004l[?2004h> DURATION=$((END_EPOCH - START_EPOCH))
+[?2004l[?2004h> echo "Script execution completed in ${DURATION} seconds."
+[?2004l[?2004h> echo "Final artifacts generated at: $(date '+%Y-%m-%d %H:%M:%S')"
+[?2004l[?2004h> 
+[?2004l[?2004h> # 9. Make script executable
+[?2004l[?2004h> chmod +x "${SCRIPT_DIR}/run_security_scan.sh"
+[?2004l[?2004h> EOFchmod +x /home/user/reports/run_security_scan.sh
+[?2004l[?2004h> ls -la /home/user/reports/
+[?2004l[?2004h> /home/user/reports/run_security_scan.sh
+[?2004l[?2004h> echo "--- Verification ---"
+[?2004l[?2004h> ls -la /home/user/reports/infra_security_report.yml /home/user/reports/scan_exec_time.log
+[?2004l[?2004h> head -10 /home/user/reports/infra_security_report.yml
+[?2004l[?2004h> file /home/user/reports/infra_security_report.yml
+[?2004l[?2004h> cat /home/user/reports/scan_exec_time.log
+[?2004l[?2004h> file /home/user/reports/scan_exec_time.log
+[?2004l[?2004h> 

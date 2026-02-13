@@ -1,0 +1,157 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# MLOps Post-Experiment Aggregation Task
+
+You are an MLOps engineer tasked with aggregating results from a distributed hyperparameter optimization campaign. The experiment runner has generated a directory tree containing log files from various solver runs. Your objective is to parse these logs, filter out unstable or excluded runs based on a configuration file, and generate a summary report with a checksum manifest.
+
+## Environment Context
+
+The experiments are stored in `/home/user/experiments/`. This directory contains:
+1.  **Run Directories**: Subdirectories (e.g., `run_alpha`, `run_beta`, `test_run_01`) containing execution logs.
+2.  **Global Configuration**: A file named `experiment_config.txt` located at the root (`/home/user/experiments/experiment_config.txt`).
+
+## Input Data Specifications
+
+### 1. The Configuration File
+The `experiment_config.txt` is a key-value store (format: `key=value`) that governs the aggregation logic. It defines:
+-   `exclude_regex`: A regular expression. Any **directory name** matching this pattern must be ignored entirely, regardless of its contents.
+-   `precision`: An integer specifying the number of decimal places for the calculated average.
+
+### 2. Log Files
+Inside each non-excluded directory, look for a file named `solver_run.log`. 
+-   **Format**: CSV with header `iteration,objective,elapsed_sec`.
+-   **Encoding**: Most files are UTF-8, but some legacy nodes generate **ISO-8859-1 (Latin-1)** logs. These may contain special characters (e.g., in units or comments). Your solution must handle both encodings seamlessly.
+-   **Content**: 
+    -   `iteration`: Integer or string (e.g., "final").
+    -   `objective`: Float value.
+    -   `elapsed_sec`: Float value.
+
+## Processing Logic
+
+1.  **Discovery**: Traverse the `/home/user/experiments/` directory to find all `solver_run.log` files in directories that do **not** match the `exclude_regex` from the config.
+2.  **Validation & Filtering**:
+    -   For each log file, parse the `objective` column.
+    -   **Instability Rule**: If a log file contains *any* `NaN`, `Inf`, or `-Inf` values in the `objective` column, the experiment is considered "unstable". You must **discard the entire file** from the calculation.
+    -   **Minimization**: For valid files, identify the minimum `objective` value achieved during the run.
+3.  **Aggregation**:
+    -   Calculate the **arithmetic mean** of the minimum objectives from all valid, stable runs.
+    -   Round this average to the number of decimal places specified in the `precision` config setting.
+    -   Identify the **latest activity timestamp**: This is the modification time (mtime) of the *most recently modified valid log file* that contributed to the average.
+
+## Deliverables
+
+You must generate two files in `/home/user/experiments/`.
+
+### Output 1: `summary.json`
+A JSON object with the following keys:
+-   `valid_runs`: Integer count of files included in the average.
+-   `average_min_objective`: The rounded average (number).
+-   `latest_activity`: The latest activity timestamp formatted as an ISO 8601 string (e.g., `2023-10-27T10:00:00`).
+
+**Critical Constraint**: The JSON file must be encoded in **pure ASCII**. If the timestamp or any other field would generate non-ASCII characters, they must be escaped.
+
+### Output 2: `manifest.txt`
+A checksum file used for verification. It must contain exactly one string in the format:
+`summary.json:<MD5_CHECKSUM_OF_SUMMARY_FILE>`
+
+**Strict Format Requirement**: This file must contain **no trailing newline** characters. It should end immediately after the last character of the checksum.
+
+## Summary of Constraints
+-   Do not install new packages (use standard Python libraries).
+-   Respect `experiment_config.txt` for exclusion and precision.
+-   Handle mixed encodings (UTF-8 and Latin-1).
+-   Discard entire files if they contain infinite/NaN values.
+-   Ensure `manifest.txt` has no trailing newline.
+-   Do not modify the original logs.
+
+Current terminal state:
+Current Terminal Screen:
+root@b0567c87-de1e-47ba-bcd9-4add759f43c7:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

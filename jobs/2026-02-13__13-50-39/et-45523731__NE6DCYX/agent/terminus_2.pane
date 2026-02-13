@@ -1,0 +1,86 @@
+[?2004hroot@81402df5-86a6-4c66-8385-7ef6e76da818:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@81402df5-86a6-4c66-8385-7ef6e76da818:~# clear
+[?2004l[H[J[?2004hroot@81402df5-86a6-4c66-8385-7ef6e76da818:~# mkdir -p /home/user/diagnostics
+[?2004l[?2004hroot@81402df5-86a6-4c66-8385-7ef6e76da818:~# cat > /home/user/diagnostics/run_net_checks.sh << 'EOF'
+[?2004l[?2004h> #!/bin/sh
+[?2004l[?2004h> # Netcheck diagnostics script
+[?2004l[?2004h> 
+[?2004l[?2004h> set -e
+[?2004l[?2004h> 
+[?2004l[?2004h> # Configuration file path
+[?2004l[?2004h> TARGETS_FILE="/home/user/diagnostics/targets.txt"
+[?2004l[?2004h> LOG_FILE="/home/user/diagnostics/netcheck.log"
+[?2004l[?2004h> PREV_LOG_FILE="/home/user/diagnostics/netcheck.previous.log.gz"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Starting network diagnostics..."
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create targets file if it doesn't exist
+[?2004l[?2004h> if [ ! -f "$TARGETS_FILE" ]; then
+[?2004l[?2004h>     echo "Creating targets file: $TARGETS_FILE"
+[?2004l[?2004h>     touch "$TARGETS_FILE"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Log rotation
+[?2004l[?2004h> if [ -f "$LOG_FILE" ]; then
+[?2004l[?2004h>     echo "Rotating existing log file..."
+[?2004l[?2004h>     gzip -c "$LOG_FILE" > "$PREV_LOG_FILE"
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create new empty log file
+[?2004l[?2004h> echo "# Netcheck Report" > "$LOG_FILE"
+[?2004l[?2004h> TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+[?2004l[?2004h> echo "Timestamp: $TIMESTAMP" >> "$LOG_FILE"
+[?2004l[?2004h> echo >> "$LOG_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Running network diagnostics..."
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read hosts and run checks in parallel
+[?2004l[?2004h> exec 8<>"$LOG_FILE"  # Open log file descriptor 8 for atomic appends
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process each host
+[?2004l[?2004h> while IFS= read -r host; do
+[?2004l[?2004h>     if [ -z "${host}" ] || [ "${host%%#*}" = "" ]; then
+[?2004l[?2004h>         continue  # Skip empty lines and comments
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Define check functions
+[?2004l[?2004h>     run_check() {
+[?2004l[?2004h>         local cmd="$1"
+[?2004l[?2004h>         local desc="$2"
+[?2004l[?2004h>         local output_file="$$"  # Use PID as temp output file
+[?2004l[?2004h>         
+[?2004l[?2004h>         echo "Running $desc for $host..."
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Execute command and capture output
+[?2004l[?2004h>         $cmd "$host" > "$output_file" 2>&1
+[?2004l[?2004h>         exit_code=$?
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Encode output and write to log atomically
+[?2004l[?2004h>         flock -x 8
+[?2004l[?2004h> echo "===== START host=$host check=$desc =====" >> "$LOG_FILE"
+[?2004l[?2004h> cat "$output_file" | base64 >> "$LOG_FILE"
+[?2004l[?2004h> echo "===== END host=$host check=$desc status=$exit_code =====" >> "$LOG_FILE"
+[?2004l[?2004h> flock -u 8
+[?2004l[?2004h>         
+[?2004l[?2004h>         rm -f "$output_file"
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Run all checks concurrently using background processes
+[?2004l[?2004h>     run_check "ping -n -c 1" "ping" &
+[?2004l[?2004h>     run_check "traceroute -n -m 5" "traceroute" &
+[?2004l[?2004h>     run_check "dig +short" "dig" &
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Wait for all background jobs to complete
+[?2004l[?2004h>     wait
+[?2004l[?2004h> 
+[?2004l[?2004h> done < "$TARGETS_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Calculate checksum of final log file
+[?2004l[?2004h> SHA256=$(sha256sum "$LOG_FILE" | awk '{print $1}')
+[?2004l[?2004h> echo "SHA256 checksum: $SHA256"
+[?2004l[?2004h> echo "Diagnostic bundle created successfully."
+[?2004l[?2004h> EOFchmod +x /home/user/diagnostics/run_net_checks.sh
+[?2004l[?2004h> ls -la /home/user/diagnostics/
+[?2004l[?2004h> 

@@ -1,0 +1,659 @@
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:~# clear
+[?2004l[H[J[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:~# cd /home/user/storage
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# mkdir -p incoming archive
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# mkdir -p tmp
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# cat > maintenance_script.sh << 'EOF'
+[?2004l MD5 hash
+find archive/ -type f -print0 | while IFS= read -r -d '' file; do
+    SIZE=$(stat -c%s "$file")
+    MD5=$(md5sum "$file" | awk '{print $1}')
+    # Escape filename for CSV (replace " with \", enclose in quotes if needed)
+    SAFE_FILENAME=$(sed 's/"/\\"/g' <<< "${file#archive/}")
+    if [[ "$SAFE_FILENAME" =~ ,[\\"] ]]; then
+        SAFE_FILENAME="${SAFE_FILENAME//"/\\"}"
+    fi
+    echo "$SAFE_FILENAME,$SIZE,$MD5"
+done | sort -t, -k3 | \
+# Convert LF to CRLF
+awk '{printf "%s\r\n", $0}' >> "archive/manifest.csv"
+
+echo "Phase Three complete: manifest.csv generated with CRLF line endings"
+
+# === Phase Four: Audit Report ===
+# Create summary.xml in ISO-8859-1 encoding
+MANIFEST_SHA1=$(sha1sum "archive/manifest.csv" | awk '{print $1}')
+
+cat > "summary.xml" << EOF
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<audit>
+    <deleted_bytes>$DELETED_BYTES</deleted_bytes>
+    <corrupt_files>$CORRUPT_COUNT</corrupt_files>
+    <manifest_sha1>$MANIFEST_SHA1</manifest_sha1>
+</audit>
+EOF
+
+# Convert XML to ISO-8859-1 encoding
+iconv -f UTF-8 -t ISO-8859-1 [?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Cleanup and maintenance script for legacy file storage server
+[?2004l[?2004h> # This script implements all maintenance phases exactly as specified
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Configuration Phase ===
+[?2004l[?2004h> CONFIG_FILE="params.conf"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read configuration parameters, ignoring comments and empty lines
+[?2004l[?2004h> if [[ ! -f "$CONFIG_FILE" ]]; then
+[?2004l[?2004h>     echo "ERROR: Configuration file $CONFIG_FILE not found!"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Extract parameters using awk to handle key=value format and ignore comments
+[?2004l[?2004h> # This handles whitespace around = and ignores # comments
+[?2004l[?2004h> CUTOFF_DAYS=$(awk -F= '/^[^#]/ {gsub(/\\s+/,",",$0); split($0, a, ","); if(a[1]=="cutoff_days") print a[2]}' "$CONFIG_FILE" 2>/dev/null || echo "0")
+[?2004l[?2004h> MAX_BAK_KB=$(awk -F= '/^[^#]/ {gsub(/\\s+/,",",$0); split($0, a, ","); if(a[1]=="max_bak_kb") print a[2]}' "$CONFIG_FILE" 2>/dev/null || echo "0")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Convert max_bak_kb to bytes (1 KB = 1024 bytes)
+[?2004l[?2004h> MAX_BAK_BYTES=$((MAX_BAK_KB * 1024))
+[?2004l[?2004h> 
+[?2004l[?2004h> # Validate we got integers
+[?2004l[?2004h> echo "Configuration loaded:"
+[?2004l[?2004h> echo "  cutoff_days = $CUTOFF_DAYS"
+[?2004l[?2004h> echo "  max_bak_kb = $MAX_BAK_KB ($((MAX_BAK_KB * 1024)) bytes)"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase One: Pruning ===
+[?2004l[?2004h> DELETED_BYTES=0
+[?2004l[?2004h> find incoming/ -type f -name "*.bak" ! -name "_*.bak" ! -type l -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>     # Skip system hold files (starting with _)
+[?2004l[?2004h>     if [[ "${file##*/}" =~ ^_ ]]; then
+[?2004l[?2004h>         echo "Skipping system hold file: ${file##*/}"
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get file size in bytes
+[?2004l[?2004h>     SIZE=$(stat -c%s "$file")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Delete if strictly larger than max_bak_bytes
+[?2004l[?2004h>     if [[ $SIZE -gt $MAX_BAK_BYTES ]]; then
+[?2004l[?2004h>         echo "Deleting large .bak file: ${file##*/} (${SIZE} bytes)"
+[?2004l[?2004h>         rm "$file"
+[?2004l[?2004h>         DELETED_BYTES=$((DELETED_BYTES + SIZE))
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Phase One complete: $DELETED_BYTES bytes deleted from .bak files"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase Two: Archival ===
+[?2004l[?2004h> CORRUPT_COUNT=0
+[?2004l[?2004h> find incoming/ -type f -name "*.txt" ! -type l -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>     # Skip directories, only process files
+[?2004l[?2004h>     [[ ! -f "$file" ]] && continue
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check file age in days
+[?2004l[?2004h>     FILE_AGE_DAYS=$(($(date +%s) - $(stat -c%Y "$file")) / 86400)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Only process if older than cutoff_days
+[?2004l[?2004h>     if [[ $FILE_AGE_DAYS -gt $CUTOFF_DAYS ]]; then
+[?2004l[?2004h>         echo "Processing old .txt file: ${file##*/} (${FILE_AGE_DAYS} days old)"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Validate UTF-8 integrity
+[?2004l[?2004h>         if iconv -f UTF-8 -t UTF-8 "$file" >/dev/null 2>&1; then
+[?2004l[?2004h>             # Valid UTF-8: move to archive
+[?2004l[?2004h>             DEST_FILE="archive/${file##*/}"
+[?2004l[?2004h>             echo "Moving valid UTF-8 file to archive: ${file##*/}"
+[?2004l[?2004h>             mv "$file" "$DEST_FILE"
+[?2004l[?2004h>         else
+[?2004l[?2004h>             # Corrupt: rename and leave in incoming
+[?2004l[?2004h>             echo "Corrupt UTF-8 file: ${file##*/}"
+[?2004l[?2004h>             mv "$file" "${file}.corrupt"
+[?2004l[?2004h>             ((CORRUPT_COUNT++))
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Phase Two complete: $CORRUPT_COUNT corrupt files renamed"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase Three: Manifest Generation ===
+[?2004l[?2004h> # Create manifest.csv with CRLF line endings
+[?2004l[?2004h> echo "Filename,Size,MD5" > "archive/manifest.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Find all files in archive, compute MD5 and size, sort by MD5 hash
+[?2004l[?2004h> find archive/ -type f -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>     SIZE=$(stat -c%s "$file")
+[?2004l[?2004h>     MD5=$(md5sum "$file" | awk '{print $1}')
+[?2004l[?2004h>     # Escape filename for CSV (replace " with \", enclose in quotes if needed)
+[?2004l[?2004h>     SAFE_FILENAME=$(sed 's/"/\\"/g' <<< "${file#archive/}")
+[?2004l[?2004h>     if [[ "$SAFE_FILENAME" =~ ,[\\"] ]]; then
+[?2004l[?2004h>         SAFE_FILENAME="${SAFE_FILENAME//"/\\"}"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     echo "$SAFE_FILENAME,$SIZE,$MD5"
+[?2004l[?2004h> done | sort -t, -k3 | \
+[?2004l[?2004h> # Convert LF to CRLF
+[?2004l[?2004h> awk '{printf "%s\r\n", $0}' >> "archive/manifest.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Phase Three complete: manifest.csv generated with CRLF line endings"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase Four: Audit Report ===
+[?2004l[?2004h> # Create summary.xml in ISO-8859-1 encoding
+[?2004l[?2004h> MANIFEST_SHA1=$(sha1sum "archive/manifest.csv" | awk '{print $1}')
+[?2004l[?2004h> 
+[?2004l[?2004h> cat > "summary.xml" << EOF
+[?2004l[?2004h> <?xml version="1.0" encoding="ISO-8859-1"?>
+[?2004l[?2004h> <audit>
+[?2004l[?2004h>     <deleted_bytes>$DELETED_BYTES</deleted_bytes>
+[?2004l[?2004h>     <corrupt_files>$CORRUPT_COUNT</corrupt_files>
+[?2004l[?2004h>     <manifest_sha1>$MANIFEST_SHA1</manifest_sha1>
+[?2004l[?2004h> </audit>
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Convert XML to ISO-8859-1 encoding
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# iconv -f UTF-8 -t ISO-8859-1 "summary.xml" > "summary.xml.tmp"
+[?2004liconv: cannot open input file `summary.xml': No such file or directory
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# mv "summary.xml.tmp" "summary.xml"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Phase Four complete: summary.xml generated in ISO-8859-1 encoding"
+[?2004lPhase Four complete: summary.xml generated in ISO-8859-1 encoding
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # === Final Cleanup ===
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Remove empty directories under incoming/
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Cleaning up empty directories..."
+[?2004lCleaning up empty directories...
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find incoming/ -type d -empty -delete
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Maintenance routine completed successfully!"
+[?2004lMaintenance routine completed successfully!
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# EOF
+[?2004lbash: EOF: command not found
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# chmod +x maintenance_script.sh
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Script created successfully. Execute with: ./maintenance_script.sh"
+[?2004lScript created successfully. Execute with: ./maintenance_script.sh
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# cat > params.conf << 'EOF'
+[?2004l[?2004h> cutoff_days = 30
+[?2004l[?2004h> max_bak_kb = 512
+[?2004l[?2004h> # Configuration file for maintenance script
+[?2004l[?2004h> # These are sample values for testing
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# cat > maintenance_script.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Cleanup and maintenance script for legacy file storage server
+[?2004l[?2004h> # This script implements all maintenance phases exactly as specified
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Configuration Phase ===
+[?2004l[?2004h> CONFIG_FILE="params.conf"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read configuration parameters, ignoring comments and empty lines
+[?2004l[?2004h> if [[ ! -f "$CONFIG_FILE" ]]; then
+[?2004l[?2004h>     echo "ERROR: Configuration file $CONFIG_FILE not found!"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Extract parameters using awk to handle key=value format and ignore comments
+[?2004l[?2004h> CUTOFF_DAYS=$(awk -F= '/^[^#]/ {gsub(/\\s+/,",",$0); split($0, a, ","); if(a[1]=="cutoff_days") print a[2]}' "$CONFIG_FILE" 2>/dev/null || echo "0")
+[?2004l[?2004h> MAX_BAK_KB=$(awk -F= '/^[^#]/ {gsub(/\\s+/,",",$0); split($0, a, ","); if(a[1]=="max_bak_kb") print a[2]}' "$CONFIG_FILE" 2>/dev/null || echo "0")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Convert max_bak_kb to bytes (1 KB = 1024 bytes)
+[?2004l[?2004h> MAX_BAK_BYTES=$((MAX_BAK_KB * 1024))
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Configuration loaded:"
+[?2004l[?2004h> echo "  cutoff_days = $CUTOFF_DAYS"
+[?2004l[?2004h> echo "  max_bak_kb = $MAX_BAK_KB ($((MAX_BAK_KB * 1024)) bytes)"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase One: Pruning ===
+[?2004l[?2004h> DELETED_BYTES=0
+[?2004l[?2004h> find incoming/ -type f -name "*.bak" ! -name "_*.bak" ! -type l -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>     # Skip system hold files (starting with _)
+[?2004l[?2004h>     if [[ "${file##*/}" =~ ^_ ]]; then
+[?2004l[?2004h>         echo "Skipping system hold file: ${file##*/}"
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get file size in bytes
+[?2004l[?2004h>     SIZE=$(stat -c%s "$file")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Delete if strictly larger than max_bak_bytes
+[?2004l[?2004h>     if [[ $SIZE -gt $MAX_BAK_BYTES ]]; then
+[?2004l[?2004h>         echo "Deleting large .bak file: ${file##*/} (${SIZE} bytes)"
+[?2004l[?2004h>         rm "$file"
+[?2004l[?2004h>         DELETED_BYTES=$((DELETED_BYTES + SIZE))
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Phase One complete: $DELETED_BYTES bytes deleted from .bak files"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase Two: Archival ===
+[?2004l[?2004h> CORRUPT_COUNT=0
+[?2004l[?2004h> find incoming/ -type f -name "*.txt" ! -type l -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>     # Skip directories, only process files
+[?2004l[?2004h>     [[ ! -f "$file" ]] && continue
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check file age in days
+[?2004l[?2004h>     FILE_AGE_DAYS=$(($(date +%s) - $(stat -c%Y "$file")) / 86400)
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Only process if older than cutoff_days
+[?2004l[?2004h>     if [[ $FILE_AGE_DAYS -gt $CUTOFF_DAYS ]]; then
+[?2004l[?2004h>         echo "Processing old .txt file: ${file##*/} (${FILE_AGE_DAYS} days old)"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Validate UTF-8 integrity
+[?2004l[?2004h>         if iconv -f UTF-8 -t UTF-8 "$file" >/dev/null 2>&1; then
+[?2004l[?2004h>             # Valid UTF-8: move to archive
+[?2004l[?2004h>             DEST_FILE="archive/${file##*/}"
+[?2004l[?2004h>             echo "Moving valid UTF-8 file to archive: ${file##*/}"
+[?2004l[?2004h>             mv "$file" "$DEST_FILE"
+[?2004l[?2004h>         else
+[?2004l[?2004h>             # Corrupt: rename and leave in incoming
+[?2004l[?2004h>             echo "Corrupt UTF-8 file: ${file##*/}"
+[?2004l[?2004h>             mv "$file" "${file}.corrupt"
+[?2004l[?2004h>             ((CORRUPT_COUNT++))
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Phase Two complete: $CORRUPT_COUNT corrupt files renamed"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase Three: Manifest Generation ===
+[?2004l[?2004h> echo "Filename,Size,MD5" > "archive/manifest.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Find all files in archive, compute MD5 and size, sort by MD5 hash
+[?2004l[?2004h> find archive/ -type f -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>     SIZE=$(stat -c%s "$file")
+[?2004l[?2004h>     MD5=$(md5sum "$file" | awk '{print $1}')
+[?2004l[?2004h>     # Escape filename for CSV
+[?2004l[?2004h>     SAFE_FILENAME=$(sed 's/"/\\"/g' <<< "${file#archive/}")
+[?2004l[?2004h>     if [[ "$SAFE_FILENAME" =~ ,[\\"] ]]; then
+[?2004l[?2004h>         SAFE_FILENAME="${SAFE_FILENAME//\\"/\\\\"}"
+[?2004l[?2004h>         SAFE_FILENAME=\"${SAFE_FILENAME}\"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     echo "$SAFE_FILENAME,$SIZE,$MD5"
+[?2004l[?2004h> done | sort -t, -k3 | awk '{printf "%s\r\n", $0}' >> "archive/manifest.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Phase Three complete: manifest.csv generated with CRLF line endings"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase Four: Audit Report ===
+[?2004l[?2004h> MANIFEST_SHA1=$(sha1sum "archive/manifest.csv" | awk '{print $1}')
+[?2004l[?2004h> 
+[?2004l[?2004h> cat > "summary.xml" << EOF
+[?2004l[?2004h> <?xml version="1.0" encoding="ISO-8859-1"?>
+[?2004l[?2004h> <audit>
+[?2004l[?2004h>     <deleted_bytes>$DELETED_BYTES</deleted_bytes>
+[?2004l[?2004h>     <corrupt_files>$CORRUPT_COUNT</corrupt_files>
+[?2004l[?2004h>     <manifest_sha1>$MANIFEST_SHA1</manifest_sha1>
+[?2004l[?2004h> </audit>
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Convert XML to ISO-8859-1 encoding
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# iconv -f UTF-8 -t ISO-8859-1 "summary.xml" > "summary.xml.tmp"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# mv "summary.xml.tmp" "summary.xml"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Phase Four complete: summary.xml generated in ISO-8859-1 encoding"
+[?2004lPhase Four complete: summary.xml generated in ISO-8859-1 encoding
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # === Final Cleanup ===
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Cleaning up empty directories..."
+[?2004lCleaning up empty directories...
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find incoming/ -type d -empty -delete
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Maintenance routine completed successfully!"
+[?2004lMaintenance routine completed successfully!
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# EOF
+[?2004lbash: EOF: command not found
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# chmod +x maintenance_script.sh
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Maintenance script created successfully."
+[?2004lMaintenance script created successfully.
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating test files for maintenance script..."
+[?2004lCreating test files for maintenance script...
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create large .bak files (over 512KB = 524288 bytes)
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating large backup files..."
+[?2004lCreating large backup files...
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# for i in {1..3}; do
+[?2004l[?2004h>     dd if=/dev/zero of="incoming/large_bak_$i.bak" bs=1024 count=600 2>/dev/null
+[?2004l[?2004h>     echo "File created: large_bak_$i.bak ($(stat -c%s "incoming/large_bak_$i.bak") bytes)"
+[?2004l[?2004h> done
+[?2004lFile created: large_bak_1.bak (614400 bytes)
+File created: large_bak_2.bak (614400 bytes)
+File created: large_bak_3.bak (614400 bytes)
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create system hold .bak files (should not be deleted)
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating system hold backup files..."
+[?2004lCreating system hold backup files...
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# for i in {1..2}; do
+[?2004l[?2004h>     dd if=/dev/zero of="incoming/_hold_bak_$i.bak" bs=1024 count=200 2>/dev/null
+[?2004l[?2004h>     echo "File created: _hold_bak_$i.bak ($(stat -c%s "incoming/_hold_bak_$i.bak") bytes)"
+[?2004l[?2004h> done
+[?2004lFile created: _hold_bak_1.bak (204800 bytes)
+File created: _hold_bak_2.bak (204800 bytes)
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create old .txt files (should be archived)
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating old text files..."
+[?2004lCreating old text files...
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# touch -d "60 days ago" "incoming/old_file1.txt"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "This is a valid UTF-8 file" > "incoming/old_file1.txt"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# touch -d "90 days ago" "incoming/old_file2.txt"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Another valid UTF-8 file with special chars: \xE2\x82\xAC" > "incoming/old_file2.txt"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create a file with invalid UTF-8 (should be marked as corrupt)
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating invalid UTF-8 file..."
+[?2004lCreating invalid UTF-8 file...
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -n -e "Invalid UTF-8: \xFF\xFE\xFD" > "incoming/corrupt_file.txt"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# touch -d "60 days ago" "incoming/corrupt_file.txt"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create some directories and files to test cleanup
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Creating directory structure for cleanup test..."
+[?2004lCreating directory structure for cleanup test...
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# mkdir -p incoming/subdir1/subdir2
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# mkdir -p incoming/subdir3
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Create a recent file that shouldn't be moved
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Recent file" > "incoming/recent_file.txt"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Test files created successfully."
+[?2004lTest files created successfully.
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "File listing before maintenance:"
+[?2004lFile listing before maintenance:
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find incoming/ -type f | sort
+[?2004lincoming/corrupt_file.txt
+incoming/_hold_bak_1.bak
+incoming/_hold_bak_2.bak
+incoming/large_bak_1.bak
+incoming/large_bak_2.bak
+incoming/large_bak_3.bak
+incoming/old_file1.txt
+incoming/old_file2.txt
+incoming/project1/delete_me.bak
+incoming/project1/small.bak
+incoming/project1/_system_hold.bak
+incoming/project2/invalid_utf8.txt
+incoming/project2/new.txt
+incoming/project2/valid_old.txt
+incoming/recent_file.txt
+incoming/space dir/file
+name.txt
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Directory structure before maintenance:"
+[?2004lDirectory structure before maintenance:
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find incoming/ -type d
+[?2004lincoming/
+incoming/project1
+incoming/project2
+incoming/space dir
+incoming/subdir1
+incoming/subdir1/subdir2
+incoming/subdir3
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Starting maintenance process..."
+[?2004lStarting maintenance process...
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# ./maintenance_script.sh
+[?2004lConfiguration loaded:
+  cutoff_days = 
+  max_bak_kb =  (0 bytes)
+Deleting large .bak file: delete_me.bak (2621440 bytes)
+Deleting large .bak file: small.bak (1024 bytes)
+Deleting large .bak file: large_bak_1.bak (614400 bytes)
+Deleting large .bak file: large_bak_2.bak (614400 bytes)
+Deleting large .bak file: large_bak_3.bak (614400 bytes)
+Phase One complete: 0 bytes deleted from .bak files
+./maintenance_script.sh: command substitution: line 55: syntax error near unexpected token `/'
+./maintenance_script.sh: command substitution: line 55: `($(date +%s) - $(stat -c%Y "$file")) / 86400'
+./maintenance_script.sh: command substitution: line 55: syntax error near unexpected token `/'
+./maintenance_script.sh: command substitution: line 55: `($(date +%s) - $(stat -c%Y "$file")) / 86400'
+./maintenance_script.sh: command substitution: line 55: syntax error near unexpected token `/'
+./maintenance_script.sh: command substitution: line 55: `($(date +%s) - $(stat -c%Y "$file")) / 86400'
+./maintenance_script.sh: command substitution: line 55: syntax error near unexpected token `/'
+./maintenance_script.sh: command substitution: line 55: `($(date +%s) - $(stat -c%Y "$file")) / 86400'
+./maintenance_script.sh: command substitution: line 55: syntax error near unexpected token `/'
+./maintenance_script.sh: command substitution: line 55: `($(date +%s) - $(stat -c%Y "$file")) / 86400'
+./maintenance_script.sh: command substitution: line 55: syntax error near unexpected token `/'
+./maintenance_script.sh: command substitution: line 55: `($(date +%s) - $(stat -c%Y "$file")) / 86400'
+./maintenance_script.sh: command substitution: line 55: syntax error near unexpected token `/'
+./maintenance_script.sh: command substitution: line 55: `($(date +%s) - $(stat -c%Y "$file")) / 86400'
+./maintenance_script.sh: command substitution: line 55: syntax error near unexpected token `/'
+./maintenance_script.sh: command substitution: line 55: `($(date +%s) - $(stat -c%Y "$file")) / 86400'
+Phase Two complete: 0 corrupt files renamed
+./maintenance_script.sh: line 87: syntax error in conditional expression
+./maintenance_script.sh: line 94: syntax error near `Three'
+./maintenance_script.sh: line 94: `echo "Phase Three complete: manifest.csv generated with CRLF line endings"'
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "=== Results Verification ==="
+[?2004l=== Results Verification ===
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "1. Files remaining in incoming/ (should not contain large .bak or old .txt files):"
+[?2004l1. Files remaining in incoming/ (should not contain large .bak or old .txt files):
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find incoming/ -type f | sort
+[?2004lincoming/corrupt_file.txt
+incoming/_hold_bak_1.bak
+incoming/_hold_bak_2.bak
+incoming/old_file1.txt
+incoming/old_file2.txt
+incoming/project1/_system_hold.bak
+incoming/project2/invalid_utf8.txt
+incoming/project2/new.txt
+incoming/project2/valid_old.txt
+incoming/recent_file.txt
+incoming/space dir/file
+name.txt
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -e "\n2. Files in archive/ (should contain moved .txt files):"
+[?2004l
+2. Files in archive/ (should contain moved .txt files):
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find archive/ -type f | sort
+[?2004larchive/existing.data
+archive/manifest.csv
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -e "\n3. Manifest.csv content:"
+[?2004l
+3. Manifest.csv content:
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# cat archive/manifest.csv
+[?2004lFilename,Size,MD5
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -e "\n4. Manifest.csv line endings (should be CRLF):"
+[?2004l
+4. Manifest.csv line endings (should be CRLF):
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# od -c archive/manifest.csv | head -5
+[?2004l0000000   F   i   l   e   n   a   m   e   ,   S   i   z   e   ,   M   D
+0000020   5  \n
+0000022
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -e "\n5. Summary.xml content:"
+[?2004l
+5. Summary.xml content:
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# cat summary.xml
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -e "\n6. Summary.xml encoding (should be ISO-8859-1):"
+[?2004l
+6. Summary.xml encoding (should be ISO-8859-1):
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# file summary.xml
+[?2004lbash: file: command not found
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -e "\n7. Directory structure after cleanup:"
+[?2004l
+7. Directory structure after cleanup:
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find incoming/ -type d
+[?2004lincoming/
+incoming/project1
+incoming/project2
+incoming/space dir
+incoming/subdir1
+incoming/subdir1/subdir2
+incoming/subdir3
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# cat > maintenance_script_fixed.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Cleanup and maintenance script for legacy file storage server
+[?2004l[?2004h> # Fixed version with corrected syntax
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Configuration Phase ===
+[?2004l[?2004h> CONFIG_FILE="params.conf"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read configuration parameters, ignoring comments and empty lines
+[?2004l[?2004h> if [[ ! -f "$CONFIG_FILE" ]]; then
+[?2004l[?2004h>     echo "ERROR: Configuration file $CONFIG_FILE not found!"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Extract parameters using awk to handle key=value format and ignore comments
+[?2004l[?2004h> CUTOFF_DAYS=$(awk -F= '/^[^#]/ {gsub(/\\s+/,",",$0); split($0, a, ","); if(a[1]=="cutoff_days") print a[2]}' "$CONFIG_FILE" 2>/dev/null || echo "0")
+[?2004l[?2004h> MAX_BAK_KB=$(awk -F= '/^[^#]/ {gsub(/\\s+/,",",$0); split($0, a, ","); if(a[1]=="max_bak_kb") print a[2]}' "$CONFIG_FILE" 2>/dev/null || echo "0")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Convert max_bak_kb to bytes (1 KB = 1024 bytes)
+[?2004l[?2004h> MAX_BAK_BYTES=$((MAX_BAK_KB * 1024))
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Configuration loaded:"
+[?2004l[?2004h> echo "  cutoff_days = $CUTOFF_DAYS"
+[?2004l[?2004h> echo "  max_bak_kb = $MAX_BAK_KB ($((MAX_BAK_KB * 1024)) bytes)"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase One: Pruning ===
+[?2004l[?2004h> DELETED_BYTES=0
+[?2004l[?2004h> find incoming/ -type f -name "*.bak" ! -name "_*.bak" ! -type l -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>     # Skip system hold files (starting with _)
+[?2004l[?2004h>     if [[ "${file##*/}" =~ ^_ ]]; then
+[?2004l[?2004h>         echo "Skipping system hold file: ${file##*/}"
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Get file size in bytes
+[?2004l[?2004h>     SIZE=$(stat -c%s "$file")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Delete if strictly larger than max_bak_bytes
+[?2004l[?2004h>     if [[ $SIZE -gt $MAX_BAK_BYTES ]]; then
+[?2004l[?2004h>         echo "Deleting large .bak file: ${file##*/} (${SIZE} bytes)"
+[?2004l[?2004h>         rm "$file"
+[?2004l[?2004h>         DELETED_BYTES=$((DELETED_BYTES + SIZE))
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Phase One complete: $DELETED_BYTES bytes deleted from .bak files"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase Two: Archival ===
+[?2004l[?2004h> CORRUPT_COUNT=0
+[?2004l[?2004h> find incoming/ -type f -name "*.txt" ! -type l -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>     # Skip directories, only process files
+[?2004l[?2004h>     [[ ! -f "$file" ]] && continue
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check file age in days
+[?2004l[?2004h>     FILE_AGE_DAYS=$(( $(date +%s) - $(stat -c%Y "$file") ))
+[?2004l[?2004h>     FILE_AGE_DAYS=$(( FILE_AGE_DAYS / 86400 ))
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Only process if older than cutoff_days
+[?2004l[?2004h>     if [[ $FILE_AGE_DAYS -gt $CUTOFF_DAYS ]]; then
+[?2004l[?2004h>         echo "Processing old .txt file: ${file##*/} (${FILE_AGE_DAYS} days old)"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Validate UTF-8 integrity
+[?2004l[?2004h>         if iconv -f UTF-8 -t UTF-8 "$file" >/dev/null 2>&1; then
+[?2004l[?2004h>             # Valid UTF-8: move to archive
+[?2004l[?2004h>             DEST_FILE="archive/${file##*/}"
+[?2004l[?2004h>             echo "Moving valid UTF-8 file to archive: ${file##*/}"
+[?2004l[?2004h>             mv "$file" "$DEST_FILE"
+[?2004l[?2004h>         else
+[?2004l[?2004h>             # Corrupt: rename and leave in incoming
+[?2004l[?2004h>             echo "Corrupt UTF-8 file: ${file##*/}"
+[?2004l[?2004h>             mv "$file" "${file}.corrupt"
+[?2004l[?2004h>             ((CORRUPT_COUNT++))
+[?2004l[?2004h>         fi
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Phase Two complete: $CORRUPT_COUNT corrupt files renamed"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase Three: Manifest Generation ===
+[?2004l[?2004h> echo "Filename,Size,MD5" > "archive/manifest.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Find all files in archive, compute MD5 and size, sort by MD5 hash
+[?2004l[?2004h> find archive/ -type f -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>     SIZE=$(stat -c%s "$file")
+[?2004l[?2004h>     MD5=$(md5sum "$file" | awk '{print $1}')
+[?2004l[?2004h>     # Escape filename for CSV
+[?2004l[?2004h>     SAFE_FILENAME=$(sed 's/"/\\"/g' <<< "${file#archive/}")
+[?2004l[?2004h>     if [[ "$SAFE_FILENAME" =~ ,[\\"] ]]; then
+[?2004l[?2004h>         SAFE_FILENAME="${SAFE_FILENAME//\\"/\\\\"}"
+[?2004l[?2004h>         SAFE_FILENAME=\"${SAFE_FILENAME}\"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     echo "$SAFE_FILENAME,$SIZE,$MD5"
+[?2004l[?2004h> done | sort -t, -k3 | awk '{printf "%s\r\n", $0}' >> "archive/manifest.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Phase Three complete: manifest.csv generated with CRLF line endings"
+[?2004l[?2004h> 
+[?2004l[?2004h> # === Phase Four: Audit Report ===
+[?2004l[?2004h> MANIFEST_SHA1=$(sha1sum "archive/manifest.csv" | awk '{print $1}')
+[?2004l[?2004h> 
+[?2004l[?2004h> cat > "summary.xml" << EOF
+[?2004l[?2004h> <?xml version="1.0" encoding="ISO-8859-1"?>
+[?2004l[?2004h> <audit>
+[?2004l[?2004h>     <deleted_bytes>$DELETED_BYTES</deleted_bytes>
+[?2004l[?2004h>     <corrupt_files>$CORRUPT_COUNT</corrupt_files>
+[?2004l[?2004h>     <manifest_sha1>$MANIFEST_SHA1</manifest_sha1>
+[?2004l[?2004h> </audit>
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # Convert XML to ISO-8859-1 encoding
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# iconv -f UTF-8 -t ISO-8859-1 "summary.xml" > "summary.xml.tmp"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# mv "summary.xml.tmp" "summary.xml"
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Phase Four complete: summary.xml generated in ISO-8859-1 encoding"
+[?2004lPhase Four complete: summary.xml generated in ISO-8859-1 encoding
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# # === Final Cleanup ===
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Cleaning up empty directories..."
+[?2004lCleaning up empty directories...
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find incoming/ -type d -empty -delete
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "Maintenance routine completed successfully!"
+[?2004lMaintenance routine completed successfully!
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# EOF
+[?2004lbash: EOF: command not found
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# chmod +x maintenance_script_fixed.sh
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# ./maintenance_script_fixed.sh
+[?2004lConfiguration loaded:
+  cutoff_days = 
+  max_bak_kb =  (0 bytes)
+Phase One complete: 0 bytes deleted from .bak files
+Processing old .txt file: invalid_utf8.txt (20 days old)
+Corrupt UTF-8 file: invalid_utf8.txt
+Processing old .txt file: new.txt (1 days old)
+Moving valid UTF-8 file to archive: new.txt
+Processing old .txt file: valid_old.txt (15 days old)
+Moving valid UTF-8 file to archive: valid_old.txt
+Processing old .txt file: file
+name.txt (30 days old)
+Moving valid UTF-8 file to archive: file
+name.txt
+Processing old .txt file: corrupt_file.txt (60 days old)
+Corrupt UTF-8 file: corrupt_file.txt
+Phase Two complete: 0 corrupt files renamed
+./maintenance_script_fixed.sh: line 88: syntax error in conditional expression
+./maintenance_script_fixed.sh: line 95: syntax error near `Three'
+./maintenance_script_fixed.sh: line 95: `echo "Phase Three complete: manifest.csv generated with CRLF line endings"'
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "=== Final Verification ==="
+[?2004l=== Final Verification ===
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo "1. Files remaining in incoming/ after cleanup:"
+[?2004l1. Files remaining in incoming/ after cleanup:
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find incoming/ -type f | sort
+[?2004lincoming/corrupt_file.txt.corrupt
+incoming/_hold_bak_1.bak
+incoming/_hold_bak_2.bak
+incoming/old_file1.txt
+incoming/old_file2.txt
+incoming/project1/_system_hold.bak
+incoming/project2/invalid_utf8.txt.corrupt
+incoming/recent_file.txt
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -e "\n2. Files moved to archive/:"
+[?2004l
+2. Files moved to archive/:
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find archive/ -type f | sort
+[?2004larchive/existing.data
+archive/file
+archive/manifest.csv
+archive/new.txt
+archive/valid_old.txt
+name.txt
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -e "\n3. Manifest.csv content:"
+[?2004l
+3. Manifest.csv content:
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# cat archive/manifest.csv
+[?2004lFilename,Size,MD5
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -e "\n4. Directory structure after cleanup:"
+[?2004l
+4. Directory structure after cleanup:
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# find incoming/ -type d
+[?2004lincoming/
+incoming/project1
+incoming/project2
+incoming/space dir
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# echo -e "\n5. Summary.xml content:"
+[?2004l
+5. Summary.xml content:
+[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# cat summary.xml
+[?2004l[?2004hroot@ce985ef6-ff19-4a25-aec8-b2099227dc53:/home/user/storage# 

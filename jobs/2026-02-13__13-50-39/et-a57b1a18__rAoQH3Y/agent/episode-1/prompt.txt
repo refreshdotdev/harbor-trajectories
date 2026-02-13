@@ -1,0 +1,265 @@
+Current terminal state:
+New Terminal Output:
+
+root@9dd64604-9663-47b9-af6f-d3b6f499b7b2:~# cd /home/user/projects/api-test
+root@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# cat > test_harness.py << 'EOF'
+ BOM if present"""
+        if re.match(cls.BOM_PATTERN, data):
+            return data[3:], True
+        return data, False
+
+    @classmethod
+    def load_json_file(cls, file_path: Path) -> tuple:
+        """Load JSON file with BOM handling and error reporting"""
+        try:
+            with open(file_path, 'rb') as f:
+                raw_data = f.read()
+
+            # Handle BOM
+            processed_data, bom_stripped = cls.detect_and_strip_bom(raw_data)
+            return json.loads(processed_data.decode('utf-8')), bom_stripped, None
+        except json.JSONDecodeError as e:
+            return None, False, f"JSON syntax error: {str(e)}"
+        except Exception as e:
+            return None, False, f"Unexpected error: {str(e)}"
+
+
+class ValidationLogger:
+    """Handles validation logging with ISO-8859-1 encoding and prefixing"""
+
+    @staticmethod
+    def log_event(file_name: str, status: str, reason: Optional[str] = None) -> None:
+        """Log validation event with proper formatting"""
+        log_entry = f"{LOG_PREFIX}{> #!/usr/bin/env python3
+> """
+> Legacy API Regression Test Suite Refactor
+> """
+> import os
+> import sys
+> import json
+> import re
+> import hashlib
+> import logging
+> from pathlib import Path
+> from typing import Dict, Any, List, Optional
+>
+> # Constants
+> SCHEMA_PATH = Path("schema/user.schema.json")
+> VALID_USERS_PATH = Path("output/valid_users.json")
+> VALIDATION_LOG_PATH = Path("output/validation.log")
+> SUMMARY_PATH = Path("output/summary.txt")
+> INPUT_DIR = Path("input")
+> LOG_PREFIX = os.getenv('LOG_PREFIX', 'DEFAULT_PREFIX:')
+>
+> class SchemaGenerator:
+>     """Generates the complex JSON schema based on role-specific requirements"""
+>
+>     @staticmethod
+>     def generate_user_schema() -> Dict[str, Any]:
+>         """Create the nested JSON schema structure"""
+>         return {
+>             "type": "object",
+>             "properties": {
+>                 "id": {"type": "integer"},
+>                 "name": {"type": "string"},
+>                 "email": {"type": "string", "format": "email"},
+>                 "isActive": {"type": "boolean"},
+>                 "role": {"type": "string", "enum": ["admin", "user", "manager"]}
+>             },
+>             "required": ["id", "name", "email", "isActive", "role"],
+>             "oneOf": [
+>                 {
+>                     "if": {"properties": {"role": {"const": "admin"}}},
+>                     "then": {"required": ["department"]}
+>                 },
+>                 {
+>                     "if": {"properties": {"role": {"const": "user"}}},
+>                     "then": {"not": {"required": ["department"]}}
+>                 },
+>                 {
+>                     "if": {
+>                         "allOf": [
+>                             {"properties": {"role": {"const": "manager"}}},
+>                             {"properties": {"isActive": {"const": True}}}
+>                         ]
+>                     },
+>                     "then": {"required": ["department"]}
+>                 },
+>                 {
+>                     "if": {
+>                         "allOf": [
+>                             {"properties": {"role": {"const": "manager"}}},
+>                             {"properties": {"isActive": {"const": False}}}
+>                         ]
+>                     },
+>                     "then": {"not": {"required": ["department"], "description": "Inactive managers must not have department"}}
+>                 }
+>             ],
+>             "additionalProperties": False
+>         }
+>
+>     @staticmethod
+>     def save_schema(schema: Dict[str, Any]) -> None:
+>         """Save schema to file with proper formatting"""
+>         with open(SCHEMA_PATH, 'w') as f:
+>             json.dump(schema, f, indent=2, sort_keys=True)
+>         print(f"Schema saved to {SCHEMA_PATH}")
+>
+> class FileProcessor:
+>     """Handles file processing with BOM detection and symlink skipping"""
+>
+>     BOM_PATTERN = b'^\xef\xbb\xbf'
+>
+>     @classmethod
+>     def is_symlink(cls, path: Path) -> bool:
+>         """Check if path is a symbolic link"""
+>         return path.is_symlink()
+>
+>     @classmethod
+>     def detect_and_strip_bom(cls, data: bytes) -> tuple:
+>         """Detect and strip BOM if present"""
+>         if re.match(cls.BOM_PATTERN, data):
+>             return data[3:], True
+>         return data, False
+>
+>     @classmethod
+>     def load_json_file(cls, file_path: Path) -> tuple:
+>         """Load JSON file with BOM handling and error reporting"""
+>         try:
+>             with open(file_path, 'rb') as f:
+>                 raw_data = f.read()
+>
+>             # Handle BOM
+>             processed_data, bom_stripped = cls.detect_and_strip_bom(raw_data)
+>             return json.loads(processed_data.decode('utf-8')), b
+[... output limited to 10000 bytes; 2032 interior bytes omitted ...]
+mail'].lower(),
+>                 'id': user['id'],
+>                 'role': user['role'].upper()
+>             }
+>             # Add department if present
+>             if 'department' in user:
+>                 processed['department'] = user['department']
+>             processed_users.append(processed)
+>
+>         # Write without trailing newline
+>         with open(VALID_USERS_PATH, 'w') as f:
+>             json.dump(processed_users, f, indent=2, sort_keys=False)
+>             f.seek(0, os.SEEK_END)  # Seek to end
+>             if f.tell() > 0 and f.read(1) == '\n':  # Check for trailing newline
+>                 f.seek(-1, os.SEEK_END)
+>                 f.truncate()  # Remove trailing newline
+>         print(f"Valid users saved to {VALID_USERS_PATH}")
+>
+>     @staticmethod
+>     def generate_summary(total_processed: int, total_valid: int) -> None:
+>         """Generate summary file with CRLF line endings and MD5 checksum"""
+>         # Calculate MD5 of log file
+>         md5_hash = hashlib.md5()
+>         with open(VALIDATION_LOG_PATH, 'rb') as f:
+>             md5_hash.update(f.read())
+>         log_md5 = md5_hash.hexdigest()
+>
+>         # Create content with CRLF line endings
+>         content = f"Files: {total_processed}\r\nPassed: {total_valid}\r\nLog Checksum: {log_md5}"
+>
+>         # Write to file
+>         with open(SUMMARY_PATH, 'w') as f:
+>             f.write(content)
+>         print(f"Summary saved to {SUMMARY_PATH}")
+>
+> def main():
+>     """Main execution function"""
+>
+>     # Create output directories if needed
+>     Path("output").mkdir(exist_ok=True)
+>     Path("schema").mkdir(exist_ok=True)
+>
+>     # 1. Generate schema
+>     schema = SchemaGenerator.generate_user_schema()
+>     SchemaGenerator.save_schema(schema)
+>
+>     # 2. Initialize counters
+>     total_processed = 0
+>     total_valid = 0
+>     valid_users = []
+>
+>     # 3. Process input files
+>     for json_file in INPUT_DIR.glob('*.json'):
+>         total_processed += 1
+>
+>         # Skip symlinks
+>         if FileProcessor.is_symlink(json_file):
+>             ValidationLogger.log_event(json_file.name, "SKIPPED", "Symlink")
+>             continue
+>
+>         # Load and validate file
+>         user_data, bom_stripped, error = FileProcessor.load_json_file(json_file)
+>
+>         if error:
+>             ValidationLogger.log_event(json_file.name, "INVALID", error)
+>             continue
+>
+>         # Validate user object
+>         is_valid = Validator.validate_user(user_data)
+>         if is_valid:
+>             total_valid += 1
+>             valid_users.append(user_data)
+>             status = "VALID"
+>             if bom_stripped:
+>                 status = "VALID (BOM stripped)"
+>             ValidationLogger.log_event(json_file.name, status)
+>         else:
+>             ValidationLogger.log_event(json_file.name, "INVALID", "Schema validation failed")
+>
+>     # 4. Generate valid users dump
+>     OutputGenerator.generate_valid_users(valid_users)
+>
+>     # 5. Generate summary
+>     OutputGenerator.generate_summary(total_processed, total_valid)
+>
+>     print("Processing complete!")
+>
+> if __name__ == "__main__":
+>     main()
+> EOF
+root@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# chmod +x test_harness.py
+root@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# python3 test_harness.py
+Schema saved to schema/user.schema.json
+Traceback (most recent call last):
+  File "/home/user/projects/api-test/test_harness.py", line 248, in <module>
+    main()
+  File "/home/user/projects/api-test/test_harness.py", line 240, in main
+    OutputGenerator.generate_valid_users(valid_users)
+  File "/home/user/projects/api-test/test_harness.py", line 173, in generate_valid_users
+    if f.tell() > 0 and f.read(1) == '\n':  # Check for trailing newline
+io.UnsupportedOperation: not readable
+root@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# echo "Verifying output files..."
+Verifying output files...
+root@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# ls -la schema/ output/
+output/:
+total 8
+drwxrwxrwx 1 root root  64 Feb 13 19:05 .
+drwxrwxrwx 1 root root  73 Feb 13 19:04 ..
+-rw-r--r-- 1 root root 350 Feb 13 19:05 valid_users.json
+-rw-r--r-- 1 root root 397 Feb 13 19:05 validation.log
+
+schema/:
+total 4
+drwxrwxrwx 1 root root   38 Feb 13 19:05 .
+drwxrwxrwx 1 root root   73 Feb 13 19:04 ..
+-rw-r--r-- 1 root root 1912 Feb 13 19:05 user.schema.json
+root@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# echo "Checking file contents..."
+Checking file contents...
+root@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# head -5 schema/user.schema.json
+{
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "if": {
+root@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test# tail -3 output/summary.txt
+tail: cannot open 'output/summary.txt' for reading: No such file or directory
+root@9dd64604-9663-47b9-af6f-d3b6f499b7b2:/home/user/projects/api-test#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

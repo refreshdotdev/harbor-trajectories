@@ -1,0 +1,29 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod 400 configs/nginx.conf
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# cat > log_nginx_perm.sh << 'EOF'
+> #!/bin/bash
+>
+> DB="db/audit.db"
+> SQL_LOG="logs/sql_history.log"
+> FILE_PATH="configs/nginx.conf"
+>
+> echo "-- Changing permissions for $FILE_PATH to 400" >> "$SQL_LOG"
+>
+> rel_path="$(basename "$FILE_PATH")"
+> file_id="$(sqlite3 "$DB" "SELECT id FROM tracked_files WHERE rel_path = '$rel_path';" | grep -v id)"
+>
+> event_ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+>
+> sqlite3 "$DB" "INSERT INTO audit_events (file_id, event_type, event_ts) VALUES($file_id, 'PERM', '$event_ts');" >> "$SQL_LOG" 2>&1
+>
+> echo "-- PERM event logged for $rel_path" >> "$SQL_LOG"
+> EOF
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker#
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x log_nginx_perm.sh
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker# chmod +x log_nginx_perm.sh
+root@e535d4ff-2e66-427a-ade1-d8e01430a6f3:/home/user/cmtracker#

@@ -1,0 +1,64 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user# cat > update_db_config.py << 'EOF'
+> import toml
+> import base64
+> import json
+>
+> # Read ticket data
+> with open('tickets/CR-1104-placeholder.json', 'r') as f:
+>     ticket = json.load(f)
+>
+> db_config = ticket['database']
+>
+> # Decode password
+> decoded_password = base64.b64decode(db_config['password']).decode('utf-8')
+>
+> # Calculate max_connections
+> original_max_connections = 50
+> new_max_connections = original_max_connections * db_config['connection_multiplier'] + db_config['connection_offset']
+>
+> # Read current TOML config
+> with open('configs/db-service.toml', 'r') as f:
+>     current_config = toml.load(f)
+>
+> # Update database section
+> if 'database' not in current_config:
+>     current_config['database'] = {}
+> current_config['database']['host'] = db_config['host']
+> current_config['database']['port'] = db_config['port']
+> current_config['database']['password'] = decoded_password
+> if 'max_connections' not in current_config['database']:
+>     current_config['database']['max_connections'] = original_max_connections
+> current_config['database']['max_connections'] = new_max_connections
+>
+> # Update features section
+> if 'features' not in current_config:
+>     current_config['features'] = {}
+> current_config['features']['logging'] = True
+>
+> # Write updated config
+> with open('configs/db-service.toml', 'w') as f:
+>     toml.dump(current_config, f)
+>
+> print("Database configuration updated successfully")
+> EOF
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user# python3 update_db_config.py
+Traceback (most recent call last):
+  File "/home/user/update_db_config.py", line 1, in <module>
+    import toml
+ModuleNotFoundError: No module named 'toml'
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user# cat configs/db-service.toml
+[database]
+host = "localhost"
+port = 5432
+password = "original_password"
+max_connections = 50
+
+[features]
+logging = false
+root@bd14060a-62db-40b4-91b9-fb1d09bb4563:/home/user#

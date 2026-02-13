@@ -1,0 +1,140 @@
+[?2004hroot@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user# clear
+[?2004l[H[J[?2004hroot@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user# mkdir -p /home/user/scripts
+[?2004l[?2004hroot@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user# cd /home/user/scripts
+[?2004l[?2004hroot@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user/scripts# cat > filter_errors.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Validate arguments
+[?2004l[?2004h> if [ "$#" -ne 2 ]; then
+[?2004l[?2004h>     echo "Usage: $0 <input_log> <output_dir>" >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> input_log="$1"
+[?2004l[?2004h> output_dir="$2"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create output directory
+[?2004l[?2004h> mkdir -p "$output_dir"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get absolute paths
+[?2004l[?2004h> input_log="$(realpath "$input_log")"
+[?2004l[?2004h> output_dir="$(realpath "$output_dir")"
+[?2004l[?2004h> 
+[?2004l[?2004h> critical_log="$output_dir/critical_errors.log"
+[?2004l[?2004h> summary_csv="$output_dir/error_summary.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write header to critical log file
+[?2004l[?2004h> echo "# Source: $input_log" > "$critical_log"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user/scripts# cat >> filter_errors.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process log file with multi-line handling
+[?2004l[?2004h> awk -v critical_log="\$critical_log" '
+[?2004l[?2004h>     BEGIN {
+[?2004l[?2004h>         in_critical = 0;
+[?2004l[?2004h>         entry = "";
+[?2004l[?2004h>     }
+[?2004l[?2004h>     /^\[[0-9]{4}-[0-9]{2}-[0-9]{2}/ {
+[?2004l[?2004h>         if (in_critical) {
+[?2004l[?2004h>             # Save previous complete entry
+[?2004l[?2004h>             print entry > critical_log;
+[?2004l[?2004h>             entry = "";
+[?2004l[?2004h>         }
+[?2004l[?2004h>         in_critical = 0;
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Check if this line matches critical patterns
+[?2004l[?2004h>         if ($0 ~ /ERROR/ || $0 ~ /FATAL/ || $0 ~ /HTTP\/1\.1 5[0-9]{2}/) {
+[?2004l[?2004h>             in_critical = 1;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h>     {
+[?2004l[?2004h>         if (in_critical) {
+[?2004l[?2004h>             entry = entry $0 "\n";
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h>     END {
+[?2004l[?2004h>         if (in_critical && entry != "") {
+[?2004l[?2004h>             print entry > critical_log;
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }' "$input_log" > /tmp/filtered.log
+[?2004l[?2004h> 
+[?2004l[?2004h> # Append filtered content to critical log file (skip header)
+[?2004l[?2004h> sed "1d" /tmp/filtered.log >> "$critical_log"
+[?2004l[?2004h> rm /tmp/filtered.log
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user/scripts# cat >> filter_errors.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Perform email redaction
+[?2004l[?2004h> sed -i -E "s/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/<REDACTED>/g" "$critical_log"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user/scripts# cat >> filter_errors.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Extract error categories and count occurrences
+[?2004l[?2004h> awk -v summary_csv="\$summary_csv" '
+[?2004l[?2004h>     BEGIN {
+[?2004l[?2004h>         print "error_category,count" > summary_csv;
+[?2004l[?2004h>         counts["PAYMENT_FAILURE"] = 0;
+[?2004l[?2004h>         counts["HTTP_5XX"] = 0; 
+[?2004l[?2004h>         counts["FATAL"] = 0;
+[?2004l[?2004h>     }
+[?2004l[?2004h>     /^\\[[0-9]{4}-[0-9]{2}-[0-9]{2}/ {
+[?2004l[?2004h>         if (entry != "") {
+[?2004l[?2004h>             # Determine category based on first matching rule
+[?2004l[?2004h>             category = "UNKNOWN"
+[?2004l[?2004h>             if (entry ~ /Payment failed/) {
+[?2004l[?2004h>                 category = "PAYMENT_FAILURE"
+[?2004l[?2004h>             } else if (entry ~ /HTTP\\/1\\.1 5[0-9]{2}/) {
+[?2004l[?2004h>                 category = "HTTP_5XX"
+[?2004l[?2004h>             } else if (entry ~ /FATAL/) {
+[?2004l[?2004h>                 category = "FATAL"
+[?2004l[?2004h>             }
+[?2004l[?2004h>             
+[?2004l[?2004h>             if (category != "UNKNOWN") {
+[?2004l[?2004h>                 counts[category]++
+[?2004l[?2004h>             }
+[?2004l[?2004h>             
+[?2004l[?2004h>             entry = ""
+[?2004l[?2004h>         }
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Start new entry
+[?2004l[?2004h>         entry = $0 "\n"
+[?2004l[?2004h>         in_entry = 1
+[?2004l[?2004h>     }
+[?2004l[?2004h>     in_entry && !/^[\\[]/{
+[?2004l[?2004h>         entry = entry $0 "\n"
+[?2004l[?2004h>     }
+[?2004l[?2004h>     END {
+[?2004l[?2004h>         if (entry != "") {
+[?2004l[?2004h>             # Process last entry
+[?2004l[?2004h>             if (entry ~ /Payment failed/) {
+[?2004l[?2004h>                 counts["PAYMENT_FAILURE"]++
+[?2004l[?2004h>             } else if (entry ~ /HTTP\\/1\\.1 5[0-9]{2}/) {
+[?2004l[?2004h>                 counts["HTTP_5XX"]++
+[?2004l[?2004h>             } else if (entry ~ /FATAL/) {
+[?2004l[?2004h>                 counts["FATAL"]++
+[?2004l[?2004h>             }
+[?2004l[?2004h>         }
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Output counts in sorted order
+[?2004l[?2004h>         # First sort by count descending, then category ascending
+[?2004l[?2004h>         print counts["PAYMENT_FAILURE"] ~ /./ ? "PAYMENT_FAILURE," counts["PAYMENT_FAILURE"] : "" > "summary_csv.tmp"
+[?2004l[?2004h>         print counts["HTTP_5XX"] ~ /./ ? "HTTP_5XX," counts["HTTP_5XX"] : "" >> "summary_csv.tmp"  
+[?2004l[?2004h>         print counts["FATAL"] ~ /./ ? "FATAL," counts["FATAL"] : "" >> "summary_csv.tmp"
+[?2004l[?2004h>         
+[?2004l[?2004h>         # Sort the lines and overwrite summary file
+[?2004l[?2004h>         sort -t, -k1,1 -k2,2nr < "summary_csv.tmp" > "summary_csv.sorted"
+[?2004l[?2004h>         mv "summary_csv.sorted" "$summary_csv"
+[?2004l[?2004h>         rm "summary_csv.tmp"
+[?2004l[?2004h>     }' "$critical_log"
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user/scripts# cat >> filter_errors.sh << 'EOF'
+[?2004l[?2004h> 
+[?2004l[?2004h> # Log execution
+[?2004l[?2004h> current_time=$(date '+%Y-%m-%d|%H:%M:%S')
+[?2004l[?2004h> echo "${current_time}|input=${input_log}|output_dir=${output_dir}|status=OK" >> /home/user/filter_run.log
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user/scripts# chmod +x filter_errors.sh
+[?2004l[?2004hroot@9be0b58d-c285-4cb3-b2c2-99c8d98bd056:/home/user/scripts# 

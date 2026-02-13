@@ -1,0 +1,25 @@
+```json
+{
+  "analysis": "I have confirmed the policy configuration values: filename pattern is '.*\\.csv', minimum size is 1024 bytes, and the date header pattern is 'Report Generated on: (.*?)'. I will now process each file in monthly/, validate them against these criteria, extract timestamps, and prepare for sorting and symlink creation. Files that don't meet the criteria will be left in monthly/ as per requirements.",
+  "plan": "I'll iterate through each file in monthly/, first checking if it matches the filename pattern and size requirements. For valid CSV files, I'll extract the authoritative timestamp using the date header pattern. Then I'll sort the valid files by their timestamps to identify the Latest and Previous files for symlink creation and archiving.",
+  "commands": [
+    {
+      "keystrokes": "echo \"Validating files with policy: filename_pattern='.*\\.csv', min_size_bytes=1024, date_header_pattern='Report Generated on: (.*?)'\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat > validate_files.sh << 'EOF'\n#!/bin/bash\n\nPOLICY_FILE=\"/etc/finops/policy.ini\"\nFILENAME_PATTERN=$(awk -F'=' '/^filename_pattern/{print $2}' \"$POLICY_FILE\" | sed \"s/^'//;s/'$//\")\nMIN_SIZE_BYTES=$(awk -F'=' '/^min_size_bytes/{print $2}' \"$POLICY_FILE\")\nDATE_HEADER_PATTERN=$(awk -F'=' '/^date_header_pattern/{print $2}' \"$POLICY_FILE\" | sed \"s/^'//;s/'$//\")\n\necho \"Filename Pattern: $FILENAME_PATTERN\"\necho \"Min Size Bytes: $MIN_SIZE_BYTES\"\necho \"Date Header Pattern: $DATE_HEADER_PATTERN\"\n\ndeclare -a valid_files\n\ncount=0\n\nfor file in monthly/*; do\n    filename=$(basename \"$file\")\n    filesize=$(stat -c%s \"$file\")\n    \n    if [[ \"$filename\" =~ $FILENAME_PATTERN ]] && [ \"$filesize\" -ge \"$MIN_SIZE_BYTES\" ]; then\n        echo \"Processing valid file: $filename (size: $filesize)\"\n        \n        # Extract timestamp\n        timestamp=$(grep -oP \"$DATE_HEADER_PATTERN\" \"$file\" | sed \"s/$DATE_HEADER_PATTERN/\\\\1/\")\n        if [ -n \"$timestamp\" ]; then\n            echo \"Filename: $filename, Timestamp: $timestamp\"\n            valid_files+=(\"$file $timestamp\")\n            count=$((count+1))\n        else\n            echo \"Warning: No timestamp found in $filename\"\n        fi\n    else\n        echo \"Skipping $filename (reason: $( [[ ! \"$filename\" =~ $FILENAME_PATTERN ]] && echo \"pattern\" ) $( [ \"$filesize\" -lt \"$MIN_SIZE_BYTES\" ] && echo \"size\") )\"\n    fi\ndone\n\nif [ $count -gt 0 ]; then\n    echo -e \"\\nValid files (count: $count):\"\n    for i in \"${valid_files[@]}\"; do\n        echo \"$i\"\n    done\nelse\n    echo -e \"\\nNo valid files found matching policy criteria.\"\nfi\nEOF\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "chmod +x validate_files.sh\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "./validate_files.sh\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": false
+}
+```

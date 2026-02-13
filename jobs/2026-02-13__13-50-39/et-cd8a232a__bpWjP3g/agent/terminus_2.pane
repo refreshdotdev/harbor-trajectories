@@ -1,0 +1,117 @@
+[?2004hroot@a6c8e3be-6726-4ee5-9f78-2c5dba1b4482:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@a6c8e3be-6726-4ee5-9f78-2c5dba1b4482:/home/user# clear
+[?2004l[H[J[?2004hroot@a6c8e3be-6726-4ee5-9f78-2c5dba1b4482:/home/user# mkdir -p /home/user/scripts
+[?2004l[?2004hroot@a6c8e3be-6726-4ee5-9f78-2c5dba1b4482:/home/user# cd /home/user/scripts
+[?2004l[?2004hroot@a6c8e3be-6726-4ee5-9f78-2c5dba1b4482:/home/user/scripts# cat > filter_errors.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Validate arguments
+[?2004l[?2004h> if [ "$#" -ne 2 ]; then
+[?2004l[?2004h>     echo "Usage: $0 <input_log> <output_dir>" >&2
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> input_log="$1"
+[?2004l[?2004h> output_dir="$2"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create output directory
+[?2004l[?2004h> mkdir -p "$output_dir"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get absolute paths
+[?2004l[?2004h> target_log=$(realpath "$input_log")
+[?2004l[?2004h> target_dir=$(realpath "$output_dir")
+[?2004l[?2004h> 
+[?2004l[?2004h> # Initialize variables
+[?2004l[?2004h> categories=()
+[?2004l[?2004h> entries=()
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process log file
+[?2004l[?2004h> awk -v target_log="$target_log" -v output_dir="$output_dir" '
+[?2004l[?2004h> BEGIN {
+[?2004l[?2004h>     in_entry=0
+[?2004l[?2004h>     current_entry=""
+[?2004l[?2004h>     current_category=""
+[?2004l[?2004h>     category_found=0
+[?2004l[?2004h>     email_regex="[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+[?2004l[?2004h> }
+[?2004l[?2004h> /^[0-9]{4}-[0-9]{2}-[0-9]{2}/ {
+[?2004l[?2004h>     if (in_entry == 1) {
+[?2004l[?2004h>         if (category_found == 1) {
+[?2004l[?2004h>             entries[length(entries)+1] = current_entry
+[?2004l[?2004h>             categories[length(categories)+1] = current_category
+[?2004l[?2004h>         }
+[?2004l[?2004h>         current_entry = $0
+[?2004l[?2004h>         in_entry = 1
+[?2004l[?2004h>         category_found = 0
+[?2004l[?2004h>         current_category = ""
+[?2004l[?2004h>     } else {
+[?2004l[?2004h>         current_entry = $0
+[?2004l[?2004h>         in_entry = 1
+[?2004l[?2004h>         category_found = 0
+[?2004l[?2004h>         current_category = ""
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Check for matching patterns
+[?2004l[?2004h>     if ($0 ~ /^ERROR/) {
+[?2004l[?2004h>         current_category = "FATAL"
+[?2004l[?2004h>         category_found = 1
+[?2004l[?2004h>     }
+[?2004l[?2004h>     if ($0 ~ /Payment failed/ && current_category == "") {
+[?2004l[?2004h>         current_category = "PAYMENT_FAILURE"
+[?2004l[?2004h>         category_found = 1
+[?2004l[?2004h>     }
+[?2004l[?2004h>     if ($0 ~ /^HTTP\/1\.1 5[0-9]{2}/ && current_category == "") {
+[?2004l[?2004h>         current_category = "HTTP_5XX"
+[?2004l[?2004h>         category_found = 1
+[?2004l[?2004h>     }
+[?2004l[?2004h>     if ($0 ~ /^FATAL/ && current_category == "") {
+[?2004l[?2004h>         current_category = "FATAL"
+[?2004l[?2004h>         category_found = 1
+[?2004l[?2004h>     }
+[?2004l[?2004h> } 
+[?2004l[?2004h> !/^([0-9]{4}-[0-9]{2}-[0-9]{2})/ && in_entry == 1 {
+[?2004l[?2004h>     current_entry = current_entry "\n" $0
+[?2004l[?2004h> }
+[?2004l[?2004h> END {
+[?2004l[?2004h>     if (in_entry == 1 && category_found == 1) {
+[?2004l[?2004h>         entries[length(entries)+1] = current_entry
+[?2004l[?2004h>         categories[length(categories)+1] = current_category
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write redacted content to file
+[?2004l[?2004h>     printf "# Source: %s\n", target_log > "output_dir/critical_errors.log"
+[?2004l[?2004h>     for (i=1; i<=length(entries); i++) {
+[?2004l[?2004h>         # Redact emails
+[?2004l[?2004h>         gsub(email_regex, "<REDACTED>", entries[i])
+[?2004l[?2004h>         print entries[i] >> "output_dir/critical_errors.log"
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Count categories
+[?2004l[?2004h>     counts["PAYMENT_FAILURE"] = 0
+[?2004l[?2004h>     counts["HTTP_5XX"] = 0
+[?2004l[?2004h>     counts["FATAL"] = 0
+[?2004l[?2004h>     for (i=1; i<=length(categories); i++) {
+[?2004l[?2004h>         counts[categories[i]]++
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Write CSV
+[?2004l[?2004h>     printf "error_category,count\n" > "output_dir/error_summary.csv"
+[?2004l[?2004h>     for (cat in counts) {
+[?2004l[?2004h>         if (counts[cat] > 0) {
+[?2004l[?2004h>             print cat "," counts[cat] >> "output_dir/error_summary.csv"
+[?2004l[?2004h>         }
+[?2004l[?2004h>     }
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Sort CSV
+[?2004l[?2004h>     system("sort -t, -k2,2nr -k1,1 output_dir/error_summary.csv -o output_dir/error_summary.csv")
+[?2004l[?2004h> }' "${target_log}"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Log execution
+[?2004l[?2004h> date +"%Y-%m-%d|%H:%M:%S" | awk -v input="${target_log}" -v output="${target_dir}" '{print $0 "|input=" input "|output_dir=" output "|status=OK"}' >> /home/user/filter_run.log
+[?2004l[?2004h> EOFchmod +x filter_errors.sh
+[?2004l[?2004h> ls -la filter_errors.sh
+[?2004l[?2004h> ls -la filter_errors.sh
+[?2004l[?2004h> head -5 filter_errors.sh
+[?2004l[?2004h> 

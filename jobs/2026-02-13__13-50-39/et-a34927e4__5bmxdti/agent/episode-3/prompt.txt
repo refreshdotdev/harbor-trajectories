@@ -1,0 +1,179 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+- Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@7e3f7825-c990-46bc-a417-6534e990d184:~# cat > /tmp/process_solver_outputs.py << 'EOF'
+> #!/usr/bin/env python3
+> import os
+ptimal runs found", file=sys.stderr)
+        sys.exit(1)
+
+    winner = min(manifest_data, key=lambda x: x['objective_value'])
+
+    # Apply tie-breaker if needed
+    min_value = winner['objective_value']
+    candidates = [item for item in manifest_data if item['objective_value'] == min_value]
+
+    if len(candidates) > 1:
+        if tie_breaker == 'latest':
+            winner = max(candidates, key=lambda x: x['timestamp'])
+        elif tie_breaker == 'earliest':
+            winner = min(candidates, key=lambda x: x['timestamp'])
+
+    # Generate final report
+    report_path = '/home/user/api_test/optimization_report.log'
+    audit_date = datetime.utcnow().strftime('%Y-%m-%d')
+
+    # Calculate SHA256 of manifest.csv
+    with open(manifest_path, 'rb') as f:
+        manifest_sha256 = hashlib.sha256(f.read()).hexdigest()
+
+    # Find winner's line number in manifest
+    manifest_line = None
+    with open(manifest_path, 'r', encoding='utf-8') as f:
+        for i, line in enumerate(f, start=1):
+            if winner['id'] in line:
+                manifest_line = i
+        > import sys
+> import json
+> import csv
+> import hashlib
+> from datetime import datetime
+> import re
+>
+> def get_config():
+>     """Read system configuration"""
+>     try:
+>         with open('/opt/solver/settings.yaml', 'r') as f:
+>             config_text = f.read()
+>             # Simple YAML parsing for key-value pairs
+>             config = {}
+>             for line in config_text.splitlines():
+>                 if ':' in line:
+>                     key, value = line.split(':', 1)
+>                     config[key.strip()] = value.strip()
+>             return config
+>     except Exception as e:
+>         print(f"Error reading config: {e}", file=sys.stderr)
+>         return {}
+>
+s> def process_file(filepath):
+>     """Process a single solver output file (JSON or legacy .log)"""
+>     try:
+>         with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+>             content = f.read()
+>
+>         # Handle legacy .log files (ISO-8859-1 encoding with C-style comments)
+>         if filepath.endswith('.log'):
+>             # Convert to UTF-8 and strip comments
+>             content_utf8 = content.encode('latin-1').decode('utf-8')
+>             content_clean = re.sub(r'//[^
+> ]*', '', content_utf8)
+>             data = json.loads(content_clean)
+>         else:
+>             # Modern JSON files (UTF-8)
+>             data = json.loads(content)
+>
+>         # Check status field
+>         status = str(data.get('status', '')).lower()
+>         if status != 'optimal':
+>             return None
+>
+>         return {
+>             'id': data.get('id'),
+>             'objective_value': float(data.get('objective_value', float('inf'))),
+>             'timestamp': data.get('timestamp'),
+>             'x': data.get('x', [])
+>         }
+>     except Exception as e:
+>         print(f"Error processing {filepath}: {e}", file=sys.stderr)
+>         return None
+>
+> def main():
+>     config = get_config()
+>     tie_breaker = config.get('tie_breaker', 'latest')
+>     variable_threshold = float(config.get('variable_threshold', 0.001))
+>
+>     manifest_data = []
+>     manifest_path = '/home/user/api_test/processed/manifest.csv'
+>
+>     # Process files in responses directory
+>     input_dir = '/home/user/api_test/responses'
+>     for filename in os.listdir(input_dir):
+>         if filename.endswith('.json') or filename.endswith('.log'):
+>             filepath = os.path.join(input_dir, filename)
+>             result = process_file(filepath)
+>             if result:
+>                 manifest_data.append(result)
+>
+>     # Sort manifest data by timestamp descending
+>     if manifest_data:
+>         manifest_data.sort(key=lambda x: x['timestamp'], reverse=True)
+>
+>         # Create manifest.csv with CRLF line endings
+>         with open(manifest_path, 'w', newline='') as csvfile:
+>             writer = csv.writer(csvfile, delimiter=',', lineterminator='\r\n')
+>             for item in manifest_data:
+>                 writer.writerow([item['id'], item['objective_value'], item['timestamp']])
+>
+>     # Select winning run
+>     if not manifest_data:
+>         print("No optimal runs found", file=sys.stderr)
+>         sys.exit(1)
+>
+>     winner = min(manifest_data, key=lambda x: x['objective_value'])
+>
+>     # Apply tie-breaker if needed
+>     min_value = winner['objective_value']
+>     candidates = [item for item in manifest_data if item['objective_value'] == min_value]
+>
+>     if len(candidates) > 1:
+>         if tie_breaker == 'latest':
+>             winner = max(candidates, key=lambda x: x['timestamp'])
+>         elif tie_breaker == 'earliest':
+>             winner = min(candidates, key=lambda x: x['timestamp'])
+>
+>     # Generate final report
+>     report_path = '/home/user/api_test/optimization_report.log'
+>     audit_date = datetime.utcnow().strftime('%Y-%m-%d')
+>
+>     # Calculate SHA256 of manifest.csv
+>     with open(manifest_path, 'rb') as f:
+>         manifest_sha256 = hashlib.sha256(f.read()).hexdigest()
+>
+>     # Find winner's line number in manifest
+>     manifest_line = None
+>     with open(manifest_path, 'r', encoding='utf-8') as f:
+>         for i, line in enumerate(f, start=1):
+>             if winner['id'] in line:
+>                 manifest_line = i
+>                 break
+>
+>     # Format variables
+>     variables = []
+>     for val in winner['x']:
+>         abs_val = abs(val)
+>         if abs_val > variable_threshold:
+>             if abs_val < 0.01:
+>                 variables.append(f'{val:.2e}')
+>             else:
+>                 variables.append(f'{val:.2f}')
+>
+>     # Create report
+>     with open(report_path, 'w') as f:
+>         f.write(f"AUDIT_DATE: {audit_date}\n")
+>         f.write(f"WINNER_ID: {winner['id']}\n")
+>         f.write(f"MANIFEST_SHA256: {manifest_sha256}\n")
+>         f.write(f"MANIFEST_LINE: {manifest_line}\n")
+>         f.write(f"VARIABLES: {', '.join(variables)}\n")
+>
+>     print("Processing complete")
+>
+> if __name__ == '__main__':
+>     main()
+> EOFchmod +x /tmp/process_solver_outputs.py
+> /tmp/process_solver_outputs.py
+>

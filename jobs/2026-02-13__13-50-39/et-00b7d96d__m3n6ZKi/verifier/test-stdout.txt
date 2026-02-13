@@ -1,0 +1,59 @@
+bash: solve.sh: No such file or directory
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 6 items
+
+../tests/test_final_state.py::test_directory_cleanliness PASSED          [ 16%]
+../tests/test_final_state.py::test_virtualenv_and_patch PASSED           [ 33%]
+../tests/test_final_state.py::test_requirements_encoding_and_content FAILED [ 50%]
+../tests/test_final_state.py::test_install_log_formatting_and_permissions PASSED [ 66%]
+../tests/test_final_state.py::test_inventory_integrity PASSED            [ 83%]
+../tests/test_final_state.py::test_packages_installed PASSED             [100%]
+
+=================================== FAILURES ===================================
+____________________ test_requirements_encoding_and_content ____________________
+
+    def test_requirements_encoding_and_content():
+        """Verify requirements.txt is UTF-16LE with BOM."""
+        _assert_exists(REQUIREMENTS_FILE, is_file=True)
+    
+        raw_bytes = REQUIREMENTS_FILE.read_bytes()
+    
+        # Check BOM for UTF-16LE (FF FE)
+        assert raw_bytes.startswith(b'\xff\xfe'), "requirements.txt does not have the correct UTF-16LE BOM."
+    
+        try:
+            # Use utf-16 to handle/consume the BOM automatically
+            # If we used utf-16-le, the BOM would remain as \ufeff at the start of the string
+            content = raw_bytes.decode("utf-16")
+        except UnicodeDecodeError:
+            pytest.fail("requirements.txt could not be decoded as UTF-16.")
+    
+        expected_lines = sorted([
+            f"httpx=={EXPECTED_HTTPX}",
+            f"requests=={EXPECTED_REQUESTS}"
+        ])
+    
+        # Normalize newlines for comparison
+        actual_lines = sorted([l.strip() for l in content.splitlines() if l.strip()])
+>       assert actual_lines == expected_lines, f"requirements.txt content mismatch.\nExpected: {expected_lines}\nGot: {actual_lines}"
+E       AssertionError: requirements.txt content mismatch.
+E         Expected: ['httpx==0.25.1', 'requests==2.31.0']
+E         Got: ['瑨灴㵸〽㈮⸵\u0a31敲畱獥獴㴽⸲ㄳ〮']
+E       assert ['瑨灴㵸〽㈮⸵\u0a31敲畱獥獴㴽⸲ㄳ〮'] == ['httpx==0.25...ests==2.31.0']
+E         
+E         At index 0 diff: '瑨灴㵸〽㈮⸵\u0a31敲畱獥獴㴽⸲ㄳ〮' != 'httpx==0.25.1'
+E         Right contains one more item: 'requests==2.31.0'
+E         
+E         Full diff:
+E           [
+E         +     '瑨灴㵸〽㈮⸵\u0a31敲畱獥獴㴽⸲ㄳ〮',...
+E         
+E         ...Full output truncated (3 lines hidden), use '-vv' to show
+
+/tests/test_final_state.py:78: AssertionError
+=========================== short test summary info ============================
+FAILED ../tests/test_final_state.py::test_requirements_encoding_and_content
+========================= 1 failed, 5 passed in 0.15s ==========================

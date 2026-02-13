@@ -1,0 +1,99 @@
+New Terminal Output:
+
+root@36b070fb-d075-422d-b207-f735c3f0b34d:~# cat > /home/user/db_queries/process_batch.py << 'EOF'
+> #!/usr/bin/env python3
+>
+> import os
+> import sys
+> import hashlib
+> import sqlparse
+> import json
+>
+> def process_queries():
+>     # Get batch ID from environment variable
+>     batch_id = os.environ.get('DB_BATCH_ID', '42')
+>
+>     # File paths
+>     input_file = f"/home/user/db_queries/raw_batch_{batch_id}.sql"
+>     backup_file = f"/home/user/db_queries/raw_batch_{batch_id}_backup.sql"
+>     read_output = f"/home/user/db_queries/batch_{batch_id}_optimized_read.sql"
+>     write_output = f"/home/user/db_queries/batch_{batch_id}_optimized_write.sql"
+>     manifest_file = f"/home/user/db_queries/batch_{batch_id}_manifest.json"
+>     log_file = f"/home/user/db_queries/batch_{batch_id}_pipeline.log"
+>
+>     # Read input file
+>     try:
+>         with open(input_file, 'r') as f:
+>             raw_sql = f.read()
+>     except FileNotFoundError:
+>         print(f"Input file {input_file} not found")
+>         return
+>
+>     # Create backup
+>     with open(backup_file, 'w') as f:
+>         f.write(raw_sql)
+>
+>     # Initialize variables
+>     queries = sqlparse.split(raw_sql)
+>     total_queries = len(queries)
+>     read_queries = []
+>     write_queries = []
+>
+>     # Process each query
+>     for query in queries:
+>         # Skip empty queries
+>         if not query.strip():
+>             continue
+>
+>         original_query = query.strip()
+>         md5_hash = hashlib.md5(original_query.encode()).hexdigest()
+>
+>         # Parse and format query
+>         parsed = sqlparse.parse(original_query)[0]
+>         formatted = sqlparse.format(parsed,
+>                                     keyword_case='upper',
+>                                     indent_columns=False,
+>                                     strip_comments=False,
+>                                     reindent=False,
+>                                     wrap_after=None,
+>                                     indent_tabs=False)
+>
+>         # Replace newlines with spaces and add comment
+>         optimized = formatted.replace('\n', ' ').strip() + f' -- id={md5_hash}'
+>
+>         # Classify query
+>         first_token = sqlparse.sql.IdentifierList(parsed.tokens).get_identifiers()[0].value
+>         if first_token.lower() == 'select':
+>             read_queries.append(f"{optimized};\n")
+>         else:
+>             write_queries.append(f"{optimized};\n")
+>
+>     # Write output files
+>     with open(read_output, 'w') as f:
+>         f.writelines(read_queries)
+>
+>     with open(write_output, 'w') as f:
+>         f.writelines(write_queries)
+>
+>     # Create manifest
+>     manifest = {
+>         "batch_id": batch_id,
+>         "read_count": len(read_queries),
+>         "write_count": len(write_queries)
+>     }
+>     with open(manifest_file, 'w') as f:
+>         json.dump(manifest, f, indent=2)
+>
+>     # Create log
+>     with open(log_file, 'w') as f:
+>         f.write("PIPELINE START\n")
+>         f.write(f"Batch ID: {batch_id}\n")
+>         f.write(f"Input: raw_batch_{batch_id}.sql\n")
+>         f.write(f"Processed: {total_queries}\n")
+>         f.write("PIPELINE END\n")
+>
+> if __name__ == "__main__":
+>     process_queries()
+> EOF
+root@36b070fb-d075-422d-b207-f735c3f0b34d:~# chmod +x /home/user/db_queries/process_batch.py
+root@36b070fb-d075-422d-b207-f735c3f0b34d:~#

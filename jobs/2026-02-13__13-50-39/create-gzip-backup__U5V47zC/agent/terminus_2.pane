@@ -1,0 +1,192 @@
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:~# clear
+[?2004l[H[J[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:~# cd /home/user
+[?2004l[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# ls -la db_backups 2>/dev/null || mkdir -p db_backups
+[?2004ltotal 24
+drwxrwxrwx 1 root root 10 Feb 12 23:59  [0m[34;42m.[0m
+drwxr-xr-x 1 root root 51 Feb 12 23:59  [01;34m..[0m
+-r--r--r-- 1 root root 12 Feb 12 23:59  archived.sql
+-rw-r--r-- 1 root root 15 Feb 12 23:59  batch_config.txt
+-rw-r--r-- 1 root root 71 Feb 12 23:59  customers.sql
+-rw-r--r-- 1 root root  9 Feb 12 23:59  inventory-2023.sql
+-rw-r--r-- 1 root root  9 Feb 12 23:59  inventory_2023.sql
+-rw-r--r-- 1 root root 50 Feb 12 23:59 ' orders.sql'
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# ls -la backup_logs 2>/dev/null || mkdir -p backup_logs
+[?2004l[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# cat .config/backup_system.conf 2>/dev/null || echo "ERROR: Config file not found" || exit 1
+[?2004lBID-PROD-8821
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# cd /home/user
+[?2004l[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# python3 -c "
+[?2004l[?2004h> import json, os
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read manifest data
+[?2004l[?2004h> data = {}
+[?2004l[?2004h> with open('backup_logs/manifest_data.txt', 'r') as f:
+[?2004l[?2004h>     for line in f:
+[?2004l[?2004h>         parts = line.strip().split(' ', 1)
+[?2004l[?2004h>         if len(parts) >= 2:
+[?2004l[?2004h>             filename = parts[0]
+[?2004l[?2004h>             size_str = parts[1]
+[?2004l[?2004h>             try:
+[?2004l[?2004h>                 data[filename] = int(size_str)
+[?2004l[?2004h>             except ValueError:
+[?2004l[?2004h>                 print(f'Warning: Could not parse size for {filename}')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write manifest.json
+[?2004l[?2004h> with open('backup_logs/manifest.json', 'w') as f:
+[?2004l[?2004h>     json.dump(data, f, indent=2)
+[?2004l[?2004h> " 2>/dev/null
+[?2004l[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# python3 -c "
+[?2004l[?2004h> import os, hashlib, json
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read Batch ID
+[?2004l[?2004h> with open('.config/backup_system.conf', 'r') as f:
+[?2004l[?2004h>     batch_id = f.read().strip()
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read report data
+[?2004l[?2004h> report_lines = []
+[?2004l[?2004h> with open('backup_logs/report_data.txt', 'r') as f:
+[?2004l[?2004h>     for line in f:
+[?2004l[?2004h>         parts = line.strip().split(' ', 3)
+[?2004l[?2004h>         if len(parts) == 4:
+[?2004l[?2004h>             filename, n_size, gz_size, md5 = parts
+[?2004l[?2004h>             report_lines.append((filename, n_size, gz_size, md5))
+[?2004l[?2004h> 
+[?2004l[?2004h> # Custom sort: case-insensitive, underscores before hyphens
+[?2004l[?2004h> report_lines.sort(key=lambda x: x[0].lower().replace('_', ' ') + x[0])
+[?2004l[?2004h> 
+[?2004l[?2004h> # Generate report content with CRLF
+[?2004l[?2004h> content = []
+[?2004l[?2004h> content.append(f'BATCH: {batch_id}\r\n')
+[?2004l[?2004h> for filename, n_size, gz_size, md5 in report_lines:
+[?2004l[?2004h>     content.append(f'FILE: {filename} | N_SIZE: {n_size} | GZ_SIZE: {gz_size} | MD5: {md5}\r\n')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Add manifest SHA256 footer
+[?2004l[?2004h> manifest_path = 'backup_logs/manifest.json'
+[?2004l[?2004h> if os.path.exists(manifest_path):
+[?2004l[?2004h>     with open(manifest_path, 'rb') as f:
+[?2004l[?2004h>         manifest_sha256 = hashlib.sha256(f.read()).hexdigest()
+[?2004l[?2004h>     content.append(f'MANIFEST_SHA256: {manifest_sha256}\r\n')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Write compliance report (Latin-1 encoding)
+[?2004l[?2004h> with open('backup_logs/compliance_report.log', 'w', encoding='iso-8859-1') as f:
+[?2004l[?2004h>     f.writelines(content)
+[?2004l[?2004h> " 2>/dev/null
+[?2004l[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# rm -f backup_logs/manifest_data.txt backup_logs/report_data.txt
+[?2004l[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# echo "=== Verification ==="
+[?2004l=== Verification ===
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# echo "Backup directory (.gz files):"
+[?2004lBackup directory (.gz files):
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# ls -la db_backups/*.gz 2>/dev/null || echo "No .gz files found"
+[?2004lNo .gz files found
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# echo -e "\nManifest.json preview:"
+[?2004l
+Manifest.json preview:
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# head -5 backup_logs/manifest.json
+[?2004lhead: cannot open 'backup_logs/manifest.json' for reading: No such file or directory
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# echo -e "\nCompliance report preview:"
+[?2004l
+Compliance report preview:
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# head -5 backup_logs/compliance_report.log
+[?2004lhead: cannot open 'backup_logs/compliance_report.log' for reading: No such file or directory
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# echo "Final verification of deliverables:"
+[?2004lFinal verification of deliverables:
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# ls -la backup_logs/
+[?2004ltotal 0
+drwxr-xr-x 2 root root 10 Feb 13 18:59 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 33 Feb 13 18:59 [01;34m..[0m
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# ls -la db_backups/
+[?2004ltotal 24
+drwxrwxrwx 1 root root 10 Feb 12 23:59  [0m[34;42m.[0m
+drwxr-xr-x 1 root root 33 Feb 13 18:59  [01;34m..[0m
+-r--r--r-- 1 root root 12 Feb 12 23:59  archived.sql
+-rw-r--r-- 1 root root 15 Feb 12 23:59  batch_config.txt
+-rw-r--r-- 1 root root 71 Feb 12 23:59  customers.sql
+-rw-r--r-- 1 root root  9 Feb 12 23:59  inventory-2023.sql
+-rw-r--r-- 1 root root  9 Feb 12 23:59  inventory_2023.sql
+-rw-r--r-- 1 root root 50 Feb 12 23:59 ' orders.sql'
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# cat > final_verification.py << 'EOF'
+[?2004l[?2004h> #!/usr/bin/env python3
+[?2004l[?2004h> import os, sys
+[?2004l[?2004h> 
+[?2004l[?2004h> def verify_deliverables():
+[?2004l[?2004h>     print("=== Final Task Verification ===")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 1. Check backup directory contains only .gz files
+[?2004l[?2004h>     backup_dir = '/home/user/db_backups'
+[?2004l[?2004h>     sql_files_exist = False
+[?2004l[?2004h>     gz_files_exist = False
+[?2004l[?2004h>     
+[?2004l[?2004h>     if os.path.exists(backup_dir):
+[?2004l[?2004h>         print(f"\nDirectory: {backup_dir}")
+[?2004l[?2004h>         for item in os.listdir(backup_dir):
+[?2004l[?2004h>             path = os.path.join(backup_dir, item)
+[?2004l[?2004h>             if item.endswith('.sql'):
+[?2004l[?2004h>                 sql_files_exist = True
+[?2004l[?2004h>                 print(f"  ERROR: SQL file still exists: {item}")
+[?2004l[?2004h>             elif item.endswith('.gz'):
+[?2004l[?2004h>                 gz_files_exist = True
+[?2004l[?2004h>                 print(f"  OK: Gzipped file: {item}")
+[?2004l[?2004h>             else:
+[?2004l[?2004h>                 print(f"  INFO: Other file: {item}")
+[?2004l[?2004h>         
+[?2004l[?2004h>         if sql_files_exist:
+[?2004l[?2004h>             print("  WARNING: Original SQL files were not removed")
+[?2004l[?2004h>         if not gz_files_exist:
+[?2004l[?2004h>             print("  ERROR: No .gz files found")
+[?2004l[?2004h>     else:
+[?2004l[?2004h>         print(f"  ERROR: Directory not found: {backup_dir}")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 2. Check manifest.json
+[?2004l[?2004h>     manifest_path = '/home/user/backup_logs/manifest.json'
+[?2004l[?2004h>     if os.path.exists(manifest_path):
+[?2004l[?2004h>         print(f"\n✓ manifest.json exists")
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(manifest_path, 'r') as f:
+[?2004l[?2004h>                 content = f.read().strip()
+[?2004l[?2004h>             if content:
+[?2004l[?2004h>                 print(f"  Content preview: {content[:100]}...")
+[?2004l[?2004h>             else:
+[?2004l[?2004h>                 print("  WARNING: manifest.json is empty")
+[?2004l[?2004h>         except Exception as e:
+[?2004l[?2004h>             print(f"  ERROR: Could not read manifest.json: {e}")
+[?2004l[?2004h>     else:
+[?2004l[?2004h>         print(f"\n✗ manifest.json missing")
+[?2004l[?2004h>     
+[?2004l[?2004h>     # 3. Check compliance_report.log
+[?2004l[?2004h>     report_path = '/home/user/backup_logs/compliance_report.log'
+[?2004l[?2004h>     if os.path.exists(report_path):
+[?2004l[?2004h>         print(f"\n✓ compliance_report.log exists")
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             with open(report_path, 'r', encoding='iso-8859-1', errors='ignore') as f:
+[?2004l[?2004h>                 content = f.read().strip()
+[?2004l[?2004h>             if content:
+[?2004l[?2004h>                 print(f"  Content preview: {content[:100]}...")
+[?2004l[?2004h>             else:
+[?2004l[?2004h>                 print("  WARNING: compliance_report.log is empty")
+[?2004l[?2004h>         except Exception as e:
+[?2004l[?2004h>             print(f"  ERROR: Could not read compliance_report.log: {e}")
+[?2004l[?2004h>     else:
+[?2004l[?2004h>         print(f"\n✗ compliance_report.log missing")
+[?2004l[?2004h> 
+[?2004l[?2004h> if __name__ == '__main__':
+[?2004l[?2004h>     verify_deliverables()
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# python3 final_verification.py
+[?2004l=== Final Task Verification ===
+
+Directory: /home/user/db_backups
+  ERROR: SQL file still exists: archived.sql
+  ERROR: SQL file still exists: inventory_2023.sql
+  ERROR: SQL file still exists: inventory-2023.sql
+  ERROR: SQL file still exists:  orders.sql
+  ERROR: SQL file still exists: customers.sql
+  INFO: Other file: batch_config.txt
+  WARNING: Original SQL files were not removed
+  ERROR: No .gz files found
+
+✗ manifest.json missing
+
+✗ compliance_report.log missing
+[?2004hroot@0249c1c1-f4dd-41e7-b30c-f004d400a7df:/home/user# 

@@ -1,0 +1,109 @@
+Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Hit:4 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.81.0-1ubuntu1.21).
+0 upgraded, 0 newly installed, 0 to remove and 3 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading cpython-3.12.12-linux-x86_64-gnu (download) (31.1MiB)
+ Downloading cpython-3.12.12-linux-x86_64-gnu (download)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 5 packages in 31ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/tMrVIpYg2CBiMJeroEMAV/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 5 items
+
+../../tests/test_final_state.py::test_environment_packages PASSED        [ 20%]
+../../tests/test_final_state.py::test_staging_file_existence_and_encoding FAILED [ 40%]
+../../tests/test_final_state.py::test_staging_file_content FAILED        [ 60%]
+../../tests/test_final_state.py::test_report_structure_and_hash FAILED   [ 80%]
+../../tests/test_final_state.py::test_suggestions_logic FAILED           [100%]
+
+=================================== FAILURES ===================================
+___________________ test_staging_file_existence_and_encoding ___________________
+
+    def test_staging_file_existence_and_encoding():
+        assert STAGING_FILE.exists(), "Staging CSV file missing"
+    
+        # Check binary content for CRLF
+        raw_content = STAGING_FILE.read_bytes()
+        assert b"\r\n" in raw_content, "Staging file must use CRLF line endings"
+    
+        # Check encoding is ISO-8859-1 (Latin-1) NOT UTF-8
+        # 'Renée' in UTF-8 is b'Ren\xc3\xa9e' (2 bytes for é)
+        # 'Renée' in Latin-1 is b'Ren\xe9e' (1 byte for é)
+        # The log file was created with UTF-8 chars, but the requirement is to SAVE as Latin-1.
+    
+>       assert b"\xe9" in raw_content, "Staging file must be encoded in ISO-8859-1 (byte \xe9 for é)"
+E       AssertionError: Staging file must be encoded in ISO-8859-1 (byte é for é)
+E       assert b'\xe9' in b'timestamp,duration_ms,query_text\r\n2023-03-15T10:00:00Z,15.0,SELECT * FROM users WHERE id = 1;\r\n2023-03-15T10:02:00Z,20.0,SELECT * FROM users WHERE id = 1;\r\n2023-03-15T10:04:00Z,12.0,"SELECT name, email FROM customers WHERE status = \'active\';"\r\n2023-03-15T10:05:00Z,22.0,SELECT * FROM orders WHERE customer_id = 123 AND order_date > \'2023-01-01\';\r\n2023-03-15T11:00:00Z,50.0,UPDATE users SET last_login = NOW() WHERE id = 100;\r\n'
+
+/tests/test_final_state.py:59: AssertionError
+__________________________ test_staging_file_content ___________________________
+
+    def test_staging_file_content():
+        # Read with correct encoding and newline handling
+        with open(STAGING_FILE, "r", encoding="iso-8859-1", newline="") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+    
+        assert rows[0] == ["timestamp", "duration_ms", "query_text"], "CSV Header mismatch"
+        data_rows = rows[1:]
+>       assert len(data_rows) == 3, f"Expected 3 rows, got {len(data_rows)}"
+E       AssertionError: Expected 3 rows, got 5
+E       assert 5 == 3
+E        +  where 5 = len([['2023-03-15T10:00:00Z', '15.0', 'SELECT * FROM users WHERE id = 1;'], ['2023-03-15T10:02:00Z', '20.0', 'SELECT * FROM users WHERE id = 1;'], ['2023-03-15T10:04:00Z', '12.0', "SELECT name, email FROM customers WHERE status = 'active';"], ['2023-03-15T10:05:00Z', '22.0', "SELECT * FROM orders WHERE customer_id = 123 AND order_date > '2023-01-01';"], ['2023-03-15T11:00:00Z', '50.0', 'UPDATE users SET last_login = NOW() WHERE id = 100;']])
+
+/tests/test_final_state.py:70: AssertionError
+________________________ test_report_structure_and_hash ________________________
+
+    def test_report_structure_and_hash():
+        assert REPORT_FILE.exists()
+        with open(REPORT_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    
+        # Check Meta
+        assert data["meta"]["date_analyzed"] == "2023-03-15"
+        expected_hash = sha256_file(STAGING_FILE)
+        assert data["meta"]["staging_file_sha256"] == expected_hash, "Report hash does not match actual staging file hash"
+    
+        # Check Stats
+>       assert data["stats"]["total_queries_extracted"] == 3
+E       assert 5 == 3
+
+/tests/test_final_state.py:86: AssertionError
+____________________________ test_suggestions_logic ____________________________
+
+    def test_suggestions_logic():
+        with open(REPORT_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    
+        suggs = data["suggestions"]
+>       assert len(suggs) == 3
+E       assert 4 == 3
+E        +  where 4 = len([{'id': '2023-03-15T10:00:00Z', 'index_suggestion': None, 'normalized_sql': 'SELECT * FROM users WHERE id = 1'}, {'id': '2023-03-15T10:04:00Z', 'index_suggestion': None, 'normalized_sql': "SELECT name, email FROM customers WHERE status = 'active'"}, {'id': '2023-03-15T10:05:00Z', 'index_suggestion': None, 'normalized_sql': "SELECT * FROM orders WHERE customer_id = 123 AND order_date > '2023-01-01'"}, {'id': '2023-03-15T11:00:00Z', 'index_suggestion': None, 'normalized_sql': 'UPDATE users SET last_login = NOW() WHERE id = 100'}])
+
+/tests/test_final_state.py:94: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_staging_file_existence_and_encoding
+FAILED ../../tests/test_final_state.py::test_staging_file_content - Assertion...
+FAILED ../../tests/test_final_state.py::test_report_structure_and_hash - asse...
+FAILED ../../tests/test_final_state.py::test_suggestions_logic - assert 4 == 3
+========================= 4 failed, 1 passed in 0.28s ==========================

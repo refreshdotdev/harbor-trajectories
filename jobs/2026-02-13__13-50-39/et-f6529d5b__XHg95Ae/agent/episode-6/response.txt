@@ -1,0 +1,21 @@
+```json
+{
+  "analysis": "The previous script attempt failed again due to a syntax error, specifically an \"unexpected EOF while looking for matching `\"'\" near the end of the JSON `printf` statement. This indicates an issue with string escaping or concatenation in the `printf` command. We will fix this by ensuring proper quoting and escaping.",
+  "plan": "We will rewrite the JSON generation section using a more robust `jq`-based approach if available, and if not, we will use a corrected `printf` statement with proper quoting and escaping. The steps are: 1) Check for `jq`. 2) Use `jq` to safely generate the JSON. 3) If `jq` is unavailable, use a `printf` statement with variables properly escaped. 4) Execute the corrected script.",
+  "commands": [
+    {
+      "keystrokes": "cat > /tmp/create_summary_final.sh << 'EOF'\n#!/bin/bash\n\nAUDIT_DIR=\"/home/user/audit_2023Q4\"\nLOG_FILE=\"${AUDIT_DIR}/checksum_audit.log\"\nSUMMARY_FILE=\"${AUDIT_DIR}/summary.json\"\n\n# Read start time from log file\nSTART_TIME_FROM_LOG=$(grep \"^START_TIME  :\" \"${LOG_FILE}\" | awk -F': ' '{print $2}')\nEND_TIME=\"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"\n\n# Count file records\nFILE_COUNT=$(grep -c \"^[^ ]* SHA256=[a-f0-9]*  MD5=[a-f0-9]*\" \"${LOG_FILE}\")\nTOTAL_BYTES=0\n\n# Compute SHA256 hash of the current log content\nLOG_CONTENT_SHA256=$(sha256sum \"${LOG_FILE}\" | awk '{print $1}')\n\n# Derive HMAC-SHA256 key\nSECRET_KEY_CONTENT=$(cat /home/user/source_files/.secret 2>/dev/null | tr -d ' \\n\\r\\t')\nif [[ -z \"${SECRET_KEY_CONTENT}\" ]]; then\n    SECRET_KEY_CONTENT=\"\"\nfi\nCURRENT_UTC_DATE=$(date -u +'%Y%m%d')\nHMAC_KEY=\"${SECRET_KEY_CONTENT}${CURRENT_UTC_DATE}\"\n\n# Compute HMAC-SHA256 signature\nLOG_CONTENT_FOR_HMAC=$(cat \"${LOG_FILE}\")\necho -n \"${LOG_CONTENT_FOR_HMAC}\" | openssl dgst -sha256 -hmac \"${HMAC_KEY}\" | awk '{print $2}' > /tmp/hmac_result.txt 2>/dev/null\nHMAC_SIGNATURE=$(cat /tmp/hmac_result.txt 2>/dev/null)\nrm -f /tmp/hmac_result.txt\n\n# Create JSON summary using jq if available, otherwise use printf\nif command -v jq &> /dev/null; then\n    jq -n \\\n        --arg period \"2023-Q4\" \\\n        --argjson file_count \"${FILE_COUNT}\" \\\n        --argjson total_bytes \"${TOTAL_BYTES}\" \\\n        --arg start_time \"${START_TIME_FROM_LOG}\" \\\n        --arg end_time \"${END_TIME}\" \\\n        --arg status \"COMPLETED\" \\\n        --arg log_checksum \"${LOG_CONTENT_SHA256}\" \\\n        --arg signature \"${HMAC_SIGNATURE}\" \\\n        '{\n            period: $period,\n            file_count: $file_count,\n            total_bytes: $total_bytes,\n            start_time: $start_time,\n            end_time: $end_time,\n            status: $status,\n            log_checksum: $log_checksum,\n            signature: $signature\n        }' > \"${SUMMARY_FILE}\"\nelse\n    # Fallback to printf with proper quoting\n    printf '{\\n  \"period\": \"2023-Q4\",\\n  \"file_count\": %d,\\n  \"total_bytes\": %d,\\n  \"start_time\": \"%s\",\\n  \"end_time\": \"%s\",\\n  \"status\": \"COMPLETED\",\\n  \"log_checksum\": \"%s\",\\n  \"signature\": \"%s\"\\n}\\n' \\\n          \"${FILE_COUNT}\" \"${TOTAL_BYTES}\" \"${START_TIME_FROM_LOG}\" \"${END_TIME}\" \"${LOG_CONTENT_SHA256}\" \"${HMAC_SIGNATURE}\" > \"${SUMMARY_FILE}\"\nfi\n\n# Verify JSON formatting\nif [[ -s \"${SUMMARY_FILE}\" ]]; then\n    echo \"JSON summary created at ${SUMMARY_FILE}\"\n    if command -v jq &> /dev/null; then\n        jq . \"${SUMMARY_FILE}\"\n    else\n        cat \"${SUMMARY_FILE}\"\n    fi\nelse\n    echo \"Failed to create JSON summary\"\nfi\nEOF\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "chmod +x /tmp/create_summary_final.sh\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "/tmp/create_summary_final.sh\n",
+      "duration": 1.0
+    }
+  ],
+  "task_complete": false
+}
+```

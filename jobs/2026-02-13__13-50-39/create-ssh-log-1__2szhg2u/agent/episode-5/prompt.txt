@@ -1,0 +1,35 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+- Command 1 should end with newline when followed by another command. Otherwise the two commands will be concatenated together on the same line.
+
+New Terminal Output:
+
+root@2258a6b4-782d-453a-b0ff-afed0bfbf6dd:/home/user# cat >> process_logs.sh << 'EOF'
+>
+> # Sanitization function
+> sanitize_log() {
+>     local file="$1"
+>     echo "Processing: $file" >> "$OUTPUT_DIR/process_log.txt"
+>     case "$file" in
+>         *.gz)
+>             gunzip -c "$file" | tr -d '\000-\037' | sed 's/\r$//' | grep -v '^$' | iconv -t UTF-8 -c >> "$OUTPUT_DIR/cleaned_combined.log"
+>             ;;
+>         *)
+>             tr -d '\000-\037' < "$file" | sed 's/\r$//' | grep -v '^$' | iconv -t UTF-8 -c >> "$OUTPUT_DIR/cleaned_combined.log"
+>             ;;
+>     esac
+> }
+>
+> # Process all evidence files
+> if [ -d evidence ]; then
+>     find evidence/ -type f | while read -r file; do
+>         if [[ -f "$file" ]]; then
+>             sanitize_log "$file"
+>         fi
+>     done
+> fi
+>
+> echo "Sanitization complete" >> "$OUTPUT_DIR/process_log.txt"
+> EOFchmod +x process_logs.sh
+>

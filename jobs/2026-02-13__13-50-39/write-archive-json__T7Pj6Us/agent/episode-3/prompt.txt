@@ -1,0 +1,120 @@
+Current terminal state:
+New Terminal Output:
+
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# cat > /usr/local/bin/storage_maintenance.sh << 'EOF'
+> #!/bin/bash
+>
+> # Phase 1: Configuration
+> CONFIG_FILE="/home/user/storage/params.conf"
+> if [[ ! -f "$CONFIG_FILE" ]]; then
+>     echo "Configuration file missing: $CONFIG_FILE"
+>     exit 1
+> fi
+>
+> # Parse parameters using awk to handle potential spaces and special characters
+> source <(awk -F'=' '/^[^#]/ && NF==2 {print $1 "=" $2}' "$CONFIG_FILE" 2>/dev/null)
+>
+> cutoff_days=${cutoff_days:-0}
+> max_bak_kb=${max_bak_kb:-0}
+>
+> if [[ -z "$cutoff_days" || -z "$max_bak_kb" ]]; then
+>     echo "Warning: Failed to load all parameters from config file. Using defaults."
+> fi
+>
+> echo "Loaded parameters: cutoff_days=$cutoff_days, max_bak_kb=$max_bak_kb KB"
+>
+> deleted_bytes=0
+> corrupt_count=0
+>
+> # Phase 2: Pruning .bak files
+> find /home/user/storage/incoming -type f -name "*.bak" ! -name "_*.bak" -print0 | while IFS= read -r -d '' bakfile; do
+>     filesize_kb=$(du -k --apparent-size "$bakfile" | cut -f1)
+>     if [[ $filesize_kb -gt $max_bak_kb ]]; then
+>         bytes_deleted=$(du -b "$bakfile" | cut -f1)
+>         rm "$bakfile"
+>         deleted_bytes=$((deleted_bytes + bytes_deleted))
+>         echo "Deleted large .bak file: $bakfile (${filesize_kb}KB)"
+>     fi
+> done
+>
+> # Phase 3: Archival of .txt files
+> cutoff_time=$(date -d "-$cutoff_days days" +%s)
+> find /home/user/storage/incoming -type f -name "*.txt" -print0 | while IFS= read -r -d '' txtfile; do
+>     # Validate UTF-8 using iconv (more portable than file command)
+>     if ! iconv -f UTF-8 -t UTF-8 "$txtfile" >/dev/null 2>&1; then
+>         corrupt_count=$((corrupt_count + 1))
+>         mv "$txtfile" "${txtfile}.corrupt"
+>         echo "Renamed corrupt file: $txtfile"
+>     else
+>         mv "$txtfile" /home/user/storage/archive/
+>         echo "Archived valid UTF-8 file: $txtfile"
+>     fi
+> done
+>
+> # Phase 4: Manifest Generation
+> ARCHIVE_DIR="/home/user/storage/archive"
+> MANIFEST_FILE="$ARCHIVE_DIR/manifest.csv"
+>
+> # Create manifest with CRLF line endings - fixed syntax
+> rm -f "$MANIFEST_FILE"
+> find "$ARCHIVE_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+>     size=$(du -b "$file" | cut -f1)
+>     md5=$(md5sum "$file" | cut -d' ' -f1)
+>     # Escape commas, quotes, and newlines in filenames
+>     filename=$(echo "$file" | sed -e 's/,/\,/g' -e "s/\\\"/'\\\\"'/g" -e ':a;N;s/\\n/\\\n/g;ta")
+>     printf "%s,%d,%s\r\n" "$filename" "$size" "$md5" >> "$MANIFEST_FILE"
+> done
+>
+> # Sort the manifest by MD5 hash
+> sort -t, -k3 "$MANIFEST_FILE" -o "$MANIFEST_FILE"
+>
+> # Phase 5: Audit Report
+> cat > /home/user/storage/summary.xml << EOF
+> <?xml version="1.0" encoding="ISO-8859-1"?>
+> <audit>
+>     <deleted_bytes>$deleted_bytes</deleted_bytes>
+>     <corrupt_files>$corrupt_count</corrupt_files>
+>     <manifest_sha1>$(sha1sum "$MANIFEST_FILE" | cut -d' ' -f1)</manifest_sha1>
+> </audit>
+> EOF
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~#
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# # Ensure ISO-8859-1 encoding for XML file
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# iconv -f UTF-8 -t ISO-8859-1 "$MANIFEST_FILE" -o "$MANIFEST_FILE"
+iconv: cannot open input file `': No such file or directory
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# iconv -f UTF-8 -t ISO-8859-1 "/home/user/storage/summary.xml" -o "/home/user/storage/summary.xml"
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~#
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# # Final Cleanup
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# find /home/user/storage/incoming -type d -empty -delete
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~#
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# echo "Maintenance complete. Deleted bytes: $deleted_bytes, Corrupt files: $corrupt_count"
+Maintenance complete. Deleted bytes: , Corrupt files:
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# EOF
+bash: EOF: command not found
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# chmod +x /usr/local/bin/storage_maintenance.sh
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# /usr/local/bin/storage_maintenance.sh
+/dev/fd/63: line 1: cutoff_days: command not found
+/dev/fd/63: line 2: max_bak_kb: command not found
+Loaded parameters: cutoff_days=0, max_bak_kb=0 KB
+/usr/local/bin/storage_maintenance.sh: line 69: unexpected EOF while looking for matching `"'
+/usr/local/bin/storage_maintenance.sh: line 75: syntax error: unexpected end of file
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# ls -la /home/user/storage/
+total 8
+drwxr-xr-x 1 root root  95 Feb 13 18:51 .
+drwxrwxrwx 1 root root  29 Feb 13 18:50 ..
+drwxr-xr-x 1 root root  87 Feb 13 18:52 archive
+drwxr-xr-x 1 root root  91 Feb 13 18:52 incoming
+-rw-r--r-- 1 root root  81 Feb 13 18:51 params.conf
+-rw-r--r-- 1 root root 211 Feb 13 18:52 summary.xml
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# head -10 /home/user/storage/summary.xml
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<audit>
+    <deleted_bytes>0</deleted_bytes>
+    <corrupt_files>0</corrupt_files>
+    <manifest_sha1>404802f27eb0da1ba59af6e8ef18a70ec05c2254</manifest_sha1>
+</audit>
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~# head -10 /home/user/storage/archive/manifest.csv
+head: cannot open '/home/user/storage/archive/manifest.csv' for reading: No such file or directory
+root@29372756-c152-4945-afbf-6ac4c6f58d37:~#
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

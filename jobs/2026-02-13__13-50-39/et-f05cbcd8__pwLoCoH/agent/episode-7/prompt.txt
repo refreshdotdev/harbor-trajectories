@@ -1,0 +1,106 @@
+Current terminal state:
+New Terminal Output:
+
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ cat incidents/dns_resolution_report.log 2>/dev/null || echo -n "" > incidents/dns_resolution_report.log
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ cat resources/mock_hosts.temp 2>/dev/null || echo -n "" > resources/mock_hosts.temp
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ declare -A dns_internal_map; declare -A dns_external_map;
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ # Populate internal DNS map
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ jq -r 'to_entries[] | [".key", (.value."A" // ""), (.value."AAAA" // ""), (.value."CNAME" // "")]| join(\t)' resour
+ces/dns/internal_dns.json | while IFS=\t read -r host a aaaa cname; do
+>   if [[ -n "$cname" && -z "$a" && -z "$aaaa" ]]; then
+>     dns_internal_map["$host"]="CNAME:$cname";
+>   elif [[ -n "$a" ]]; then
+>     dns_internal_map["$host"]="A:$a:$aaaa";
+>   elif [[ -n "$aaaa" ]]; then
+>     dns_internal_map["$host"]="AAAA::$aaaa";
+>   fi;
+> done
+jq: error: syntax error, unexpected INVALID_CHARACTER (Unix shell quoting issues?) at <top-level>, line 1:
+to_entries[] | [".key", (.value."A" // ""), (.value."AAAA" // ""), (.value."CNAME" // "")]| join(\t)
+
+jq: 1 compile error
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ # Populate external DNS map
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ jq -r 'to_entries[] | [".key", (.value."A" // ""), (.value."AAAA" // ""), (.value."CNAME" // "")]| join(\t)' resour
+ces/dns/external_dns.json | while IFS=\t read -r host a aaaa cname; do
+>   if [[ -n "$cname" && -z "$a" && -z "$aaaa" ]]; then
+>     dns_external_map["$host"]="CNAME:$cname";
+>   elif [[ -n "$a" ]]; then
+>     dns_external_map["$host"]="A:$a:$aaaa";
+>   elif [[ -n "$aaaa" ]]; then
+>     dns_external_map["$host"]="AAAA::$aaaa";
+>   fi;
+> done
+jq: error: syntax error, unexpected INVALID_CHARACTER (Unix shell quoting issues?) at <top-level>, line 1:
+to_entries[] | [".key", (.value."A" // ""), (.value."AAAA" // ""), (.value."CNAME" // "")]| join(\t)
+
+jq: 1 compile error
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ while IFS= read -r host; do
+>   printf "Processing: %s\\n" "$host" > /dev/stderr;
+>
+>   # 1. Check mock_hosts
+>   hosts_ip=$(grep -i "^[^\\t]*\\t\\"$host"" resources/mock_hosts | awk '{print $1}' | head -1);
+>   if [ -z "$hosts_ip" ]; then hosts_ip="-"; fi
+>
+>   # 2. Resolve from DNS
+>   final_a="-"; final_aaaa="-"; dns_summary="NO_RECORD_IN_DNS";
+>   current_target="$host"; depth=0;
+>
+>   while [[ $depth -lt 3 && -n "$current_target" ]]; do
+>     if [[ -n "${dns_internal_map[$current_target]+isset}" ]]; then
+>       IFS=":" read -r type val1 val2 <<< "${dns_internal_map[$current_target]}";
+>       if [[ "$type" == "A" ]]; then final_a="$val1"; final_aaaa="$val2"; dns_summary="INTERNAL_A"; break; fi
+>       if [[ "$type" == "CNAME" ]]; then current_target="$val1"; ((depth++)); continue; fi
+>     fi
+>
+>     if [[ -n "${dns_external_map[$current_target]+isset}" ]]; then
+>       IFS=":" read -r type val1 val2 <<< "${dns_external_map[$current_target]}";
+>       if [[ "$type" == "A" ]]; then final_a="$val1"; final_aaaa="$val2"; dns_summary="EXTERNAL_A"; break; fi
+>       if [[ "$type" == "CNAME" ]]; then current_target="$val1"; ((depth++)); continue; fi
+>     fi
+>
+>     if [[ $depth -ge 3 ]]; then dns_summary="CNAME_CHAIN_LIMIT_OR_LOOP"; break; fi
+>     break; # No record found in this iteration of internal/external
+>   done
+>
+>   # Determine summary status
+>   summary="NO_RECORD_FOUND";
+>   if [ "$hosts_ip" != "-" ]; then
+>     if [[ "$dns_summary" == "NO_RECORD_IN_DNS" || "$dns_summary" == "CNAME_CHAIN_LIMIT_OR_LOOP" ]]; then
+>       summary="OK - hosts entry present, no DNS";
+>     elif [ "$hosts_ip" == "$final_a" ]; then
+>       summary="OK - consistent";
+>     else
+>       summary="WARN - inconsistent";
+>     fi
+>   else
+>     if [[ "$dns_summary" == "NO_RECORD_IN_DNS" || "$dns_summary" == "CNAME_CHAIN_LIMIT_OR_LOOP" ]]; then
+>       summary="$dns_summary";
+>     elif [ -n "$final_a" ] && [ "$final_a" != "-" ]; then
+>       summary="UPDATED hosts with DNS A";
+>       echo "$final_a\t$host" >> resources/mock_hosts.temp;
+>     else
+>       summary="NO_RECORD_FOUND";
+>     fi
+>   fi
+>
+>   echo -e "$host\\t$hosts_ip\\t$final_a\\t$final_aaaa\\t$summary" >> incidents/dns_resolution_report.log;
+> done < incidents/tickets/dns_incident_2024.txt
+-bash: /dev/stderr: Permission denied
+-bash: /dev/stderr: Permission denied
+-bash: /dev/stderr: Permission denied
+-bash: /dev/stderr: Permission denied
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ sort -o incidents/dns_resolution_report.log incidents/dns_resolution_report.log
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ chmod 640 incidents/dns_resolution_report.log
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ echo "--- Report Content ---"; head -10 incidents/dns_resolution_report.log
+--- Report Content ---
+api-gateway.external.com        -       -       -       NO_RECORD_IN_DNS
+app-internal.example.com        -       -       -       NO_RECORD_IN_DNS
+legacy-system.internal.net      -       -       -       NO_RECORD_IN_DNS
+service-public.example.org      -       -       -       NO_RECORD_IN_DNS
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$ echo "--- Mock Hosts (temp) Content ---"; cat resources/mock_hosts.temp
+--- Mock Hosts (temp) Content ---
+user@2c74d09a-c4e9-4e06-abee-5f521942fb1f:~$
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

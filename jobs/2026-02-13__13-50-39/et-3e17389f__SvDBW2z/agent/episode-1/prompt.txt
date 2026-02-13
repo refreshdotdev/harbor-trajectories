@@ -1,0 +1,142 @@
+Current terminal state:
+New Terminal Output:
+
+root@e950990b-5af1-429e-bab5-3037ffa432db:~# mkdir -p /home/user/.venvs /home/user/db_queries
+root@e950990b-5af1-429e-bab5-3037ffa432db:~# cd /home/user
+root@e950990b-5af1-429e-bab5-3037ffa432db:/home/user# python3 -m venv .venvs/opt_queries
+.venvs/opt_queries/bin/pip install sqlparse==0.4.4
+root@e950990b-5af1-429e-bab5-3037ffa432db:/home/user# .venvs/opt_queries/bin/pip install sqlparse==0.4.4
+Collecting sqlparse==0.4.4
+  Downloading sqlparse-0.4.4-py3-none-any.whl (41 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 41.2/41.2 KB 6.6 MB/s eta 0:00:00
+Installing collected packages: sqlparse
+Successfully installed sqlparse-0.4.4
+root@e950990b-5af1-429e-bab5-3037ffa432db:/home/user# echo "sqlparse==0.4.4" > .venvs/opt_queries/requirements.txt
+root@e950990b-5af1-429e-bab5-3037ffa432db:/home/user# cat > db_queries/process_batch.py << 'EOF'
+> #!/usr/bin/env python3
+>
+> import os
+> import sys
+> import hashlib
+> import sqlparse
+> import json
+> from typing import List, Dict, Any
+>
+> def process_query(query_str: str) -> str:
+>     """Process a single query: hash, format, and add comment."""
+>     # Calculate MD5 hash of original stripped query
+>     original_query = query_str.strip()
+>     query_hash = hashlib.md5(original_query.encode('utf-8')).hexdigest()
+>
+>     # Parse and format with sqlparse
+>     parsed = sqlparse.parse(original_query)[0]  # Single statement only
+>     formatted = sqlparse.format(parsed,
+>                                keyword_case='upper',
+>                                indent_columns=True,
+>                                use_space_around_operators=True)
+>
+>     # Convert to single line and add comment
+>     single_line = ' '.join(formatted.splitlines())
+>     return f"{single_line} -- id={query_hash};"
+>
+> def main():
+>     # Get batch ID from environment
+>     batch_id = os.getenv('DB_BATCH_ID')
+>     if not batch_id:
+>         print("Error: DB_BATCH_ID environment variable not set", file=sys.stderr)
+>         sys.exit(1)
+>
+>     input_filename = f"raw_batch_{batch_id}.sql"
+>     input_path = os.path.join('/home/user/db_queries', input_filename)
+>
+>     # Create backup
+>     backup_path = input_path + '_backup.sql'
+>     try:
+>         with open(input_path, 'r') as f_in, open(backup_path, 'w') as f_out:
+>             f_out.write(f_in.read())
+>     except FileNotFoundError:
+>         print(f"Error: Input file {input_path} not found", file=sys.stderr)
+>         sys.exit(1)
+>
+>     # Initialize output
+>     read_queries: List[str] = []
+>     write_queries: List[str] = []
+>
+>     # Process queries
+>     try:
+>         with open(input_path, 'r') as f:
+>             for line in f:
+>                 line = line.strip()
+>                 if not line or line.startswith('--') or line.startswith('/*'):
+>                     continue
+>
+>                 try:
+>                     # Try to parse as single statement
+>                     parsed = sqlparse.parse(line)[0]
+>                 except IndexError:
+>                     print(f"Warning: Could not parse query: {line}", file=sys.stderr)
+>                     continue
+>
+>                 # Classify query
+>                 first_token = parsed.tokens[0]
+>                 if first_token.value.upper().startswith('SELECT '):
+>                     read_queries.append(process_query(line))
+>                 elif first_token.value.upper() in ['INSERT', 'UPDATE', 'DELETE']:
+>                     write_queries.append(process_query(line))
+>                 else:
+>                     print(f"Warning: Unhandled query type: {line}", file=sys.stderr)
+>                     read_queries.append(process_query(line))  # Default to read
+>     except Exception as e:
+>         print(f"Error processing queries: {e}", file=sys.stderr)
+>         sys.exit(1)
+>
+>     # Write output files
+>     output_base = f"batch_{batch_id}_optimized"
+>
+>     with open(f"/home/user/db_queries/{output_base}_read.sql", 'w') as f_read:
+>         f_read.write('\n'.join(read_queries) + '\n')
+>
+>     with open(f"/home/user/db_queries/{output_base}_write.sql", 'w') as f_write:
+>         f_write.write('\n'.join(write_queries) + '\n')
+>
+>     # Create manifest
+>     manifest = {
+>         "batch_id": batch_id,
+>         "read_count": len(read_queries),
+>         "write_count": len(write_queries)
+>     }
+>     with open(f"/home/user/db_queries/batch_{batch_id}_manifest.json", 'w') as f_manifest:
+>         json.dump(manifest, f_manifest, indent=4)
+>
+>     # Create log file
+>     total_queries = len(read_queries) + len(write_queries)
+>     log_content = f"""PIPELINE START
+> Batch ID: {batch_id}
+> Input: {input_filename}
+> Processed: {total_queries}
+> PIPELINE END
+> """
+>     with open(f"/home/user/db_queries/batch_{batch_id}_pipeline.log", 'w') as f_log:
+>         f_log.write(log_content)
+>
+> if __name__ == '__main__':
+>     main()
+> EOFchmod +x db_queries/process_batch.py
+> cat > db_queries/raw_batch_42.sql << 'EOF'
+> select * from employees;
+>
+> UPDATE salaries SET bonus = bonus * 1.1;
+>
+> -- Comment line
+> INSERT INTO departments (name) VALUES ('New Dept');
+> DELETE FROM old_data WHERE expired = true;
+>
+> SELECT name, salary FROM employees WHERE salary > 50000;
+> EOFDB_BATCH_ID=42 .venvs/opt_queries/bin/python db_queries/process_batch.py
+> head -n 2 .venvs/opt_queries/requirements.txt
+> cat db_queries/batch_42_manifest.json
+> cat db_queries/batch_42_pipeline.log
+>
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

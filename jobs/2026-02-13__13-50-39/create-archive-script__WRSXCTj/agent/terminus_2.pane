@@ -1,0 +1,111 @@
+[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:~# clear
+[?2004l[H[J[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:~# cd /home/user
+[?2004l[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# mkdir -p output clean_configs
+[?2004l[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# REF_DATE=$(cat reference_date.txt)
+[?2004l[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# ls configs/config_*.conf > /tmp/all_configs_list.txt
+[?2004l[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# VALID_FILES=()
+[?2004l[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# while IFS= read -r file; do
+[?2004l[?2004h>   FILE_DATE=$(echo "$file" | sed -E 's|.*config_([0-9]{8})\.conf|\1|')
+[?2004l[?2004h>   if [ -n "$FILE_DATE" ]; then
+[?2004l[?2004h>     if [ "$FILE_DATE" -le "$REF_DATE" ]; then
+[?2004l[?2004h>       VALID_FILES+=("$file")
+[?2004l[?2004h>     fi
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done < /tmp/all_configs_list.txt
+[?2004lbash: [: configs/config_backup.conf: integer expression expected
+[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# rm /tmp/all_configs_list.txt
+[?2004l[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# ALL_CONFIGS=($(ls configs/config_????????\.conf 2>/dev/null))
+[?2004l[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# VALID_FILES=()
+[?2004l[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# for file in "${ALL_CONFIGS[@]}"; do
+[?2004l[?2004h>   FILE_DATE=$(echo "$file" | sed -E 's|.*config_([0-9]{8})\.conf|\1|')
+[?2004l[?2004h>   if [ -n "$FILE_DATE" ]; then
+[?2004l[?2004h>     if [ "$FILE_DATE" -le "$REF_DATE" ]; then
+[?2004l[?2004h>       VALID_FILES+=("$file")
+[?2004l[?2004h>     fi
+[?2004l[?2004h>   fi
+[?2004l[?2004h> done
+[?2004l[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# if [ ${#VALID_FILES[@]} -eq 0 ]; then
+[?2004l[?2004h>   echo "Warning: No valid configuration files found. Some outputs may be empty."
+[?2004l[?2004h> fi
+[?2004l[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# SORTED_VALID_FILES=($(for f in "${VALID_FILES[@]}"; do echo "$f"; done | sort -t_ -k3))
+[?2004l[?2004hroot@e21e99f7-1d6c-42af-b2f8-aab950034327:/home/user# parse_config_file() {
+[?2004l[?2004h>   local file="$1"
+[?2004l[?2004h>   awk '
+[?2004l[?2004h>     function tolower(str) {
+[?2004l[?2004h>       result = "";
+[?2004l[?2004h>       for (i = 1; i <= length(str); i++) {
+[?2004l[?2004h>         c = substr(str, i, 1);
+[?2004l[?2004h>         idx = index("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c);
+[?2004l[?2004h>         if (idx > 0) {
+[?2004l[?2004h>           result = result substr("abcdefghijklmnopqrstuvwxyz", idx, 1);
+[?2004l[?2004h>         } else {
+[?2004l[?2004h>           result = result c;
+[?2004l[?2004h>         }
+[?2004l[?2004h>       }
+[?2004l[?2004h>       return result;
+[?2004l[?2004h>     }
+[?2004l[?2004h>     /^[[:space:]]*#/ { next }
+[?2004l[?2004h>     /^[[:space:]]*$/ { next }
+[?2004l[?2004h>     {
+[?2004l[?2004h>       if (sub(/^[[:space:]]+/, "")) {}
+[?2004l[?2004h>       if (sub(/[[:space:]]+$/, "")) {}
+[?2004l[?2004h>       if ($0 ~ /^[[:space:]]*[^[:space:]]+[[:space:]]*=[[:space:]]*\"/ && !/\"[[:space:]]*#/) {
+[?2004l[?2004h>         split($0, a, /^[[:space:]]*[^[:space:]]+[[:space:]]*=[[:space:]]*\"[^[:space:]]*\"/)
+[?2004l[?2004h>         if (length(a) > 1) {
+[?2004l[?2004h>           key = tolower(a[1]);
+[?2004l[?2004h>           sub(/^[[:space:]]+/, "", key);
+[?2004l[?2004h>           sub(/[[:space:]]+$/, "", key);
+[?2004l[?2004h>           value = a[2];
+[?2004l[?2004h>           gsub(/^\"|\"$/, "", value);
+[?2004l[?2004h>           print key "=" value;
+[?2004l[?2004h>         }
+[?2004l[?2004h>       }
+[?2004l[?2004h>       else if ($0 ~ /^[[:space:]]*[^[:space:]]+[[:space:]]*=[[:space:]]*[^[:space:]]/) {
+[?2004l[?2004h>         split($0, a, /^[[:space:]]*[^[:space:]]+[[:space:]]*=[[:space:]]*[^[:space:]]*/)
+[?2004l[?2004h>         if (length(a) > 1) {
+[?2004l[?2004h>           key = tolower(a[1]);
+[?2004l[?2004h>           sub(/^[[:space:]]+/, "", key);
+[?2004l[?2004h>           sub(/[[:space:]]+$/, "", key);
+[?2004l[?2004h>           value = a[2];
+[?2004l[?2004h>           sub(/^[[:space:]]+/, "", value);
+[?2004l[?2004h>           sub(/[[:space:]]+$/, "", value);
+[?2004l[?2004h>           sub(/#.*$/, "", value);
+[?2004l[?2004h>           print key "=" value;
+[?2004l[?2004h>         }
+[?2004l[?2004h>       }
+[?2004l[?2004h>     }
+[?2004l[?2004h>   ' "$file"
+[?2004l[?2004h> echo -n > output/config_line_counts.tsv
+[?2004l[?2004h> ALL_KEYS=()
+[?2004l[?2004h> declare -A KEY_VALUES
+[?2004l[?2004h> for file in "${SORTED_VALID_FILES[@]}"; do
+[?2004l[?2004h>   echo "Processing: $file"
+[?2004l[?2004h>   CLEAN_FILE="clean_configs/$(basename "$file")"
+[?2004l[?2004h>   LINE_COUNT=$(parse_config_file "$file" | wc -l)
+[?2004l[?2004h>   parse_config_file "$file" > "$CLEAN_FILE" 2>/dev/null
+[?2004l[?2004h>   echo "$(basename "$file")\t$LINE_COUNT" >> output/config_line_counts.tsv
+[?2004l[?2004h>   while IFS="=" read -r key value; do
+[?2004l[?2004h>     ALL_KEYS+=("$(echo "$key" | tr '[:upper:]' '[:lower:]')")
+[?2004l[?2004h>     KEY_VALUES["$(echo "$key" | tr '[:upper:]' '[:lower:]')"]="$value $(basename "$file")"
+[?2004l[?2004h>   done < <(parse_config_file "$file" 2>/dev/null)
+[?2004l[?2004h> done
+[?2004l[?2004h> printf "%s\n" "${ALL_KEYS[@]}" | sort -u > output/all_keys.txt
+[?2004l[?2004h> if [ ${#SORTED_VALID_FILES[@]} -ge 2 ]; then
+[?2004l[?2004h>   NEWEST_FILE="${SORTED_VALID_FILES[-1]}"
+[?2004l[?2004h>   OLDEST_FILE="${SORTED_VALID_FILES[0]}"
+[?2004l[?2004h>   NEWEST_KEYS=$(parse_config_file "$NEWEST_FILE" 2>/dev/null | cut -d= -f1 | tr '[:upper:]' '[:lower:]' | sort -u)
+[?2004l[?2004h>   OLDEST_KEYS=$(parse_config_file "$OLDEST_FILE" 2>/dev/null | cut -d= -f1 | tr '[:upper:]' '[:lower:]' | sort -u)
+[?2004l[?2004h>   comm -23 <(echo "$NEWEST_KEYS") <(echo "$OLDEST_KEYS") > output/new_keys.log
+[?2004l[?2004h> else
+[?2004l[?2004h>   touch output/new_keys.log
+[?2004l[?2004h> fi
+[?2004l[?2004h> sort -k1,1 output/config_line_counts.tsv > /tmp/sorted_counts.tsv && mv /tmp/sorted_counts.tsv output/config_line_counts.tsv
+[?2004l[?2004h> echo "Key,Value,Source" > output/merged_config.csv
+[?2004l[?2004h> for key in "${!KEY_VALUES[@]}"; do
+[?2004l[?2004h>   IFS=' ' read -r value source <<< "${KEY_VALUES[$key]}"
+[?2004l[?2004h>   echo "$key,$value,$source" >> output/merged_config.csv
+[?2004l[?2004h> done | sort >> output/merged_config.csv
+[?2004l[?2004h> 

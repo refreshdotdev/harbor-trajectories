@@ -1,0 +1,93 @@
+[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# clear
+[?2004l[H[J[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# export LC_COLLATE=C
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# mkdir -p /home/user/diag
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# TMPDIR=$(mktemp -d)
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# BADGE_ID_FILE="/home/user/app/config/system_settings.conf"
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# if [ -f "$BADGE_ID_FILE" ]; then BADGE_ID=$(grep -m 1 '^current_badge_id' "$BADGE_ID_FILE" | cut -d' ' -f2- | tr -d '
+[?2004l[?2004h> 
+[?2004l[?2004h> '); else echo "ERROR: Badge ID file not found"; exit 1; fi
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# echo "Badge ID: '$BADGE_ID'"
+[?2004lBadge ID: '= OMEGA-99-XRAY  '
+[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# find /home/user/app/logs -type f -size +512c -mtime -7 ! -path "*/test/*" ! -path "*/mock/*" ! -path "*/staging/*" -exec grep -Iq '[SECURITY-AUDIT-FAIL]' {} \; -print > "$TMPDIR/files.txt"
+[?2004lgrep: Invalid range end
+grep: Invalid range end
+grep: Invalid range end
+[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# if [ ! -s "$TMPDIR/files.txt" ]; then echo "No qualifying files found"; exit 0; fi
+[?2004lNo qualifying files found
+exit
+[0;32masciinema: recording finished[0m
+[0;32masciinema: asciicast saved to /logs/agent/recording.cast[0m
+[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# MANIFEST=$(mktemp "$TMPDIR/manifest_XXXXXX.json")
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# echo -n '[' > "$MANIFEST"
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# SEEN_FIRST=1
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# while IFS= read -r file; do
+[?2004l[?2004h>   ABS_PATH="$(cd -P "$(dirname "$file")" && pwd -P)/$(basename "$file")"
+[?2004l[?2004h>   SIZE=$(stat -c%s "$file")
+[?2004l[?2004h>   SIGNATURE=$(printf '%s' "$BADGE_ID" | hmacsha256 -k - "$file" 2>/dev/null || echo "ERROR_CALCULATING_SIG")
+[?2004l[?2004h>   if [ "$SEEN_FIRST" -eq 1 ]; then
+[?2004l[?2004h>     SEEN_FIRST=0
+[?2004l[?2004h>   else
+[?2004l[?2004h>     echo -n ',' >> "$MANIFEST"
+[?2004l[?2004h>   fi
+[?2004l[?2004h>   echo -n '{"filepath":"$ABS_PATH","size":'$SIZE',"signature":"'$SIGNATURE'"}' >> "$MANIFEST"
+[?2004l[?2004h> done < "$TMPDIR/files.txt"
+[?2004lbash: /files.txt: No such file or directory
+[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# echo -n ']' >> "$MANIFEST"
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:~# cd /home/user/app/logs
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# tar --no-recursion -czf /home/user/diag/forensic_bundle.tar.gz -T "$TMPDIR/files.txt"
+[?2004ltar: /files.txt: Cannot stat: No such file or directory
+tar: Error is not recoverable: exiting now
+[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# mv "$MANIFEST" /home/user/diag/custody_manifest.json
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# rm -rf "$TMPDIR"
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# ls -la /home/user/diag/
+[?2004ltotal 8
+drwxr-xr-x 1 root root 77 Feb 13 18:59 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 26 Feb 13 18:49 [01;34m..[0m
+-rw------- 1 root root  2 Feb 13 18:59 custody_manifest.json
+-rw-r--r-- 1 root root 20 Feb 13 18:59 [01;31mforensic_bundle.tar.gz[0m
+[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# export LC_COLLATE=C
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# mkdir -p /home/user/diag
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# TMPDIR=$(mktemp -d)
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# BADGE_ID_FILE="/home/user/app/config/system_settings.conf"
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# if [ -f "$BADGE_ID_FILE" ]; then BADGE_ID=$(grep -m 1 '^current_badge_id' "$BADGE_ID_FILE" | cut -d' ' -f2- | tr -d '
+[?2004l[?2004h> 
+[?2004l[?2004h> '); else echo "ERROR: Badge ID file not found"; exit 1; fi
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# find /home/user/app/logs -type f -size +512c -mtime -7 ! -path "*/test/*" ! -path "*/mock/*" ! -path "*/staging/*" -print > "$TMPDIR/all_files.txt"
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# grep -I -- "[SECURITY-AUDIT-FAIL]" $(cat "$TMPDIR/all_files.txt") > "$TMPDIR/matching_files.txt" 2>/dev/null
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# if [ ! -s "$TMPDIR/matching_files.txt" ]; then
+[?2004l[?2004h>   tar --no-recursion -czf /home/user/diag/forensic_bundle.tar.gz --files-from /dev/null
+[?2004l[?2004h>   echo '[]' > /home/user/diag/custody_manifest.json
+[?2004l[?2004h> else
+[?2004l[?2004h>   MANIFEST=$(mktemp "$TMPDIR/manifest_XXXXXX.json")
+[?2004l[?2004h>   echo -n '[' > "$MANIFEST"
+[?2004l[?2004h>   SEEN_FIRST=1
+[?2004l[?2004h>   while IFS= read -r file; do
+[?2004l[?2004h>     if [ ! -f "$file" ]; then continue; fi
+[?2004l[?2004h>     ABS_PATH="$(cd -P "$(dirname \"$file\")" && pwd -P)/$(basename \"$file\")"
+[?2004l[?2004h>     SIZE=$(stat -c%s \"$file\")
+[?2004l[?2004h>     SIGNATURE=$(printf '%s' "$BADGE_ID" | hmacsha256 -k - \"$file\" 2>/dev/null || echo \"ERROR_CALCULATING_SIG\")
+[?2004l[?2004h>     if [ "$SEEN_FIRST" -eq 1 ]; then
+[?2004l[?2004h>       SEEN_FIRST=0
+[?2004l[?2004h>     else
+[?2004l[?2004h>       echo -n ',' >> "$MANIFEST"
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     echo -n '{"filepath":"$ABS_PATH","size":'$SIZE',"signature":"'$SIGNATURE'"}' >> "$MANIFEST"
+[?2004l[?2004h>   done < "$TMPDIR/matching_files.txt"
+[?2004l[?2004h>   echo -n ']' >> "$MANIFEST"
+[?2004l[?2004h>   cd /home/user/app/logs
+[?2004l[?2004h>   tar --no-recursion -czf /home/user/diag/forensic_bundle.tar.gz -T "$TMPDIR/matching_files.txt" 
+[?2004l[?2004h>   mv "$MANIFEST" /home/user/diag/custody_manifest.json
+[?2004l[?2004h> fi
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# rm -rf "$TMPDIR"
+[?2004l[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# ls -la /home/user/diag/
+[?2004ltotal 8
+drwxr-xr-x 1 root root 77 Feb 13 18:59 [0m[01;34m.[0m
+drwxr-xr-x 1 root root 26 Feb 13 18:49 [01;34m..[0m
+-rw------- 1 root root  3 Feb 13 19:00 custody_manifest.json
+-rw-r--r-- 1 root root 45 Feb 13 19:00 [01;31mforensic_bundle.tar.gz[0m
+[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# file /home/user/diag/*
+[?2004lbash: file: command not found
+[?2004hroot@e2dbb3b4-ff37-47a2-b517-2588d39d33f5:/home/user/app/logs# 

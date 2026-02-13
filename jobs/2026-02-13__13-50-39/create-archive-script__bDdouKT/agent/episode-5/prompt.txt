@@ -1,0 +1,97 @@
+New Terminal Output:
+
+root@95c1b8b6-f4d6-4d41-9b39-415e0e3668a1:/home/user# echo -e "filename\tcount" > output/config_line_counts.tsv
+root@95c1b8b6-f4d6-4d41-9b39-415e0e3668a1:/home/user# cat > process_config.awk << 'AWK_EOF'
+> #!/usr/bin/awk -f
+> BEGIN {
+>     # Split line by '='. Fields before '=' are key, fields after are value.
+>     # $1 is key, $2 to $NF are value parts.
+>     # FS="[ \t]*=[ \t]*"; # This FS splits on = optionally surrounded by spaces/tabs
+>     # $1 will be key, $2 will be value. This handles spaces around =
+>     # A more robust way for key=value parsing with potential spaces around =
+>     # We need to be careful with leading/trailing spaces on key/value
+>     # Key is before '=', value is after. Trim spaces from key.
+>     # Value parsing depends on quoting.
+> }
+>
+> # Skip blank lines
+> /^\s*$/ { next; }
+>
+> # Skip comment lines (lines starting with #, ignoring leading whitespace)
+> /^[ \t]*#/ { next; }
+>
+> {
+>     # Split line by '=' into key_part and value_part
+>     # This regex extracts the part before the first '=' as key_part,
+>     # and the part after as value_part.
+>     # It handles cases like "key"="value" or key=value or key = value
+>     if (match($0, /^[[:space:]]*([^=[:space:]]+[[:space:]]*)=[[:space:]]*(.*)/, arr)) {
+>         original_key = arr[1];
+>         value_str = arr[2];
+>
+>         # Normalize key: lower-case, strip surrounding whitespace
+>         gsub(/^[ \t]+|[ \t]+$/, "", original_key);
+>         normalized_key = tolower(original_key);
+>
+>         # Parse value (quoted or unquoted)
+>         # If value starts with a double quote after stripping leading whitespace
+>         # Trim leading whitespace from value_str for quoting check
+>         gsub(/^[ \t]+/, "", value_str);
+>
+>         if (value_str ~ /^\"") {
+>             # Quoted value: content is between first and next double quote
+>             # The value is everything up to (but not including) the next unescaped double quote.
+>             # We assume simple quotes as per problem: "key = \" foo # bar \""  -> " foo # bar "
+>             # So, we look for the first closing quote.
+>             # sub(/^[\"]/, "", value_str); # Remove opening quote
+>             # quoted_value = value_str;
+>             # gsub(/^\"|\"$/, "", quoted_value); # Remove outer quotes
+>
+>             # A more direct way: find text between first " and second "
+>             # This captures content between the first and second double quote.
+>             # It handles cases like "actual value content" or "value # comment"
+>             if (match(value_str, /"([^"]*)"/, val_arr)) {
+>                 parsed_value = val_arr[1];
+>             } else if (match(value_str, /^".*"/)) { # Fallback if no content between quotes
+>                 parsed_value = "";
+>             } else { # No closing quote found for an opening one
+>                 parsed_value = value_str; # Or treat as unquoted if malformed
+>                                        # For this problem, we assume valid quoted strings.
+>             }
+>         } else {
+>             # Unquoted value: ends at first '#' or end of line. Strip leading/trailing whitespace.
+>             # Remove any trailing comment part from value_str
+>             gsub(/#[^#]*$/, "", value_str);
+>             # Strip leading/trailing whitespace from the resulting value
+>             parsed_value = value_str;
+>             gsub(/^[[:space:]]+|[[:space:]]+$/, "", parsed_value);
+>         }
+>
+>         # Output for line counts: increment a counter for this file
+>         # We'll print key and value for sanitised file and key collection
+>         print normalized_key "=" parsed_value;
+>         # Increment line count for this filename
+>         line_count[FILENAME]++;
+>         # Collect all unique keys
+>         all_keys[normalized_key] = 1;
+>     }
+>     # If line doesn't match key=value pattern, it's not an active config line to be counted
+>     # (assuming only key=value lines are active after comments/blank lines are removed)
+>     # The problem says "active lines (non-blank, non-comment)". This implies key=value lines.
+> }
+> # END block to print summary information
+> END {
+>     for (key_name in line_count) {
+>         # line_count file will be populated by processing each file individually
+>         # and then appending to config_line_counts.tsv
+>         print key_name "\t" line_count[key_name] >> "../output/config_line_counts.tmp";
+>     }
+>
+>     # Print all unique keys for all_keys.txt
+>     # This will be sorted later.
+>     for (key_name in all_keys) {
+>         print key_name >> "../output/all_keys.tmp";
+>     }
+> }
+> AWK_EOF
+root@95c1b8b6-f4d6-4d41-9b39-415e0e3668a1:/home/user#

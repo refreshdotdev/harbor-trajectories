@@ -1,0 +1,152 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@6ea3f48e-da4b-4524-812f-cf2ed6237b6d:/home/user/cloud_logs# cat > process_cloud_costs.awk << 'EOF'
+> #!/usr/bin/awk -f
+>
+> BEGIN {
+>     # Force decimal arithmetic and set output field separator
+>     OFMT = "%.2f";
+with two decimal places.
+
+    print "Subtotal: $" sprintf("%.2f", subtotal);
+    print "Tax: $" sprintf("%.2f", tax);
+    print "Total: $" sprintf("%.2f", total);
+    print "Service Breakdown:";
+
+    # Sort services by cost in descending order and print top N (here N=3 for full list)
+    # Store service names and their costs in an array suitable for sorting
+    n_services = asorti(service_costs_map, sorted_service_keys, "@ind_num_desc");
+
+    # Print all service breakdowns, sorted by decreasing cost
+    for (i = 1; i <= n_services; i++) {
+        service_name = sorted_service_keys[i];
+        service_cost = service_costs_map[service_name];
+        print "  " service_name ": $" sprintf("%.2f", service_cost);
+    }
+
+    # Prepare top 3 services string
+    top_services_str = "";
+    for (i = 1; i <= n_services && i <= 3; i++) {
+        service_name = sorted_service_keys[i];
+        if (i > 1) {
+            top_services_str = top_services_str ", ";
+        }
+        top_services_str = top_services_str service_name;
+    }
+
+    print "Top 3 Services: " top_services_str;
+}
+EOF>     OFS = ",";
+>     # Tax rate (0.05 as identified from environment)
+>     TAX_RATE = 0.05;
+>     # Month name for the current file (will be set in BEGIN_FILE)
+>     current_month_name = "";
+>     current_year = "";
+>     # Flags for output formatting
+>     first_file_processed = 1;
+>     first_service_in_section = 1;
+> }
+> # Skip empty lines
+> /^[ \t]*$/ { next; }
+>
+> # Process header (first line of each file)
+> FNR == 1 {
+>     # Extract month and year from filename (e.g., usage-2023-09.csv -> 09, 2023)
+>     # Filename is provided as an argument to awk
+>     split(FILENAME, parts, ".");
+>     split(parts[1], date_parts, "-");
+>     current_year = date_parts[2];
+>     month_num = date_parts[3];
+>     # Convert month number to month name (e.g., 09 -> September)
+>     month_names = "January February March April May June July August September October November December";
+>     current_month_name = (month_num <= 12 && month_num >= 1) ?
+>                         gensub("^[[:space:]]*([^[:space:]]+)" month_num "[[:space:]]*", "\1", "g", month_names) : "Unknown Month";
+>
+>     # Handle spacing between reports
+>     if (!first_file_processed) {
+>         print ""; # Blank line between reports
+>     } else {
+>         first_file_processed = 0;
+>     }
+>
+>     print "== " current_month_name " " current_year " ==";
+>
+>     # Initialize accumulators for this file
+>     subtotal = 0.0;
+>     delete service_costs_map;
+>     next;
+> }
+>
+> # Process data rows after the header
+> {
+>     # Trim whitespace from all fields
+>     gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, $1, $1); # $1 is resource_id
+>     gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, $2, $2); # $2 is service
+>     gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, $3, $3); # $3 is usage_hours
+>     gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, $4, $4); # $4 is cost
+>
+>     # Filter rows where service contains "Trial" (case-insensitive)
+>     if (tolower($2) ~ /trial/) {
+>         next;
+>     }
+>
+>     # Convert cost to a number and add to subtotal
+>     cost_val = $4 + 0; # Ensure it's numeric
+>     subtotal += cost_val;
+>
+>     # Accumulate costs per service (use trimmed service name as key)
+>     service_costs_map[$2] += cost_val;
+> }
+>
+> # Process END of each file
+> END_FILE {
+>     if (FNR == 1 && subtotal == 0 && length(service_costs_map) == 0) {
+>         # This file was empty or contained only header/empty lines after filtering.
+>         # The BEGIN_FILE block already printed the month header.
+>         # We don't want to print "Subtotal: $0.00" if no actual data was processed.
+>         # So, if subtotal is 0 and no services were found, we effectively cancel this report section.
+>         print "No data available for this month after filtering.";
+>         return; # Skip further END_FILE processing for this empty file
+>     }
+>
+>     # Calculate tax and total
+>     tax = subtotal * TAX_RATE;
+>     total = subtotal + tax;
+>
+>     # Format financial values to two decimal places for output
+>     # sprintf with %.2f handles rounding and padding.
+>     # OFMT=%.2f also ensures numbers are output with two decimal places.
+>
+>     print "Subtotal: $" sprintf("%.2f", subtotal);
+>     print "Tax: $" sprintf("%.2f", tax);
+>     print "Total: $" sprintf("%.2f", total);
+>     print "Service Breakdown:";
+>
+>     # Sort services by cost in descending order and print top N (here N=3 for full list)
+>     # Store service names and their costs in an array suitable for sorting
+>     n_services = asorti(service_costs_map, sorted_service_keys, "@ind_num_desc");
+>
+>     # Print all service breakdowns, sorted by decreasing cost
+>     for (i = 1; i <= n_services; i++) {
+>         service_name = sorted_service_keys[i];
+>         service_cost = service_costs_map[service_name];
+>         print "  " service_name ": $" sprintf("%.2f", service_cost);
+>     }
+>
+>     # Prepare top 3 services string
+>     top_services_str = "";
+>     for (i = 1; i <= n_services && i <= 3; i++) {
+>         service_name = sorted_service_keys[i];
+>         if (i > 1) {
+>             top_services_str = top_services_str ", ";
+>         }
+>         top_services_str = top_services_str service_name;
+>     }
+>
+>     print "Top 3 Services: " top_services_str;
+> }
+> EOF

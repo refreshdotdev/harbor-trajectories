@@ -1,0 +1,71 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 3 items
+
+../../tests/test_final_state.py::test_csv_properties PASSED              [ 33%]
+../../tests/test_final_state.py::test_csv_content FAILED                 [ 66%]
+../../tests/test_final_state.py::test_manifest FAILED                    [100%]
+
+=================================== FAILURES ===================================
+_______________________________ test_csv_content _______________________________
+
+    def test_csv_content():
+        # Read with correct encoding to check content
+        with open(CSV_FILE, 'r', encoding='iso-8859-1', newline='') as f:
+            lines = f.read().splitlines()
+    
+        header = lines[0]
+        assert header == EXPECTED_HEADER, f"Header mismatch. Expected {EXPECTED_HEADER}, got {header}"
+    
+        data_rows = lines[1:]
+    
+        # Expected Data:
+        # u02 (VIP=TRUE), u05 (VIP=TRUE)
+        # Sorting: VIP (True first), Time (Newest first)
+        # u05 has clicks at 16:02, 16:01, 16:00
+        # u02 has view 12:10, purchase 12:05, click 12:00
+    
+        # Since both are VIP, we sort by timestamp desc.
+        # u05 16:02
+        # u05 16:01
+        # u05 16:00
+        # u02 12:10
+        # u02 12:05
+        # u02 12:00
+    
+>       assert len(data_rows) == 6
+E       assert 0 == 6
+E        +  where 0 = len([])
+
+/tests/test_final_state.py:84: AssertionError
+________________________________ test_manifest _________________________________
+
+    def test_manifest():
+        assert MANIFEST_FILE.exists()
+        with open(MANIFEST_FILE, 'r') as f:
+            content = f.read().strip()
+    
+        # Parse: CSV_SHA256:<hash>|ROWS:<N>|BYTES:<B>
+        parts = content.split('|')
+        assert len(parts) == 3
+    
+        sha_part = parts[0].split(':')[1]
+        rows_part = parts[1].split(':')[1]
+        bytes_part = parts[2].split(':')[1]
+    
+        # Verify Bytes
+        actual_bytes = os.path.getsize(CSV_FILE)
+        assert int(bytes_part) == actual_bytes
+    
+        # Verify Rows
+>       assert int(rows_part) == 6
+E       AssertionError: assert 0 == 6
+E        +  where 0 = int('0')
+
+/tests/test_final_state.py:109: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_csv_content - assert 0 == 6
+FAILED ../../tests/test_final_state.py::test_manifest - AssertionError: asser...
+========================= 2 failed, 1 passed in 0.03s ==========================

@@ -1,0 +1,143 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Legacy System Backup Task
+
+You are a backend integration engineer working on the "Legacy Ingest" pipeline. This pipeline feeds data into an old Windows Server 2003 system that has strict, archaic requirements regarding file formats and character encodings.
+
+Your task is to package a support ticket directory into a specific backup format, generate metadata, and create a summary file compatible with the legacy ingestion service.
+
+## Source Directory
+
+The directory to back up is located at:
+`/home/user/tickets/issue_20230815/`
+
+It contains user notes, logs, and various temporary files. It also contains a `.backupignore` file which dictates local exclusion rules.
+
+## Requirements
+
+### 1. The Archive
+You must create a gzip-compressed tarball of the directory.
+
+*   **Output Path**: `/home/user/backups/support_issue_20230815_legacy.tar.gz`
+*   **Dereferencing**: The source directory contains symbolic links. The backup must contain the **actual content** of the linked files (dereference symlinks), not the links themselves.
+*   **Safety & Sanitation**: The source directory is known to contain "broken" symlinks (pointing to non-existent files) and potentially recursive symlink loops. The legacy unpacker crashes if it encounters these. You must **detect and exclude** any broken symlinks or recursive loops from the archive. The backup process must not fail due to these files.
+*   **Exclusions**: You must parse the `.backupignore` file found in the source root. Any files matching the glob patterns listed in that file must be excluded from the archive. (Note: The ignore file may contain comments starting with `#`).
+
+### 2. The Manifest
+Once the archive is created, generate a JSON manifest at `/home/user/backups/backup_manifest.json` containing metadata about the archive.
+
+The JSON object must contain exactly these keys:
+*   `archive_name`: The filename of the tarball.
+*   `file_size_bytes`: Integer size of the tarball.
+*   `md5_hash`: MD5 hash of the tarball (hex string).
+*   `sha256_hash`: SHA-256 hash of the tarball (hex string).
+*   `created_at_utc`: The current timestamp in ISO 8601 format (UTC), e.g., `2023-10-27T10:00:00Z`.
+
+### 3. The Legacy Summary Report
+Finally, you must generate a summary text file at `/home/user/backups/backup_summary.txt`. This file is consumed by a legacy Windows parser and has **strict encoding rules**:
+
+*   **Encoding**: The file must be encoded in **ISO-8859-1** (Latin-1). Do NOT use UTF-8.
+*   **Line Endings**: The file must use Windows-style CRLF (`\r\n`) line endings.
+*   **Content**: The file must contain exactly two lines:
+    1.  `Legacy Backup Operation © 2023`
+    2.  `Manifest SHA256: <SHA256 hash of the manifest file>`
+
+    *(Note: The copyright symbol '©' is mandatory and serves as an encoding check for the legacy parser. The second line contains the hash of the JSON manifest you created in step 2, creating a chain of custody.)*
+
+## Constraints
+*   Use standard Linux tools (Python 3 is recommended for the logic and encoding requirements).
+*   Do not use `sudo`.
+*   Ensure the final exit code is 0.
+
+
+Current terminal state:
+Current Terminal Screen:
+root@deb58943-740c-4aba-bfc4-495080ea5672:~#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,203 @@
+[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# clear
+[?2004l[H[J[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# mkdir -p /home/user/storage_audit/logs /home/user/storage_audit/summary
+[?2004l[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# find /home/user/storage_audit/raw_reports -type f -iname "*.json" ! -name ".*" -exec basename {} \; > /home/user/storage_audit/file_list.txt
+[?2004l[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# cat > /home/user/storage_audit/validate.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> SCHEMA="/home/user/storage_audit/schema/disk_report.schema.json"
+[?2004l[?2004h> LOG="/home/user/storage_audit/logs/validation.log"
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "" > "$LOG"
+[?2004l[?2004h> 
+[?2004l[?2004h> while read -r file; do
+[?2004l[?2004h>     if [[ ! -f "$file" ]]; then
+[?2004l[?2004h>         echo "$file : ERROR : File not found"
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Validate JSON syntax
+[?2004l[?2004h>     if ! python3 -c "import json, sys; json.load(open(sys.argv[1]))" "$file" 2>/dev/null; then
+[?2004l[?2004h>         echo "$file : INVALID_JSON"
+[?2004l[?2004h>         continue
+[?2004l[?2004h>     fi
+[?2004l[?2004h>     
+[?2004l[?2004h>     # Validate against schema
+[?2004l[?2004h>     if ! python3 -c "
+[?2004l[?2004h> import json, sys, os
+[?2004l[?2004h> from jsonschema import validate, ValidationError
+[?2004l[?2004h> 
+[?2004l[?2004h> try:
+[?2004l[?2004h>     with open(sys.argv[1], 'r') as f:
+[?2004l[?2004h>         report = json.load(f)
+[?2004l[?2004h>     with open(sys.argv[2], 'r') as f:
+[?2004l[?2004h>         schema = json.load(f)
+[?2004l[?2004h>     validate(instance=report, schema=schema)
+[?2004l[?2004h>     print('OK')
+[?2004l[?2004h> except json.JSONDecodeError:
+[?2004l[?2004h>     print('INVALID_JSON')
+[?2004l[?2004h> except ValidationError as e:
+[?2004l[?2004h>     print(f'ERROR : {e.message.replace(":", " ").strip()}')
+[?2004l[?2004h> except Exception as e:
+[?2004l[?2004h>     print(f'ERROR : {str(e).replace(":", " ").strip()}')
+[?2004l[?2004h> " "$file" "$SCHEMA" 2>/dev/null; done
+[?2004l[?2004h>     echo "$file : $json_result"
+[?2004l[?2004h>     if [[ "$json_result" == "OK" ]]; then
+[?2004l[?2004h>         echo "$file : OK" >> "$LOG"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         echo "$file : $json_result" >> "$LOG"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done < /home/user/storage_audit/file_list.txt
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# chmod +x /home/user/storage_audit/validate.sh
+[?2004l[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# /home/user/storage_audit/validate.sh
+[?2004l/home/user/storage_audit/validate.sh: line 37: syntax error near unexpected token `done'
+/home/user/storage_audit/validate.sh: line 37: `" "$file" "$SCHEMA" 2>/dev/null; done'
+[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# cat > /home/user/storage_audit/process.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Load inventory data
+[?2004l[?2004h> declare -A HOST_ENV
+[?2004l[?2004h> declare -A HOST_COST
+[?2004l[?2004h> while IFS=, read -r host env cost; do
+[?2004l[?2004h>     HOST_ENV["$host"]="$env"
+[?2004l[?2004h>     HOST_COST["$host"]="$cost"
+[?2004l[?2004h> done < <(tail -n +2 /home/user/storage_audit/inventory.csv)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Read validation log to get valid files
+[?2004l[?2004h> VALID_FILES=()
+[?2004l[?2004h> while IFS=" :" read -r file status _; do
+[?2004l[?2004h>     if [[ "$status" == "OK" ]]; then
+[?2004l[?2004h>         VALID_FILES+=("$file")
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done < /home/user/storage_audit/logs/validation.log
+[?2004l[?2004h> 
+[?2004l[?2004h> # Process valid files
+[?2004l[?2004h> totals_used=0
+[?2004l[?2004h> totals_total=0
+[?2004l[?2004h> total_monthly_cost=0
+[?2004l[?2004h> details=()
+[?2004l[?2004h> 
+[?2004l[?2004h> cat > /home/user/storage_audit/temp.json << 'JSON'
+[?2004l[?2004h> {
+[?2004l[?2004h>   "generatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+[?2004l[?2004h>   "totals": {
+[?2004l[?2004h>     "totalGB": 0,
+[?2004l[?2004h>     "usedGB": 0,
+[?2004l[?2004h>     "freeGB": 0,
+[?2004l[?2004h>     "usagePercent": 0,
+[?2004l[?2004h>     "totalMonthlyCost": 0
+[?2004l[?2004h>   },
+[?2004l[?2004h>   "mounts": []
+[?2004l[?2004h> }
+[?2004l[?2004h> JSON
+[?2004l[?2004h> 
+[?2004l[?2004h> for report_file in "${VALID_FILES[@]}"; do
+[?2004l[?2004h>     while IFS=$'\n' read -r mount; do
+[?2004l[?2004h>         host=$(jq -r '.host' <<< "$mount")
+[?2004l[?2004h>         mount_point=$(jq -r '.mount' <<< "$mount")
+[?2004l[?2004h>         total_gb=$(jq -r '.totalGB' <<< "$mount" | awk '{printf "%.2f", $1}')
+[?2004l[?2004h>         used_gb=$(jq -r '.usedGB' <<< "$mount" | awk '{printf "%.2f", $1}')
+[?2004l[?2004h>         
+[?2004l[?2004h>         free_gb=$(echo "$total_gb - $used_gb" | bc -l | awk '{printf "%.2f", $1}')
+[?2004l[?2004h>         usage_percent=$(echo "scale=2; ($used_gb / $total_gb) * 100" | bc -l | awk '{printf "%.2f", $1}')
+[?2004l[?2004h>         
+[?2004l[?2004h>         env="${HOST_ENV[$host]:-Unmanaged}"
+[?2004l[?2004h>         cost_per_gb="${HOST_COST[$host]:-0}"
+[?2004l[?2004h>         monthly_cost=$(echo "$used_gb * $cost_per_gb" | bc -l | awk '{printf "%.2f", $1}')
+[?2004l[?2004h>         
+[?2004l[?2004h>         totals_used=$(echo "$totals_used + $used_gb" | bc -l)
+[?2004l[?2004h>         totals_total=$(echo "$totals_total + $total_gb" | bc -l)
+[?2004l[?2004h>         total_monthly_cost=$(echo "$total_monthly_cost + $monthly_cost" | bc -l)
+[?2004l[?2004h>         
+[?2004l[?2004h>         details+=(
+[?2004l[?2004h>             null
+[?2004l[?2004h>         )
+[?2004l[?2004h>         jq -c --arg host "$host" --arg env "$env" --arg mount "$mount_point" \
+[?2004l[?2004h>            --argjson totalGB "$total_gb" --argjson usedGB "$used_gb" \
+[?2004l[?2004h>            --argjson freeGB "$free_gb" --argjson usagePercent "$usage_percent" \
+[?2004l[?2004h>            --argjson monthlyCost "$monthly_cost" \
+[?2004l[?2004h>            '{
+[?2004l[?2004h>             host: $host,
+[?2004l[?2004h>             environment: $env,
+[?2004l[?2004h>             mountPoint: $mount,
+[?2004l[?2004h>             totalGB: $totalGB,
+[?2004l[?2004h>             usedGB: $usedGB,
+[?2004l[?2004h>             freeGB: $freeGB,
+[?2004l[?2004h>             usagePercent: $usagePercent,
+[?2004l[?2004h>             monthlyCost: $monthlyCost
+[?2004l[?2004h>            }' >> /home/user/storage_audit/temp.json
+[?2004l[?2004h>     done < <(jq -c '.mounts[]' /home/user/storage_audit/raw_reports/"$report_file")
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Calculate totals
+[?2004l[?2004h> totals_free_gb=$(echo "$totals_total - $totals_used" | bc -l | awk '{printf "%.2f", $1}')
+[?2004l[?2004h> totals_usage_percent=$(echo "scale=2; ($totals_used / $totals_total) * 100" | bc -l | awk '{printf "%.2f", $1}')
+[?2004l[?2004h> 
+[?2004l[?2004h> # Build final JSON with sorted mounts
+[?2004l[?2004h> jq -c --argjson totals_total "$totals_total" \
+[?2004l[?2004h>    --argjson totals_used "$totals_used" \
+[?2004l[?2004h>    --argjson totals_free "${totals_free_gb/./\.}" \
+[?2004l[?2004h>    --argjson totals_usage "${totals_usage_percent/./\.}" \
+[?2004l[?2004h>    --argjson total_monthly_cost "${total_monthly_cost/./\.}" \
+[?2004l[?2004h>    '.totals = {
+[?2004l[?2004h>         totalGB: ($totals_total|tonumber),
+[?2004l[?2004h>         usedGB: ($totals_used|tonumber),
+[?2004l[?2004h>         freeGB: ($totals_free|tonumber),
+[?2004l[?2004h>         usagePercent: ($totals_usage|tonumber),
+[?2004l[?2004h>         totalMonthlyCost: ($total_monthly_cost|tonumber)
+[?2004l[?2004h>     } | .mounts = (sort_by(-.usagePercent) | .[])' /home/user/storage_audit/temp.json > /home/user/storage_audit/summary/disk_usage_summary.json
+[?2004l[?2004h> 
+[?2004l[?2004h> # Set permissions
+[?2004l[?2004h> chmod 644 /home/user/storage_audit/summary/disk_usage_summary.json
+[?2004l[?2004h> 
+[?2004l[?2004h> # Calculate checksum
+[?2004l[?2004h> sha256sum /home/user/storage_audit/summary/disk_usage_summary.json | cut -d' ' -f1 > /home/user/storage_audit/summary/checksum.sha256
+[?2004l[?2004h> chmod 644 /home/user/storage_audit/summary/checksum.sha256
+[?2004l[?2004h> 
+[?2004l[?2004h> # Print summary path
+[?2004l[?2004h> echo /home/user/storage_audit/summary/disk_usage_summary.json
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# chmod +x /home/user/storage_audit/process.sh
+[?2004l[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# /home/user/storage_audit/process.sh
+[?2004l/home/user/storage_audit/process.sh: line 78: bc: command not found
+/home/user/storage_audit/process.sh: line 79: bc: command not found
+jq: invalid JSON text passed to --argjson
+Use jq --help for help with command-line options,
+or see the jq manpage, or online docs  at https://stedolan.github.io/jq
+/home/user/storage_audit/summary/disk_usage_summary.json
+[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# sed -i 's/" \"$file\" \"$SCHEMA\" 2>\/dev\/null; done/ \"$file\" \"$SCHEMA\" 2>\/dev\/null; done/' /home/user/storage_audit/validate.sh
+[?2004l[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# apt-get update && apt-get install -y bc
+[?2004l0% [Working]            Hit:1 http://security.ubuntu.com/ubuntu jammy-security InRelease
+0% [Connecting to archive.ubuntu.com (91.189.92.23)]                                                    0% [Waiting for headers]                        Hit:2 http://archive.ubuntu.com/ubuntu jammy InRelease
+                        0% [Working]            Hit:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+0% [Working]0% [Waiting for headers]                        Hit:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+                        0% [Working]0% [Working]20% [Working]             Reading package lists... 0%Reading package lists... 0%Reading package lists... 0%Reading package lists... 3%Reading package lists... 3%Reading package lists... 4%Reading package lists... 4%Reading package lists... 38%Reading package lists... 38%Reading package lists... 39%Reading package lists... 39%Reading package lists... 49%Reading package lists... 49%Reading package lists... 66%Reading package lists... 66%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 79%Reading package lists... 79%Reading package lists... 96%Reading package lists... 96%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... Done
+Reading package lists... 0%Reading package lists... 0%Reading package lists... 0%Reading package lists... 3%Reading package lists... 3%Reading package lists... 4%Reading package lists... 4%Reading package lists... 38%Reading package lists... 38%Reading package lists... 39%Reading package lists... 39%Reading package lists... 49%Reading package lists... 49%sed -i 's/"${totals_free_gb/./.}/"${totals_free_gb}/' /home/user/storage_audit/process.sh
+Reading package lists... 66%Reading package lists... 66%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 70%Reading package lists... 79%Reading package lists... 79%Reading package lists... 96%Reading package lists... 96%sed -i 's/"${totals_usage_percent/./.}/"${totals_usage_percent}/' /home/user/storage_audit/process.sh
+Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... 99%Reading package lists... Done
+Building dependency tree... 0%Building dependency tree... 0%Building dependency tree... 15%Building dependency tree... 50%Building dependency tree... 50%sed -i 's/"${total_monthly_cost/./.}/"${total_monthly_cost}/' /home/user/storage_audit/process.sh
+Building dependency tree... Done
+Reading state information... 0% Reading state information... 0%Reading state information... Done
+The following NEW packages will be installed:
+  bc
+0 upgraded, 1 newly installed, 0 to remove and 3 not upgraded.
+Need to get 87.6 kB of archives.
+After this operation, 220 kB of additional disk space will be used.
+0% [Working]/home/user/storage_audit/validate.sh
+            Get:1 http://archive.ubuntu.com/ubuntu jammy/main amd64 bc amd64 1.07.1-3build1 [87.6 kB]
+5% [1 bc 5421 B/87.6 kB 6%]                           100% [Working]              Fetched 87.6 kB in 1s (143 kB/s)
+debconf: delaying package configuration, since apt-utils is not installed
+Selecting previously unselected package bc.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 10985 files and directories currently installed.)
+Preparing to unpack .../bc_1.07.1-3build1_amd64.deb ...
+Unpacking bc (1.07.1-3build1) ...
+Setting up bc (1.07.1-3build1) ...
+[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# /home/user/storage_audit/process.sh
+[?2004lRuntime error (func=(main), adr=9): Divide by zero
+jq: invalid JSON text passed to --argjson
+Use jq --help for help with command-line options,
+or see the jq manpage, or online docs  at https://stedolan.github.io/jq
+/home/user/storage_audit/summary/disk_usage_summary.json
+[?2004hroot@fc10db9b-3606-4948-aaf1-a649a0cafb53:/home/user# 

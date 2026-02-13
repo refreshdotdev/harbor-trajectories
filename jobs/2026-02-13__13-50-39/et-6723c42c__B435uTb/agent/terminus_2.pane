@@ -1,0 +1,24 @@
+[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:~# clear
+[?2004l[H[J[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:~# cd /home/user
+[?2004l[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:/home/user# mkdir -p diag
+[?2004l[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:/home/user# grep -oP 'current_badge_id[^=]*=\s*\K[^#]+' app/config/system_settings.conf | tr -d ' 
+[?2004l[?2004h> 
+[?2004l[?2004h> '
+[?2004lOMEGA-99-XRAY[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:/home/user# export DAILY_BADGE_ID="OMEGA-99-XRAY"
+[?2004l[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:/home/user# find app/logs -type f -size +512c -mtime -7 ! -path "*/test/*" ! -path "*/mock/*" ! -path "*/staging/*" -print0 > diag/files_to_scan.txt
+[?2004l[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:/home/user# cd /home/user/app/logs
+[?2004l[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:/home/user/app/logs# manifest=(); tar_args=(); while IFS= read -r -d '' filepath; do if grep -q "[SECURITY-AUDIT-FAIL]" "$filepath" 2>/dev/null; then filename=$(basename -- "$filepath"); relative_path="${filepath#/home/user/app/logs/}"; file_size=$(stat -c%s "$filepath"); hmac_signature=$(printf '%s' "\$(cat -- "$filepath")" | hmac_sha256="${DAILY_BADGE_ID}" sha256sum -b | cut -d' ' -f1); manifest+="{\"filepath\":\"$filepath\",\"size\":$file_size,\"signature\":\"$hmac_signature\"},"; tar_args+=("-C" "." "$relative_path"); fi; done < ../../diag/files_to_scan.txt
+[?2004l[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:/home/user/app/logs# if [ ${#tar_args[@]} -gt 0 ]; then tar -czf ../../diag/forensic_bundle.tar.gz "${tar_args[@]}"; else touch ../../diag/forensic_bundle.tar.gz; fi
+[?2004l[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:/home/user/app/logs# IFS=',' sorted_manifest=($(printf '%s' "${manifest%,}" | sort)); printf '%s
+[?2004l[?2004h> ' "[${sorted_manifest[*]}]" > ../../diag/custody_manifest.json
+[?2004l[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:/home/user/app/logs# ls -la ../../diag/
+[?2004ltotal 8
+drwxr-xr-x 1 root root 106 Feb 13 19:07 [0m[01;34m.[0m
+drwxr-xr-x 1 root root  26 Feb 13 00:03 [01;34m..[0m
+-rw-r--r-- 1 root root   3 Feb 13 19:07 custody_manifest.json
+-rw-r--r-- 1 root root  93 Feb 13 19:06 files_to_scan.txt
+-rw-r--r-- 1 root root   0 Feb 13 19:07 [01;31mforensic_bundle.tar.gz[0m
+[?2004hroot@4284dd59-e5ec-4b38-a78c-499a22b0095e:/home/user/app/logs# 

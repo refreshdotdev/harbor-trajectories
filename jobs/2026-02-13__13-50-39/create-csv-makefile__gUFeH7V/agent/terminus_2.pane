@@ -1,0 +1,247 @@
+[?2004hroot@f4c90a6e-8663-49b2-8a14-1779432a3257:~/data_science_project# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@f4c90a6e-8663-49b2-8a14-1779432a3257:~/data_science_project# clear
+[?2004l[H[J[?2004hroot@f4c90a6e-8663-49b2-8a14-1779432a3257:~/data_science_project# cat > Makefile << 'EOF'
+[?2004l[?2004h> .PHONY: all clean analyze package
+[?2004l[?2004h> 
+[?2004l[?2004h> # Default variables
+[?2004l[?2004h> PROJECT_LOG ?= pipeline.log
+[?2004l[?2004h> MIN_LIMIT ?= $(shell if [ -f config/params.json ]; then jq -r '.policy.limits.min_amount' config/params.json; else echo 0; fi)
+[?2004l[?2004h> 
+[?2004l[?2004h> # Helper functions
+[?2004l[?2004h> define LOG
+[?2004l[?2004h> @echo "[$(shell date +%s)] $1" >> $(PROJECT_LOG)
+[?2004l[?2004h> endef
+[?2004l[?2004h> 
+[?2004l[?2004h> # Clean target: Process raw CSV files
+[?2004l[?2004h> # Requirements:
+[?2004l[?2004h> # - batch_a.csv (ISO-8859-1) -> UTF-8
+[?2004l[?2004h> # - batch_b.csv (UTF-16LE with BOM) -> UTF-8
+[?2004l[?2004h> # - Drop rows where status is "Cancelled" (case-insensitive)
+[?2004l[?2004h> # - Drop rows where amount < MIN_LIMIT (preserve whitespace in amount)
+[?2004l[?2004h> # - Output to cleaned/ as .tsv with CRLF line endings
+[?2004l[?2004h> # - Preserve header row
+[?2004l[?2004h> clean: $(patsubst raw_data/%.csv, cleaned/%.tsv, $(wildcard raw_data/*.csv))
+[?2004l[?2004h> @mkdir -p cleaned
+[?2004l[?2004h> $(foreach file, $(wildcard raw_data/*.csv), \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> $(eval input_file=$(file))\
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> $(eval output_file=$(patsubst raw_data/%.csv, cleaned/%.tsv, $(input_file)))\
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> $(call LOG,clean $(input_file))\
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> $(if $(filter raw_data/batch_a.csv, $(input_file)), \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> iconv -f ISO-8859-1 -t UTF-8 $(input_file) | \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> )\
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> $(if $(filter raw_data/batch_b.csv, $(input_file)), \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> iconv -f UTF-16LE -t UTF-8 $(input_file) | \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> )\
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> awk -v min_limit=$(MIN_LIMIT) 'BEGIN {FS=","; OFS="\t"} \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> function is_number(value) { return value ~ /^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$/ }\
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> NR==1 {print; next} \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> { \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> gsub(/[[:space:]]+/, "", $$3); \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> gsub(/^\047|\047$/, "", $$3); \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> if (is_number($$3) && $$3 >= min_limit && tolower($$4) != "cancelled") { \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> print \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> } \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> 
+config/   raw_data/ scripts/  
+> } \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> ' | \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> awk 'BEGIN {ORS="\r\n"} {print}' > $(output_file) \
+[?2004l[?2004h> ;
+[?2004l[?2004h> )
+[?2004l[?2004h> 
+[?2004l[?2004h> # Analyze target: Generate JSON summaries from cleaned TSV files
+[?2004l[?2004h> analyze: $(patsubst cleaned/%.tsv, analysis/%.json, $(wildcard cleaned/*.tsv))
+[?2004l[?2004h> @mkdir -p analysis
+[?2004l[?2004h> $(foreach file, $(wildcard cleaned/*.tsv), \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> $(eval input_file=$(file))\
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> $(eval output_file=$(patsubst cleaned/%.tsv, analysis/%.json, $(input_file)))\
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> $(call LOG,analyze $(input_file))\
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> valid_rows=0 \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> total_amount=0 \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> valid_rows=$$(awk 'BEGIN {FS="\t"} NR>1 {total_amount+=$$3; valid_rows++} END {print valid_rows}' $(input_file)) \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> total_amount=$$(awk 'BEGIN {FS="\t"; OFMT="%.2f"} NR>1 {sum+=$$3} END {print sum}' $(input_file)) \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> echo "{"source": \"$(input_file)\", \"valid_rows\": $${valid_rows}, \"total_amount\": $${total_amount}}" > $(output_file) \
+[?2004l[?2004h> ;
+[?2004l[?2004h> )
+[?2004l[?2004h> 
+[?2004l[?2004h> # Package target: Create delivery.tar.gz archive
+[?2004l[?2004h> package: delivery.tar.gz
+[?2004l[?2004h> @mkdir -p cleaned analysis
+[?2004l[?2004h> $(call LOG,package)
+[?2004l[?2004h> 
+[?2004l[?2004h> delivery.tar.gz: cleaned analysis
+[?2004l[?2004h> @rm -f delivery.tar.gz
+[?2004l[?2004h> @cd .. && tar -czvf $(notdir $(CURDIR))/delivery.tar.gz \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> --exclude-vcs \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> --exclude=raw_data \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> --exclude=scripts \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> --exclude=config/legacy_settings.yaml \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> --exclude=config/params.json \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> --exclude=.temp_cache \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> --exclude=*.log \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> --exclude=*.tar.gz \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> $(notdir $(CURDIR))/cleaned \
+[?2004l[?2004h> 
+config/   raw_data/ scripts/  
+> $(notdir $(CURDIR))/analysis && cd -
+[?2004l[?2004h> 
+[?2004l[?2004h> # Main target
+[?2004l[?2004h> all: package
+[?2004l[?2004h> 
+[?2004l[?2004h> # Cleanup target (optional - not required by task)
+[?2004l[?2004h> clean_data:
+[?2004l[?2004h> @rm -rf cleaned analysis delivery.tar.gz
+[?2004l[?2004h> 
+[?2004l[?2004h> EOFecho '{"policy": {"limits": {"min_amount": 100}}}' > config/params.json
+[?2004l[?2004h> ls -la
+[?2004l[?2004h> cat > raw_data/batch_a.csv << 'EOF'
+[?2004l[?2004h> "ID","Customer","Amount","Status","Notes"
+[?2004l[?2004h> "1","Acme Corp","  150.75 ","Completed","Good"
+[?2004l[?2004h> "2","Globex","  80.00 ","Cancelled","Bad"
+[?2004l[?2004h> "3","Initech","  120.00 ","Completed","Okay"
+[?2004l[?2004h> "4","Umbrella Corp","  90.50 ","Cancelled","Ugly"
+[?2004l[?2004h> "5","Stark Industries","  200.00 ","Completed","Excellent"
+[?2004l[?2004h> EOFprintf 'ID\tCustomer\tAmount\tStatus\tNotes\r\n1\tWayne Enterprises\t1500.00\tCompleted\tGood\r\n2\tLexCorp\t50.00\tCancelled\tBad\r\n3\tOscorp\t1200.00\tCompleted\tOkay\r\n4\tOscorp\t90.00\tPending\tUgly\r\n5\tStark Industries\t2000.00\tCompleted\tExcellent\r\n' > raw_data/batch_b.csv
+[?2004l[?2004h> ls -la raw_data/
+[?2004l[?2004h> file raw_data/batch_a.csv
+[?2004l[?2004h> file raw_data/batch_b.csv
+[?2004l[?2004h> make clean
+[?2004l[?2004h> ls -la cleaned/
+[?2004l[?2004h> cat cleaned/batch_a.tsv
+[?2004l[?2004h> cat cleaned/batch_b.tsv
+[?2004l[?2004h> cat pipeline.log
+[?2004l[?2004h> echo "MIN_LIMIT: $(MIN_LIMIT)"
+[?2004l[?2004h> head -5 raw_data/batch_a.csv
+[?2004l[?2004h> head -5 raw_data/batch_b.csv
+[?2004l[?2004h> iconv -f ISO-8859-1 -t UTF-8 raw_data/batch_a.csv
+[?2004l[?2004h> iconv -f UTF-16LE -t UTF-8 raw_data/batch_b.csv
+[?2004l[?2004h> awk -v min_limit=100 'BEGIN {FS=","; OFS="\t"} NR==1 {print; next} {gsub(/[[:space:]]+/, "", $$3); gsub(/^\047|\047$/, "", $$3); if ($$3 >= min_limit && tolower($$4) != "cancelled") {print}}' raw_data/batch_a.csv
+[?2004l[?2004h> mkdir -p cleaned
+[?2004l[?2004h> awk -v min_limit=100 'BEGIN {FS=","; OFS="\t"} NR==1 {print; next} {gsub(/[[:space:]]+/, "", $$3); gsub(/^\047|\047$/, "", $$3); if ($$3 >= min_limit && tolower($$4) != "cancelled") {print}}' raw_data/batch_a.csv > cleaned/batch_a.tsv
+[?2004l[?2004h> ls -la cleaned/
+[?2004l[?2004h> cat cleaned/batch_a.tsv
+[?2004l[?2004h> 
+[?2004l[?2004h> make clean
+[?2004l[?2004h> ls -la cleaned/
+[?2004l[?2004h> cat cleaned/batch_a.tsv
+[?2004l[?2004h> cat cleaned/batch_b.tsv
+[?2004l[?2004h> make analyze
+[?2004l[?2004h> ls -la analysis/
+[?2004l[?2004h> cat analysis/batch_a.json
+[?2004l[?2004h> cat analysis/batch_b.json
+[?2004l[?2004h> make package
+[?2004l[?2004h> ls -la *.tar.gz
+[?2004l[?2004h> tar -tzf delivery.tar.gz
+[?2004l[?2004h> tar -xzf delivery.tar.gz -C /tmp/pipeline_test
+[?2004l[?2004h> ls -la /tmp/pipeline_test/
+[?2004l[?2004h> 

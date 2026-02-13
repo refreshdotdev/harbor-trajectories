@@ -1,0 +1,85 @@
+Current terminal state:
+New Terminal Output:
+
+> EOFcat > generate_report.py << 'EOF'
+> #!/usr/bin/env python3
+> import sqlite3
+> import csv
+> import datetime
+>
+> def main():
+>     db_path = 'db/audit.db'
+>     report_path = 'reports/audit_summary.csv'
+>     sql_log_path = 'logs/sql_history.log'
+>
+>     # Create reports directory if needed
+>     import os
+>     os.makedirs('reports', exist_ok=True)
+>
+>     # Read version from file
+>     try:
+>         with open('version.txt', 'r') as f:
+>             version = f.read().strip()
+>     except:
+>         version = "UNKNOWN"
+>
+>     # Connect to database and enable logging
+>     conn = sqlite3.connect(db_path)
+>     conn.set_trace_callback(lambda sql: open(sql_log_path, 'a').write(sql + '\n'))
+>
+>     cursor = conn.cursor()
+>
+>     # Get data for report
+>     cursor.execute('''
+>         SELECT
+>             tf.rel_path,
+>             ae.event_type,
+>             tf.file_hash,
+>             MIN(ae.event_ts) as first_event_ts
+>         FROM tracked_files tf
+>         JOIN audit_events ae ON tf.id = ae.file_id
+>         GROUP BY tf.rel_path, ae.event_type, tf.file_hash
+>         ORDER BY ae.event_type, tf.rel_path
+>     ''')
+>
+>     # Generate report
+>     with open(report_path, 'w') as csvfile:
+>         writer = csv.writer(csvfile, delimiter=';', lineterminator='\n')
+>         writer.writerow([f"PATH;EVENT;HASH;VERSION={version}"])
+>
+>         for row in cursor.fetchall():
+>             writer.writerow(row)
+>
+>     print(f"Report generated at: {report_path}")
+>
+>     # Calculate database checksum for integrity check
+>     conn.close()
+>
+>     import hashlib
+>     sha256 = hashlib.sha256()
+>     with open(db_path, 'rb') as f:
+>         while True:
+>             data = f.read(4096)
+>             if not data:
+>                 break
+>             sha256.update(data)
+>     db_checksum = sha256.hexdigest()
+>
+>     # Append integrity checksum to SQL log
+>     with open(sql_log_path, 'a') as f:
+>         f.write(f"-- DB_CHECKSUM: {db_checksum}\n")
+>
+>     print(f"Database checksum: {db_checksum}")
+>     print("SQL log updated with integrity checksum")
+>
+> if __name__ == '__main__':
+>     main()
+> EOFchmod +x generate_report.py
+> python3 generate_report.py
+> ls -la reports/
+> head -5 reports/audit_summary.csv
+> tail -5 logs/sql_history.log
+>
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

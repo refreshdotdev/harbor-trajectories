@@ -1,0 +1,52 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export SECRET_KEY_CONTENT=$(cat /home/user/source_files/.secret | tr -d '[:space:]')
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export AUDIT_FILE_RECORDS=""
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export CURRENT_UTC_DATE=$(date -u +'%Y%m%d')
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export HMAC_KEY_FOR_JSON="${SECRET_KEY_CONTENT}${CURRENT_UTC_DATE}"
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# unset CONFIG_FILE
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export CONFIG_FILE="/home/user/audit_2023Q4/checksum_audit.log"
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export AUDIT_FILE_COUNT=0
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export TOTAL_BYTES=0
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# find /home/user/source_files/ -maxdepth 1 -type f -not -name '.*' -print0 | while IFS= read -r -d '' file_
+path; do
+>   orig_filename=$(basename "$file_path")
+>   file_size=$(stat -c%s "$file_path")
+>   if [[ "${orig_filename##*.}" == "txt" || "${file_size}" -ge 1024 ]]; then
+>     if [[ -L "$file_path" && ! -e "$file_path" ]]; then
+>       continue
+>     fi
+>     sha256_hash=$(sha256sum "$file_path" | cut -d' ' -f1)
+>     md5_hash=$(md5sum "$file_path" | cut -d' ' -f1)
+>     AUDIT_FILE_RECORDS+="${orig_filename} SHA256=${sha256_hash}  MD5=${md5_hash}\n"
+>     AUDIT_FILE_COUNT=$((AUDIT_FILE_COUNT + 1))
+>     TOTAL_BYTES=$((TOTAL_BYTES + file_size))
+>   fi
+> done
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export SORTED_FILE_RECORDS=$(echo -n "$AUDIT_FILE_RECORDS" | LC_ALL=C sort)
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# echo -n "$SORTED_FILE_RECORDS" | iconv -t ISO-8859-1 >> "$CONFIG_FILE"
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export LOG_CONTENT_BEFORE_END_TIME=$(cat "$CONFIG_FILE")
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export LOG_CHECKSUM=$(echo -n "$LOG_CONTENT_BEFORE_END_TIME" | sha256sum -b | cut -d' ' -f1)
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export LOG_SIG=$(echo -n "$LOG_CONTENT_BEFORE_END_TIME" | hmac_sha256 "${HMAC_KEY_FOR_JSON}")
+bash: hmac_sha256: command not found
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# export AUDIT_END_TS=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# cat > /home/user/audit_2023Q4/summary.json << EOF_JSON
+> {
+>   "period": "2023-Q4",
+>   "file_count": ${AUDIT_FILE_COUNT},
+>   "total_bytes": ${TOTAL_BYTES},
+>   "start_time": "${AUDIT_START_TS}",
+>   "end_time": "${AUDIT_END_TS}",
+>   "status": "COMPLETED",
+>   "log_checksum": "${LOG_CHECKSUM}",
+>   "signature": "${LOG_SIG}"
+> }
+> EOF_JSON
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# echo "END_TIME    : ${AUDIT_END_TS}" >> "$CONFIG_FILE"
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# echo "END         : 2023-Q4 checksum verification" >> "$CONFIG_FILE"
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user# echo "VERIFICATION_PENDING" >> "$CONFIG_FILE"
+root@34f88313-0823-4ada-8ebe-7f4137319728:/home/user#

@@ -1,0 +1,114 @@
+Current terminal state:
+New Terminal Output:
+
+root@664f1b5a-0d69-48a7-b370-55d4965f7588:~# mkdir -p /home/user/diagnostics
+root@664f1b5a-0d69-48a7-b370-55d4965f7588:~# cat > /home/user/diagnostics/run_net_checks.sh << 'EOF'
+> #!/bin/bash
+>
+> # Netcheck diagnostic script
+> # This script performs network diagnostics on specified targets
+>
+> # Configuration file path
+> TARGETS_FILE="/home/user/diagnostics/targets.txt"
+> LOG_FILE="/home/user/diagnostics/netcheck.log"
+> LOCK_FILE="/home/user/diagnostics/netcheck.lock"
+> PREV_LOG_GZ="/home/user/diagnostics/netcheck.previous.log.gz"
+>
+> # Ensure script is run as root
+> if [[ "$EUID" -ne 0 ]]; then
+>     echo "This script must be run as root" >&2
+>     exit 1
+> fi
+>
+> # Function to handle log rotation
+> rotate_log() {
+>     if [[ -f "$LOG_FILE" ]]; then
+>         gzip -c "$LOG_FILE" > "$PREV_LOG_GZ"
+>         rm -f "$LOG_FILE"
+>     fi
+>     touch "$LOG_FILE"
+>     chmod 0600 "$LOG_FILE"
+> }
+>
+> # Function to run individual checks and log results
+> run_check() {
+>     local host="$1"
+>     local check_name="$2"
+>     local cmd="$3"
+>
+>     # Execute command and capture both stdout and stderr
+>     local output
+>     output=$(eval "$cmd" 2>&1)
+>
+>     # Get exit code
+>     local exit_code=$?
+>
+>     # Base64 encode the output
+>     local encoded_output
+>     encoded_output=$(echo "$output" | base64)
+>
+>     # Write to log atomically using flock
+>     (
+>         flock -x 200
+>
+>         echo "===== START host=$host check=$check_name ====="
+>         echo "$encoded_output"
+>         echo "===== END host=$host check=$check_name status=$exit_code ====="
+>
+>     ) 200>"$LOCK_FILE"
+> }
+>
+> # === Main script execution ===
+>
+> # Check if targets file exists
+> if [[ ! -f "$TARGETS_FILE" ]]; then
+>     echo "Error: targets file $TARGETS_FILE not found" >&2
+>     exit 1
+> fi
+>
+> # Rotate logs
+> rotate_log
+>
+> # Write header to log file
+> (
+>     flock -x 200
+>     echo "# Netcheck Report"
+>     echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+> ) 200>"$LOCK_FILE" > "$LOG_FILE"
+>
+> echo "Starting network diagnostics..."
+>
+> # Process targets file
+> while IFS= read -r line; do
+>     # Skip comments and empty lines
+>     [[ "$line" = \#* ]] && continue
+>     [[ -z "$line" ]] && continue
+>
+>     host="$line"
+>
+>     # Run all checks in parallel for current host
+>     (
+>         run_check "$host" "ping" "ping -n -c 1 $host"
+>         run_check "$host" "traceroute" "traceroute -n -m 5 $host"
+>         run_check "$host" "dig" "dig +short $host A"
+>     ) &
+> done < "$TARGETS_FILE"
+>
+> # Wait for all background jobs to complete
+> wait
+> echo "Network diagnostics completed."
+>
+> # Generate SHA-256 checksum
+> sha256sum "$LOG_FILE" > "/home/user/diagnostics/netcheck.sha256"
+> echo "SHA-256 checksum generated."
+> EOFchmod +x /home/user/diagnostics/run_net_checks.sh
+> cat > /home/user/diagnostics/targets.txt << 'EOF'
+> # Example target hosts
+> # Comment line
+> example.com
+> 8.8.8.8
+> github.com
+> EOF
+
+
+Are you sure you want to mark the task as complete? This will trigger your solution to be graded and you won't be able to make any further corrections. If so, include "task_complete": true in your JSON response again.

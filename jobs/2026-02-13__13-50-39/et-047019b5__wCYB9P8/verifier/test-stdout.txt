@@ -1,0 +1,120 @@
+Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Hit:4 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.81.0-1ubuntu1.21).
+0 upgraded, 0 newly installed, 0 to remove and 4 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading cpython-3.12.12-linux-x86_64-gnu (download) (31.1MiB)
+ Downloading cpython-3.12.12-linux-x86_64-gnu (download)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 5 packages in 25ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/uM_71onBpFin8AEzOVCTG/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 5 items
+
+../../tests/test_final_state.py::test_directory_structure PASSED         [ 20%]
+../../tests/test_final_state.py::test_venv_prompt FAILED                 [ 40%]
+../../tests/test_final_state.py::test_manifest_structure_and_minification FAILED [ 60%]
+../../tests/test_final_state.py::test_manifest_content_logic FAILED      [ 80%]
+../../tests/test_final_state.py::test_signature_validity FAILED          [100%]
+
+=================================== FAILURES ===================================
+_______________________________ test_venv_prompt _______________________________
+
+    def test_venv_prompt():
+        activate_content = (VENV_DIR / "bin" / "activate").read_text()
+>       assert "(AUDIT_SAFE)" in activate_content, "Virtual environment prompt not set to (AUDIT_SAFE)"
+E       AssertionError: Virtual environment prompt not set to (AUDIT_SAFE)
+E       assert '(AUDIT_SAFE)' in '# This file must be used with "source bin/activate" *from bash*\n# you cannot run it directly\n\ndeactivate () {\n    # reset old environment variables\n    if [ -n "${_OLD_VIRTUAL_PATH:-}" ] ; then\n        PATH="${_OLD_VIRTUAL_PATH:-}"\n        export PATH\n        unset _OLD_VIRTUAL_PATH\n    fi\n    if [ -n "${_OLD_VIRTUAL_PYTHONHOME:-}" ] ; then\n        PYTHONHOME="${_OLD_VIRTUAL_PYTHONHOME:-}"\n        export PYTHONHOME\n        unset _OLD_VIRTUAL_PYTHONHOME\n    fi\n\n    # This should detect bash and zsh, which have a hash command that must\n    # be called to get it to forget past commands.  Without forgetting\n    # past commands the $PATH changes we made may not be respected\n    if [ -n "${BASH:-}" -o -n "${ZSH_VERSION:-}" ] ; then\n        hash -r 2> /dev/null\n    fi\n\n    if [ -n "${_OLD_VIRTUAL_PS1:-}" ] ; then\n        PS1="${_OLD_VIRTUAL_PS1:-}"\n        export PS1\n        unset _OLD_VIRTUAL_PS1\n    fi\n\n    unset VIRTUAL_ENV\n    unset VIRTUAL_ENV_PROMPT\n    if [ ! "${1:-}" = "nondestructive" ] ; then\n    # Self destruct!\n        unset -f deactivate\n    fi\n}\n\n# unset irrelevant variables\ndeactivate nondestructive\n\nVIRTUAL_ENV=/home/user/forensics/clean_env\nexport VIRTUAL_ENV\n\n_OLD_VIRTUAL_PATH="$PATH"\nPATH="$VIRTUAL_ENV/"bin":$PATH"\nexport PATH\n\n# unset PYTHONHOME if set\n# this will fail if PYTHONHOME is set to the empty string (which is bad anyway)\n# could use `if (set -u; : $PYTHONHOME) ;` in bash\nif [ -n "${PYTHONHOME:-}" ] ; then\n    _OLD_VIRTUAL_PYTHONHOME="${PYTHONHOME:-}"\n    unset PYTHONHOME\nfi\n\nif [ -z "${VIRTUAL_ENV_DISABLE_PROMPT:-}" ] ; then\n    _OLD_VIRTUAL_PS1="${PS1:-}"\n    PS1=\'(clean_env) \'"${PS1:-}"\n    export PS1\n    VIRTUAL_ENV_PROMPT=\'(clean_env) \'\n    export VIRTUAL_ENV_PROMPT\nfi\n\n# This should detect bash and zsh, which have a hash command that must\n# be called to get it to forget past commands.  Without forgetting\n# past commands the $PATH changes we made may not be respected\nif [ -n "${BASH:-}" -o -n "${ZSH_VERSION:-}" ] ; then\n    hash -r 2> /dev/null\nfi\n'
+
+/tests/test_final_state.py:23: AssertionError
+___________________ test_manifest_structure_and_minification ___________________
+
+    def test_manifest_structure_and_minification():
+        assert MANIFEST_FILE.exists(), "Manifest file missing"
+    
+        # Check minification (no newlines allowed in file content)
+        raw_content = MANIFEST_FILE.read_text(encoding="utf-8")
+>       assert "\n" not in raw_content, "Manifest file is not minified (contains newlines)"
+E       AssertionError: Manifest file is not minified (contains newlines)
+E       assert '\n' not in '{\n  "scan_... }\n  ]\n}\n'
+E         
+E         '\n' is contained here:
+E           {
+E         ? -
+E             "scan_timestamp": "2026-02-13T18:58:29Z",
+E             "environment_inode": 41518609,
+E             "packages": [...
+E         
+E         ...Full output truncated (6 lines hidden), use '-vv' to show
+
+/tests/test_final_state.py:30: AssertionError
+_________________________ test_manifest_content_logic __________________________
+
+    def test_manifest_content_logic():
+        data = json.loads(MANIFEST_FILE.read_text(encoding="utf-8"))
+    
+        # 1. Check Timestamp (ISO8601 UTC)
+        ts = data["scan_timestamp"]
+        assert ts.endswith("Z") or "+00:00" in ts, "Timestamp does not appear to be UTC ISO8601"
+        # Try parsing to ensure validity
+        try:
+            datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except ValueError:
+            pytest.fail("Timestamp is not valid ISO 8601")
+    
+        # 2. Check Inode
+        actual_inode = os.stat(VENV_DIR).st_ino
+        assert data["environment_inode"] == actual_inode, f"Inode mismatch. Manifest: {data['environment_inode']}, Actual: {actual_inode}"
+    
+        # 3. Check Packages (Filter Logic)
+        packages = data["packages"]
+        package_names = [p["name"] for p in packages]
+    
+>       assert "pip" in package_names, "pip should be in the inventory"
+E       AssertionError: pip should be in the inventory
+E       assert 'pip' in ['packaging']
+
+/tests/test_final_state.py:60: AssertionError
+___________________________ test_signature_validity ____________________________
+
+    def test_signature_validity():
+        assert SIG_FILE.exists(), "Signature file missing"
+    
+        # Read signature
+        stored_sig = SIG_FILE.read_text(encoding="utf-8")
+    
+        # Check format (no newline, just hex)
+>       assert "\n" not in stored_sig, "Signature file contains trailing newline"
+E       AssertionError: Signature file contains trailing newline
+E       assert '\n' not in '5e761827d12...9a251014d1\n'
+E         
+E         '\n' is contained here:
+E           5e761827d125bd13a432c42e4eeb7336d8759df39e348777d31d3a9794fc15a8a1b662fd0f5c8ad05c621c92d04160c3481717377e8a4650eb2c109a251014d1
+E         ?                                                                                                                                 +
+
+/tests/test_final_state.py:74: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_final_state.py::test_venv_prompt - AssertionError: Vi...
+FAILED ../../tests/test_final_state.py::test_manifest_structure_and_minification
+FAILED ../../tests/test_final_state.py::test_manifest_content_logic - Asserti...
+FAILED ../../tests/test_final_state.py::test_signature_validity - AssertionEr...
+========================= 4 failed, 1 passed in 0.03s ==========================

@@ -1,0 +1,156 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Capacity Planning Automation - January 2023
+
+You are tasked with generating the January 2023 capacity report. Unlike previous months, we are in the middle of a migration from our legacy mainframe systems to a modern cloud infrastructure. This means the input data is heterogeneous, and strict data hygiene protocols are now in effect.
+
+## 1. Scope Definition
+
+Do not simply scan the entire raw directory. We have deprecated several regions. You must read `/home/user/capacity/config/manifest.txt` to determine which subdirectories within `/home/user/capacity/raw/` are active. The manifest lists relative directory names (one per line). Ignore empty lines or lines starting with `#`.
+
+## 2. Data Ingestion & format
+
+Inside the active directories, identify files ending in `_202301.log`. You will encounter two types of systems:
+
+*   **Legacy Systems**: Identified by the string `legacy` in the filename (e.g., `server_legacy_202301.log`).
+    *   **Encoding**: These files are strictly **ISO-8859-1** (Latin-1).
+    *   **Format**: Metrics are always integers.
+*   **Modern Systems**: All other files.
+    *   **Encoding**: These are **UTF-8**, but may contain a Byte Order Mark (BOM) which must be handled gracefully.
+    *   **Format**: Metrics are floating-point numbers.
+
+Files must also be filtered by status. Only process files containing the exact line `meta_status: active`. The metric lines (CPU_USED, MEM_USED, DISK_USED) may appear in any order.
+
+## 3. Normalization & Aggregation
+
+Before averaging, you must normalize the data stream:
+1.  **Rounding**: Convert all modern floating-point metrics to integers by rounding to the **nearest integer** (0.5 rounds up, e.g., 20.5 -> 21). Legacy integers require no rounding.
+2.  **Noise Filtering**: Our sensors are noisy. Discard any normalized integer value that is strictly **less than 5** or strictly **greater than 95**.
+3.  **Averaging**: Compute the arithmetic mean of the remaining valid values for each metric (CPU, MEM, DISK) across all valid files. Round the final average **down** to the nearest integer.
+
+## 4. Output Pipeline
+
+You must generate three distinct artifacts in `/home/user/capacity/reports/`. Note that the manager views these files on a Windows workstation, so **CRLF (Carriage Return + Line Feed)** line endings are mandatory for text files.
+
+**Artifact A: Intermediate Data**
+*   File: `intermediate.json`
+*   Content: A flat JSON object mapping the metric names (keys: `AVG_CPU_USED`, `AVG_MEM_USED`, `AVG_DISK_USED`) to their calculated integer averages. Use compact formatting (no whitespace/newlines).
+
+**Artifact B: The Summary Report**
+*   File: `summary_202301.log`
+*   Line Endings: **CRLF** (`\r\n`).
+*   Content:
+    1.  `AVG_CPU_USED=<val>`
+    2.  `AVG_MEM_USED=<val>`
+    3.  `AVG_DISK_USED=<val>`
+    4.  `source_size=<bytes>` (where `<bytes>` is the exact file size of `intermediate.json` in bytes).
+
+**Artifact C: Binary Checksum**
+*   File: `checksum.bin`
+*   Content: The **raw binary** MD5 digest (16 bytes) of the `summary_202301.log` file. Do not store the hex string; store the actual bytes.
+
+## 5. Finalization
+
+1.  Update the symlink `/home/user/capacity/latest` to point to `summary_202301.log` (absolute path).
+2.  Append a strictly formatted line to `/home/user/capacity/operations.log`:
+    `Publication 2023-01: <N> files, Checksum: <SHA256>`
+    *   `<N>`: Total count of valid files processed.
+    *   `<SHA256>`: The lowercase hexadecimal SHA-256 hash of the **`checksum.bin`** file you just created.
+    *   (Note: `operations.log` is a standard Linux log, so use standard LF line endings here).
+
+**Constraints**:
+*   No root privileges.
+*   Standard Python 3 libraries are available.
+*   Do not leave stray temporary files.
+
+Current terminal state:
+Current Terminal Screen:
+root@5796a375-dbf6-41c9-a2c9-9c12d187c8ad:/home/user#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

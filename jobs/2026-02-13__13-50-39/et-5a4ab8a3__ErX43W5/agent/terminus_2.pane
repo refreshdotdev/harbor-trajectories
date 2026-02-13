@@ -1,0 +1,396 @@
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user# clear
+[?2004l[H[J[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user# cd /home/user/iot_deployment
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# cat devices.txt
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# ls -la devices.txt
+[?2004l-rw-r--r-- 1 user user 0 Feb 13 00:05 devices.txt
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# wc -l devices.txt
+[?2004l0 devices.txt
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# file devices.txt
+[?2004lbash: file: command not found
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# mkdir -p diagnostics
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# echo "Gathering hostname, kernel, uptime, load average, memory, disk, process, and port data..."echo "hostname: $(hostname)"echo "kernel: $(uname -srv)"echo "uptime_seconds: $(awk '{print $1}' /proc/uptime | cut -d. -f1)"echo "load_average: $(cat /proc/loadavg | awk '{print $1, $2, $3}')"echo "memory: $(free -m | awk '/Mem:/ {print $2, $3, $4}')"hostname
+[?2004lGathering hostname, kernel, uptime, load average, memory, disk, process, and port data...echo hostname: 6271375c-5db0-4f65-b72a-230685fb6c54echo kernel: Linux 6.8.0-85-generic #85-Ubuntu SMP PREEMPT_DYNAMIC Thu Sep 18 15:26:59 UTC 2025echo uptime_seconds: 45echo load_average: 14.11 18.58 18.07echo memory: 773339 64661 127809hostname
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# uname -srv
+[?2004lLinux 6.8.0-85-generic #85-Ubuntu SMP PREEMPT_DYNAMIC Thu Sep 18 15:26:59 UTC 2025
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# awk '{print int($1)}' /proc/uptime
+[?2004l45
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# awk '{print $1, $2, $3}' /proc/loadavg
+[?2004l14.11 18.58 18.07
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# free -m | awk '/Mem:/ {print $2, $3, $4}'
+[?2004l773339 64671 127793
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# df -BG -t ext4 -t xfs -t overlay --output=target,fstype,size,used,avail,pcent | tail -n +2
+[?2004l/                      overlay       10G    1G   10G   1%
+/etc/hosts             xfs         7152G 1097G 6056G  16%
+/usr/local/bin/daytona ext4         879G   19G  816G   3%
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# ps axch -o pid,user,pcpu,pmem,cmd --sort=-pcpu | head -n 6 | awk 'NR>1 && $5 !~ /^\[/ {print $1, $2, $4, $3, $5}' | while read pid user pcpu pmem cmd; do echo "pid=$pid user=$user pcpu=$pcpu pmem=$pmem cmd='$cmd'"; done
+[?2004lpid=80 user=root pcpu=0.0 pmem=0.0 cmd='sleep'
+pid=83 user=root pcpu=0.0 pmem=0.0 cmd='python3'
+pid=96 user=root pcpu=0.0 pmem=0.0 cmd='bash'
+pid=101 user=root pcpu=0.0 pmem=0.0 cmd='sleep'
+pid=108 user=root pcpu=0.0 pmem=0.0 cmd='bash'
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# ss -Hlunp | awk '{print $5}' | awk -F'[[:space:]:]+' '{print $1}' | sort -n | uniq
+[?2004lbash: ss: command not found
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# grep -Po '^[^#\s]' devices.txt
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# netstat -tuln 2>/dev/null | awk '/^tcp/ || /^udp/ {gsub(":\|\s\|\|\|", ":"); print $4}' | awk -F: '{print $NF}' | sort -n | uniq
+[?2004l2280
+22220
+22222
+33333
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment# cd diagnostics && cat > system_report.json << 'EOF'
+[?2004l[?2004h> {
+[?2004l[?2004h>   "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+[?2004l[?2004h>   "hostname": "$(hostname)",
+[?2004l[?2004h>   "kernel": "$(uname -srv)",
+[?2004l[?2004h>   "uptime_seconds": $(awk '{print int($1)}' /proc/uptime),
+[?2004l[?2004h>   "load_average": {
+[?2004l[?2004h>     "1min": $(awk '{print $1}' /proc/loadavg),
+[?2004l[?2004h>     "5min": $(awk '{print $2}' /proc/loadavg),
+[?2004l[?2004h>     "15min": $(awk '{print $3}' /proc/loadavg)
+[?2004l[?2004h>   },
+[?2004l[?2004h>   "memory": {
+[?2004l[?2004h>     "total_MB": $(free -m | awk '/Mem:/ {print $2}'),
+[?2004l[?2004h>     "used_MB": $(free -m | awk '/Mem:/ {print $3}'),
+[?2004l[?2004h>     "free_MB": $(free -m | awk '/Mem:/ {print $4}')
+[?2004l[?2004h>   },
+[?2004l[?2004h>   "disk_usage": [
+[?2004l[?2004h>     $(df -BG -t ext4 -t xfs -t overlay --output=target,fstype,size,used,avail,pcent | tail -n +2 | awk 'NR>0 {printf "{\"mountpoint\": \"%s\", \"filesystem\": \"%s\", \"size_GB\": %.1f, \"used_GB\": %.1f, \"free_GB\": %.1f, \"percent_used\": %d},\n", $1, $2, $3, $4, $5, $6}' | sed '$ s/,\n//')
+[?2004l[?2004h>   ],
+[?2004l[?2004h>   "top_processes": [
+[?2004l[?2004h>     $(ps axch -o pid,user,pcpu,pmem,cmd --sort=-pcpu | head -n 6 | awk 'NR>1 && $5 !~ /^\[/ {printf "{\"pid\": %d, \"user\": \"%s\", \"command\": \"%s\", \"cpu_percent\": %.1f, \"mem_percent\": %.1f},\n", $1, $2, $4, $3, $5}' | sed '$ s/,\n//')
+[?2004l[?2004h>   ],
+[?2004l[?2004h>   "open_ports": [
+[?2004l[?2004h>     $(netstat -tuln 2>/dev/null | awk '/^tcp/ || /^udp/ {gsub(":\|\s\|\|\|", ":"); print $4}' | awk -F: '{print $NF}' | sort -n | uniq | awk '{printf "%d,\n", $1}' | sed '$ s/,\n$//')
+[?2004l[?2004h>   ],
+[?2004l[?2004h>   "reachable_devices": [],
+[?2004l[?2004h>   "unreachable_devices": []
+[?2004l[?2004h> }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# cat system_report.json
+[?2004l{
+  "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+  "hostname": "$(hostname)",
+  "kernel": "$(uname -srv)",
+  "uptime_seconds": $(awk '{print int($1)}' /proc/uptime),
+  "load_average": {
+    "1min": $(awk '{print $1}' /proc/loadavg),
+    "5min": $(awk '{print $2}' /proc/loadavg),
+    "15min": $(awk '{print $3}' /proc/loadavg)
+  },
+  "memory": {
+    "total_MB": $(free -m | awk '/Mem:/ {print $2}'),
+    "used_MB": $(free -m | awk '/Mem:/ {print $3}'),
+    "free_MB": $(free -m | awk '/Mem:/ {print $4}')
+  },
+  "disk_usage": [
+    $(df -BG -t ext4 -t xfs -t overlay --output=target,fstype,size,used,avail,pcent | tail -n +2 | awk 'NR>0 {printf "{\"mountpoint\": \"%s\", \"filesystem\": \"%s\", \"size_GB\": %.1f, \"used_GB\": %.1f, \"free_GB\": %.1f, \"percent_used\": %d},\n", $1, $2, $3, $4, $5, $6}' | sed '$ s/,\n//')
+  ],
+  "top_processes": [
+    $(ps axch -o pid,user,pcpu,pmem,cmd --sort=-pcpu | head -n 6 | awk 'NR>1 && $5 !~ /^\[/ {printf "{\"pid\": %d, \"user\": \"%s\", \"command\": \"%s\", \"cpu_percent\": %.1f, \"mem_percent\": %.1f},\n", $1, $2, $4, $3, $5}' | sed '$ s/,\n//')
+  ],
+  "open_ports": [
+    $(netstat -tuln 2>/dev/null | awk '/^tcp/ || /^udp/ {gsub(":\|\s\|\|\|", ":"); print $4}' | awk -F: '{print $NF}' | sort -n | uniq | awk '{printf "%d,\n", $1}' | sed '$ s/,\n$//')
+  ],
+  "reachable_devices": [],
+  "unreachable_devices": []
+}
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# echo 'ip,status,latency_ms' > ping_summary.csv
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# sha256sum system_report.json ping_summary.csv > integrity.sha256
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# rm system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# jq -n --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" --arg hn "$(hostname)" --arg kr "$(uname -srv)" --arg ut "$(awk '{print int($1)}' /proc/uptime)" \
+[?2004l[?2004h>   --arg la1 "$(awk '{print $1}' /proc/loadavg)" --arg la2 "$(awk '{print $2}' /proc/loadavg)" --arg la3 "$(awk '{print $3}' /proc/loadavg)" \
+[?2004l[?2004h>   --arg memt "$(free -m | awk '/Mem:/ {print $2}')" --arg memu "$(free -m | awk '/Mem:/ {print $3}')" --arg memf "$(free -m | awk '/Mem:/ {print $4}')" \
+[?2004l[?2004h>   '{
+[?2004l[?2004h>     timestamp: $ts,
+[?2004l[?2004h>     hostname: $hn,
+[?2004l[?2004h>     kernel: $kr,
+[?2004l[?2004h>     uptime_seconds: ($ut | tonumber),
+[?2004l[?2004h>     load_average: {1min: ($la1 | tonumber), 5min: ($la2 | tonumber), 15min: ($la3 | tonumber)},
+[?2004l[?2004h>     memory: {total_MB: ($memt | tonumber), used_MB: ($memu | tonumber), free_MB: ($memf | tonumber)},
+[?2004l[?2004h>     disk_usage: []  # Placeholder, will fix in next command
+[?2004l[?2004h>   }' > system_report.json
+[?2004lbash: jq: command not found
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# cat > system_report.json << 'EOF'
+[?2004l[?2004h> {
+[?2004l[?2004h>   "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+[?2004l[?2004h>   "hostname": "$(hostname)",
+[?2004l[?2004h>   "kernel": "$(uname -srv)",
+[?2004l[?2004h>   "uptime_seconds": $(awk '{print int($1)}' /proc/uptime),
+[?2004l[?2004h>   "load_average": {
+[?2004l[?2004h>     "1min": $(awk '{print $1}' /proc/loadavg),
+[?2004l[?2004h>     "5min": $(awk '{print $2}' /proc/loadavg),
+[?2004l[?2004h>     "15min": $(awk '{print $3}' /proc/loadavg)
+[?2004l[?2004h>   },
+[?2004l[?2004h>   "memory": {
+[?2004l[?2004h>     "total_MB": $(free -m | awk '/Mem:/ {print $2}'),
+[?2004l[?2004h>     "used_MB": $(free -m | awk '/Mem:/ {print $3}'),
+[?2004l[?2004h>     "free_MB": $(free -m | awk '/Mem:/ {print $4}')
+[?2004l[?2004h>   },
+[?2004l[?2004h>   "disk_usage": [
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# df -BG -t ext4 -t xfs -t overlay --output=target,fstype,size,used,avail,pcent | tail -n +2 | awk 'NR>0 {printf "    {\"mountpoint\": \"%s\", \"filesystem\": \"%s\", \"size_GB\": %.1f, \"used_GB\": %.1f, \"free_GB\": %.1f, \"percent_used\": %d}\",\n", $1, $2, $3, $4, $5, $6}' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# cat >> system_report.json << 'EOF'
+[?2004l[?2004h>     ],
+[?2004l[?2004h>     "top_processes": [
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# ps axch -o pid,user,pcpu,pmem,cmd --sort=-pcpu | head -n 6 | awk 'NR>1 && $5 !~ /^\[/ {printf "      {\"pid\": %d, \"user\": \"%s\", \"command\": \"%s\", \"cpu_percent\": %.1f, \"mem_percent\": %.1f}\",\n", $1, $2, $4, $3, $5}' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# sed -i '$ s/,$//' system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# cat >> system_report.json << 'EOF'
+[?2004l[?2004h>     ],
+[?2004l[?2004h>     "open_ports": [
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# netstat -tuln 2>/dev/null | awk '/^tcp/ || /^udp/ {gsub(":\|\s\|\|\|", ":"); print $4}' | awk -F: '{print $NF}' | sort -n | uniq | awk '{printf "      %d,\n", $1}' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# sed -i '$ s/,$//' system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# cat >> system_report.json << 'EOF'
+[?2004l[?2004h>     ],
+[?2004l[?2004h>     "reachable_devices": [],
+[?2004l[?2004h>     "unreachable_devices": []
+[?2004l[?2004h>   }
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# cat system_report.json
+[?2004l{
+  "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+  "hostname": "$(hostname)",
+  "kernel": "$(uname -srv)",
+  "uptime_seconds": $(awk '{print int($1)}' /proc/uptime),
+  "load_average": {
+    "1min": $(awk '{print $1}' /proc/loadavg),
+    "5min": $(awk '{print $2}' /proc/loadavg),
+    "15min": $(awk '{print $3}' /proc/loadavg)
+  },
+  "memory": {
+    "total_MB": $(free -m | awk '/Mem:/ {print $2}'),
+    "used_MB": $(free -m | awk '/Mem:/ {print $3}'),
+    "free_MB": $(free -m | awk '/Mem:/ {print $4}')
+  },
+  "disk_usage": [
+    {"mountpoint": "/", "filesystem": "overlay", "size_GB": 10.0, "used_GB": 1.0, "free_GB": 10.0, "percent_used": 1}",
+    {"mountpoint": "/etc/hosts", "filesystem": "xfs", "size_GB": 7152.0, "used_GB": 1097.0, "free_GB": 6056.0, "percent_used": 16}",
+    {"mountpoint": "/usr/local/bin/daytona", "filesystem": "ext4", "size_GB": 879.0, "used_GB": 19.0, "free_GB": 816.0, "percent_used": 3}",
+    ],
+    "top_processes": [
+      {"pid": 80, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0}",
+      {"pid": 83, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0}",
+      {"pid": 96, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0}",
+      {"pid": 101, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0}",
+      {"pid": 108, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0}"
+    ],
+    "open_ports": [
+      2280,
+      22220,
+      22222,
+      33333
+    ],
+    "reachable_devices": [],
+    "unreachable_devices": []
+  }
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# rm -f integrity.sha256 && sha256sum system_report.json ping_summary.csv > integrity.sha256
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# chmod 0755 .. && chmod 0444 system_report.json ping_summary.csv integrity.sha256
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# ls -la
+[?2004ltotal 12
+drwxr-xr-x 2 root root   96 Feb 13 18:55 [0m[01;34m.[0m
+drwxr-xr-x 1 user user   33 Feb 13 18:53 [01;34m..[0m
+-r--r--r-- 1 root root  168 Feb 13 18:55 integrity.sha256
+-r--r--r-- 1 root root   21 Feb 13 18:54 ping_summary.csv
+-r--r--r-- 1 root root 1574 Feb 13 18:55 system_report.json
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# printf '  "disk_usage": [\n' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# df -BG -t ext4 -t xfs -t overlay --output=target,fstype,size,used,avail,pcent | tail -n +2 | awk '{printf "    {\"mountpoint\": \"%s\", \"filesystem\": \"%s\", \"size_GB\": %.1f, \"used_GB\": %.1f, \"free_GB\": %.1f, \"percent_used\": %d},\n", $1, $2, $3, $4, $5, $6}' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# sed -i '$ s/,$//' system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# printf '  ],\n' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# printf '  "top_processes": [\n' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# ps axch -o pid,user,pcpu,pmem,cmd --sort=-pcpu | head -n 6 | awk 'NR>1 && $5 !~ /^\[/ {printf "    {\"pid\": %d, \"user\": \"%s\", \"command\": \"%s\", \"cpu_percent\": %.1f, \"mem_percent\": %.1f},\n", $1, $2, $4, $3, $5}' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# sed -i '$ s/,$//' system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# printf '  ],\n' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# printf '  "open_ports": [\n' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# netstat -tuln 2>/dev/null | awk '/^tcp/ || /^udp/ {gsub(":\|\s\|\|\|", ":"); print $4}' | awk -F: '{print $NF}' | sort -n | uniq | awk '{printf "    %d,\n", $1}' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# sed -i '$ s/,$//' system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# printf '  ],\n' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# printf '  "reachable_devices": [],\n' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# printf '  "unreachable_devices": []\n' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# printf '}\n' >> system_report.json
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# cat system_report.json
+[?2004l{
+  "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+  "hostname": "$(hostname)",
+  "kernel": "$(uname -srv)",
+  "uptime_seconds": $(awk '{print int($1)}' /proc/uptime),
+  "load_average": {
+    "1min": $(awk '{print $1}' /proc/loadavg),
+    "5min": $(awk '{print $2}' /proc/loadavg),
+    "15min": $(awk '{print $3}' /proc/loadavg)
+  },
+  "memory": {
+    "total_MB": $(free -m | awk '/Mem:/ {print $2}'),
+    "used_MB": $(free -m | awk '/Mem:/ {print $3}'),
+    "free_MB": $(free -m | awk '/Mem:/ {print $4}')
+  },
+  "disk_usage": [
+    {"mountpoint": "/", "filesystem": "overlay", "size_GB": 10.0, "used_GB": 1.0, "free_GB": 10.0, "percent_used": 1}",
+    {"mountpoint": "/etc/hosts", "filesystem": "xfs", "size_GB": 7152.0, "used_GB": 1097.0, "free_GB": 6056.0, "percent_used": 16}",
+    {"mountpoint": "/usr/local/bin/daytona", "filesystem": "ext4", "size_GB": 879.0, "used_GB": 19.0, "free_GB": 816.0, "percent_used": 3}",
+    ],
+    "top_processes": [
+      {"pid": 80, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0}",
+      {"pid": 83, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0}",
+      {"pid": 96, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0}",
+      {"pid": 101, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0}",
+      {"pid": 108, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0}"
+    ],
+    "open_ports": [
+      2280,
+      22220,
+      22222,
+      33333
+    ],
+    "reachable_devices": [],
+    "unreachable_devices": []
+  }
+  "disk_usage": [
+    {"mountpoint": "/", "filesystem": "overlay", "size_GB": 10.0, "used_GB": 1.0, "free_GB": 10.0, "percent_used": 1},
+    {"mountpoint": "/etc/hosts", "filesystem": "xfs", "size_GB": 7152.0, "used_GB": 1100.0, "free_GB": 6053.0, "percent_used": 16},
+    {"mountpoint": "/usr/local/bin/daytona", "filesystem": "ext4", "size_GB": 879.0, "used_GB": 19.0, "free_GB": 816.0, "percent_used": 3}
+  ],
+  "top_processes": [
+    {"pid": 80, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0},
+    {"pid": 83, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0},
+    {"pid": 96, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0},
+    {"pid": 101, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0},
+    {"pid": 108, "user": "root", "command": "0.0", "cpu_percent": 0.0, "mem_percent": 0.0}
+  ],
+  "open_ports": [
+    2280,
+    22220,
+    22222,
+    33333
+  ],
+  "reachable_devices": [],
+  "unreachable_devices": []
+}
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# rm -f integrity.sha256 && sha256sum system_report.json ping_summary.csv > integrity.sha256
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# chmod 0755 .. && chmod 0444 system_report.json ping_summary.csv integrity.sha256
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# ls -la
+[?2004ltotal 12
+drwxr-xr-x 2 root root   96 Feb 13 18:56 [0m[01;34m.[0m
+drwxr-xr-x 1 user user   33 Feb 13 18:53 [01;34m..[0m
+-r--r--r-- 1 root root  168 Feb 13 18:56 integrity.sha256
+-r--r--r-- 1 root root   21 Feb 13 18:54 ping_summary.csv
+-r--r--r-- 1 root root 2591 Feb 13 18:56 system_report.json
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# python3 - << 'EOF'
+[?2004l[?2004h> import json
+[?2004l[?2004h> import subprocess
+[?2004l[?2004h> import datetime
+[?2004l[?2004h> import re
+[?2004l[?2004h> 
+[?2004l[?2004h> # Helper to run shell commands
+[?2004l[?2004h> def run_cmd(cmd):
+[?2004l[?2004h>     return subprocess.check_output(cmd, shell=True, text=True).strip()
+[?2004l[?2004h> 
+[?2004l[?2004h> # Get system info
+[?2004l[?2004h> hostname = run_cmd("hostname")
+[?2004l[?2004h> kernel = run_cmd("uname -srv")
+[?2004l[?2004h> uptime_seconds = int(run_cmd("awk '{print int($1)}' /proc/uptime"))
+[?2004l[?2004h> 
+[?2004l[?2004h> load_avg = re.split(r'\s+', run_cmd("cat /proc/loadavg"))[:3]
+[?2004l[?2004h> load_avg = {"1min": float(load_avg[0]), "5min": float(load_avg[1]), "15min": float(load_avg[2])}
+[?2004l[?2004h> 
+[?2004l[?2004h> mem = re.split(r'\s+', run_cmd("free -m"))
+[?2004l[?2004h> mem_info = next((line for line in mem.split('\\n') if "Mem" in line), None)
+[?2004l[?2004h> if mem_info:
+[?2004l[?2004h>     mem = mem_info.split()[1:4]
+[?2004l[?2004h>     memory = {"total_MB": int(mem[0]), "used_MB": int(mem[1]), "free_MB": int(mem[2])}
+[?2004l[?2004h> else:
+[?2004l[?2004h>     memory = {"total_MB": 0, "used_MB": 0, "free_MB": 0}
+[?2004l[?2004h> 
+[?2004l[?2004h> # Disk usage
+[?2004l[?2004h> disk_usage = []
+[?2004l[?2004h> df_out = run_cmd("df -BG -t ext4 -t xfs -t overlay --output=target,fstype,size,used,avail,pcent")
+[?2004l[?2004h> for line in df_out.split('\\n')[2:]:
+[?2004l[?2004h>     if line.strip():
+[?2004l[?2004h>         parts = line.split()
+[?2004l[?2004h>         disk_usage.append({
+[?2004l[?2004h>             "mountpoint": parts[0], "filesystem": parts[1],
+[?2004l[?2004h>             "size_GB": float(parts[2]), "used_GB": float(parts[3]),
+[?2004l[?2004h>             "free_GB": float(parts[4]), "percent_used": int(parts[5].rstrip("%"))
+[?2004l[?2004h>         })
+[?2004l[?2004h> 
+[?2004l[?2004h> # Top processes
+[?2004l[?2004h> top_processes = []
+[?2004l[?2004h> ps_out = run_cmd("ps axch -o pid,user,pcpu,pmem,cmd --sort=-pcpu | head -n 6")
+[?2004l[?2004h> for line in ps_out.split('\\n')[1:]:
+[?2004l[?2004h>     if line.strip() and "]" not in line:
+[?2004l[?2004h>         parts = re.split(r'\s+', line.strip())
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             pid, user = parts[0], parts[1]
+[?2004l[?2004h>             cmd = parts[-1]
+[?2004l[?2004h>             pcpu, pmem = parts[2], parts[3]
+[?2004l[?2004h>             top_processes.append({
+[?2004l[?2004h>                 "pid": int(pid), "user": user, "command": cmd,
+[?2004l[?2004h>                 "cpu_percent": float(pcpu), "mem_percent": float(pmem)
+[?2004l[?2004h>             })
+[?2004l[?2004h>         except:
+[?2004l[?2004h>             continue
+[?2004l[?2004h> 
+[?2004l[?2004h> # Open ports
+[?2004l[?2004h> open_ports = []
+[?2004l[?2004h> netstat_out = run_cmd("netstat -tuln 2>/dev/null")
+[?2004l[?2004h> for line in netstat_out.split('\\n')[2:]:
+[?2004l[?2004h>     if "tcp" in line or "udp" in line:
+[?2004l[?2004h>         port = line.split()[3].split(".")[-1]
+[?2004l[?2004h>         if port.isdigit() and int(port) not in open_ports:
+[?2004l[?2004h>             open_ports.append(int(port))
+[?2004l[?2004h> 
+[?2004l[?2004h> # Build final JSON
+[?2004l[?2004h> report = {
+[?2004l[?2004h>     "timestamp": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+[?2004l[?2004h>     "hostname": hostname,
+[?2004l[?2004h>     "kernel": kernel,
+[?2004l[?2004h>     "uptime_seconds": uptime_seconds,
+[?2004l[?2004h>     "load_average": load_avg,
+[?2004l[?2004h>     "memory": memory,
+[?2004l[?2004h>     "disk_usage": disk_usage,
+[?2004l[?2004h>     "top_processes": top_processes,
+[?2004l[?2004h>     "open_ports": sorted(open_ports),
+[?2004l[?2004h>     "reachable_devices": [],
+[?2004l[?2004h>     "unreachable_devices": []
+[?2004l[?2004h> }
+[?2004l[?2004h> 
+[?2004l[?2004h> # Save to file
+[?2004l[?2004h> with open("system_report.json", "w") as f:
+[?2004l[?2004h>     json.dump(report, f, indent=2)
+[?2004l[?2004h> EOF
+[?2004lTraceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AttributeError: 'list' object has no attribute 'split'
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# rm -f integrity.sha256 && sha256sum system_report.json ping_summary.csv > integrity.sha256
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# chmod 0755 .. && chmod 0444 system_report.json ping_summary.csv integrity.sha256
+[?2004l[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# head -20 system_report.json
+[?2004l{
+  "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+  "hostname": "$(hostname)",
+  "kernel": "$(uname -srv)",
+  "uptime_seconds": $(awk '{print int($1)}' /proc/uptime),
+  "load_average": {
+    "1min": $(awk '{print $1}' /proc/loadavg),
+    "5min": $(awk '{print $2}' /proc/loadavg),
+    "15min": $(awk '{print $3}' /proc/loadavg)
+  },
+  "memory": {
+    "total_MB": $(free -m | awk '/Mem:/ {print $2}'),
+    "used_MB": $(free -m | awk '/Mem:/ {print $3}'),
+    "free_MB": $(free -m | awk '/Mem:/ {print $4}')
+  },
+  "disk_usage": [
+    {"mountpoint": "/", "filesystem": "overlay", "size_GB": 10.0, "used_GB": 1.0, "free_GB": 10.0, "percent_used": 1}",
+    {"mountpoint": "/etc/hosts", "filesystem": "xfs", "size_GB": 7152.0, "used_GB": 1097.0, "free_GB": 6056.0, "percent_used": 16}",
+    {"mountpoint": "/usr/local/bin/daytona", "filesystem": "ext4", "size_GB": 879.0, "used_GB": 19.0, "free_GB": 816.0, "percent_used": 3}",
+    ],
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# ls -la
+[?2004ltotal 12
+drwxr-xr-x 2 root root   96 Feb 13 18:57 [0m[01;34m.[0m
+drwxr-xr-x 1 user user   33 Feb 13 18:53 [01;34m..[0m
+-r--r--r-- 1 root root  168 Feb 13 18:57 integrity.sha256
+-r--r--r-- 1 root root   21 Feb 13 18:54 ping_summary.csv
+-r--r--r-- 1 root root 2591 Feb 13 18:56 system_report.json
+[?2004hroot@6271375c-5db0-4f65-b72a-230685fb6c54:/home/user/iot_deployment/diagnostics# 

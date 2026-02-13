@@ -1,0 +1,84 @@
+```json
+{
+  "analysis": "The source files directory `/home/user/source_files/` exists and contains various files and a subdirectory. The audit directory `/home/user/audit_2023Q4` has been created with mode 0700. The `checksum_audit.log` file has been initialized with its header, including the start timestamp. The next step is to identify all valid artifacts from `source_files` based on the specified criteria, process them (hashing, sizing), sort them, and append their records to `checksum_audit.log`.",
+  "plan": "1. Read the secret key from `/home/user/source_files/.secret` and store it. 2. Set the locale to `C` for ASCII sorting. 3. Implement the artifact selection logic using `find` to locate files in `/home/user/source_files/`, applying filters for: not directories, not hidden files, and (name ends with `.txt` OR size >= 1024 bytes). Symlinks will be followed by default with `find`. 4. For each found file (actual path after symlink resolution), record its original filename (if it was a symlink, this is the symlink's name), get its size, and calculate SHA256 and MD5 hashes of its content. 5. Sort the collected records by the original filename using ASCII collation. 6. Append each formatted record to `checksum_audit.log`, ensuring ISO-8859-1 encoding for the entire file. 7. Determine the current UTC date in `YYYYMMDD` format for the HMAC key. 8. Calculate the SHA-256 hash of the `checksum_audit.log` content as it is *after* all file records are appended but *before* the final verification status line. 9. Form the HMAC key by concatenating the (stripped) secret key and the current UTC date. 10. Calculate the HMAC-SHA256 of the log content (same content as for the checksum) using this key. 11. Create the `summary.json` file in UTF-8 encoding, populating all required fields. 12. Append the actual end time and a placeholder `VERIFICATION_PENDING` status to `checksum_audit.log`. 13. Perform the final integrity verification by re-reading the log, re-calculating hashes for each listed file, and updating the final status line in `checksum_audit.log` to `VERIFICATION_PASSED` or `VERIFICATION_FAILED`.",
+  "commands": [
+    {
+      "keystrokes": "export SECRET_KEY_CONTENT=$(cat /home/user/source_files/.secret | tr -d '[:space:]')\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "export AUDIT_FILE_RECORDS=\"\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "export CURRENT_UTC_DATE=$(date -u +'%Y%m%d')\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "export HMAC_KEY_FOR_JSON=\"${SECRET_KEY_CONTENT}${CURRENT_UTC_DATE}\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "unset CONFIG_FILE\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "export CONFIG_FILE=\"/home/user/audit_2023Q4/checksum_audit.log\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "export AUDIT_FILE_COUNT=0\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "export TOTAL_BYTES=0\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "find /home/user/source_files/ -maxdepth 1 -type f -not -name '.*' -print0 | while IFS= read -r -d '' file_path; do\n  orig_filename=$(basename \"$file_path\")\n  file_size=$(stat -c%s \"$file_path\")\n  if [[ \"${orig_filename##*.}\" == \"txt\" || \"${file_size}\" -ge 1024 ]]; then\n    if [[ -L \"$file_path\" && ! -e \"$file_path\" ]]; then\n      continue\n    fi\n    sha256_hash=$(sha256sum \"$file_path\" | cut -d' ' -f1)\n    md5_hash=$(md5sum \"$file_path\" | cut -d' ' -f1)\n    AUDIT_FILE_RECORDS+=\"${orig_filename} SHA256=${sha256_hash}  MD5=${md5_hash}\\n\"\n    AUDIT_FILE_COUNT=$((AUDIT_FILE_COUNT + 1))\n    TOTAL_BYTES=$((TOTAL_BYTES + file_size))\n  fi\ndone\n",
+      "duration": 2.0
+    },
+    {
+      "keystrokes": "export SORTED_FILE_RECORDS=$(echo -n \"$AUDIT_FILE_RECORDS\" | LC_ALL=C sort)\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "echo -n \"$SORTED_FILE_RECORDS\" | iconv -t ISO-8859-1 >> \"$CONFIG_FILE\"\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "export LOG_CONTENT_BEFORE_END_TIME=$(cat \"$CONFIG_FILE\")\n",
+      "duration": 0.5
+    },
+    {
+      "keystrokes": "export LOG_CHECKSUM=$(echo -n \"$LOG_CONTENT_BEFORE_END_TIME\" | sha256sum -b | cut -d' ' -f1)\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "export LOG_SIG=$(echo -n \"$LOG_CONTENT_BEFORE_END_TIME\" | hmac_sha256 \"${HMAC_KEY_FOR_JSON}\")\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "export AUDIT_END_TS=$(date -u +'%Y-%m-%dT%H:%M:%SZ')\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cat > /home/user/audit_2023Q4/summary.json << EOF_JSON\n{\n  \"period\": \"2023-Q4\",\n  \"file_count\": ${AUDIT_FILE_COUNT},\n  \"total_bytes\": ${TOTAL_BYTES},\n  \"start_time\": \"${AUDIT_START_TS}\",\n  \"end_time\": \"${AUDIT_END_TS}\",\n  \"status\": \"COMPLETED\",\n  \"log_checksum\": \"${LOG_CHECKSUM}\",\n  \"signature\": \"${LOG_SIG}\"\n}\nEOF_JSON\n",
+      "duration": 1.0
+    },
+    {
+      "keystrokes": "echo \"END_TIME    : ${AUDIT_END_TS}\" >> \"$CONFIG_FILE\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "echo \"END         : 2023-Q4 checksum verification\" >> \"$CONFIG_FILE\"\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "echo \"VERIFICATION_PENDING\" >> \"$CONFIG_FILE\"\n",
+      "duration": 0.1
+    }
+  ]
+}
+```

@@ -1,0 +1,168 @@
+You are an AI assistant tasked with solving command-line tasks in a Linux environment. You will be given a task description and the output from previously executed commands. Your goal is to solve the task by providing batches of shell commands.
+
+Format your response as JSON with the following structure:
+
+{
+  "analysis": "Analyze the current state based on the terminal output provided. What do you see? What has been accomplished? What still needs to be done?",
+  "plan": "Describe your plan for the next steps. What commands will you run and why? Be specific about what you expect each command to accomplish.",
+  "commands": [
+    {
+      "keystrokes": "ls -la\n",
+      "duration": 0.1
+    },
+    {
+      "keystrokes": "cd project\n",
+      "duration": 0.1
+    }
+  ],
+  "task_complete": true
+}
+
+Required fields:
+- "analysis": Your analysis of the current situation
+- "plan": Your plan for the next steps
+- "commands": Array of command objects to execute
+
+Optional fields:
+- "task_complete": Boolean indicating if the task is complete (defaults to false if not present)
+
+Command object structure:
+- "keystrokes": String containing the exact keystrokes to send to the terminal (required)
+- "duration": Number of seconds to wait for the command to complete before the next command will be executed (defaults to 1.0 if not present)
+
+IMPORTANT: The text inside "keystrokes" will be used completely verbatim as keystrokes. Write commands exactly as you want them sent to the terminal:
+- You must end every command with a newline (\n) or it will not execute.
+- For special key sequences, use tmux-style escape sequences:
+  - C-c for Ctrl+C
+  - C-d for Ctrl+D
+
+The "duration" attribute specifies the number of seconds to wait for the command to complete (default: 1.0) before the next command will be executed. On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary.
+
+It is better to set a smaller duration than a longer duration. It is always possible to wait again if the prior output has not finished, by running {"keystrokes": "", "duration": 10.0} on subsequent requests to wait longer. Never wait longer than 60 seconds; prefer to poll to see intermediate result status.
+
+Important notes:
+- Each command's keystrokes are sent exactly as written to the terminal
+- Do not include extra whitespace before or after the keystrokes unless it's part of the intended command
+- Extra text before or after the JSON will generate warnings but be tolerated
+- The JSON must be valid - use proper escaping for quotes and special characters within strings
+- Commands array can be empty if you want to wait without taking action
+
+Task Description:
+# Integration Developer Task: Protocol Omega Compliance
+
+You are an integration engineer tasked with implementing the new "Protocol Omega" security standards for handling inter-bank payment messages. This protocol mandates strict isolation of cryptographic identities, dynamic key derivation, and structured audit logging.
+
+## 1. Pre-existing Material
+
+The following files are located in `/home/user/work/integration/`:
+
+*   `message.txt`: A payment instruction file containing HTTP headers and a JSON payload. 
+    *   **Warning**: This file uses specific line endings (CRLF) required by the legacy banking gateway. The integrity of these bytes is critical for signature verification.
+*   `message.txt.sig`: A detached OpenPGP signature provided by the partner bank.
+*   `correspondence.mbox`: An mbox-formatted email archive containing communication with the partner bank's security team. This file contains multiple emails, some of which include attached PGP public key blocks. Note that the partner rotates keys frequently; you must ensure you are using the valid key that corresponds to the signature.
+
+## 2. Protocol Omega Specifications
+
+Your task is to verify the authenticity of the message and then secure it for archival. You must strictly adhere to the following procedural standards. Failure to follow any specification—including file naming, permissions, and format—will result in a compliance failure.
+
+### A. Environment Isolation
+
+All cryptographic operations must be performed within a dedicated, isolated environment. You must create a directory named `secure_gnupg` inside the integration folder. To prevent unauthorized access by other users on the shared system, this directory must have its permissions restricted to read/write/execute for the owner only (octal 700). This directory must serve as the `GNUPGHOME` for all GnuPG operations. Do not pollute the default user keyring (`~/.gnupg`).
+
+### B. Identity Management
+
+The `correspondence.mbox` file contains the history of key exchanges. You must extract the relevant public key(s) and import them into your isolated keyring. Be aware that the mailbox may contain superseded or revoked keys; however, the correct key for verification is the one that successfully validates the signature on `message.txt`.
+
+### C. Verification & Audit Logging
+
+Verify the detached signature `message.txt.sig` against `message.txt`. 
+
+Instead of a raw text log, Protocol Omega requires a structured JSON audit trail. You must generate a file named `verification_audit.json` in the integration directory. This file must be a valid JSON object with the following schema:
+
+```json
+{
+  "status": "valid",
+  "signer_fingerprint": "<The full 40-character fingerprint of the signing key>",
+  "signature_timestamp_iso": "<The signature creation time in UTC ISO 8601 format (e.g., 2023-10-27T14:30:00Z)>"
+}
+```
+
+*Note*: To obtain this information reliably, it is recommended to use GnuPG's status-fd or colon-delimited output modes rather than scraping human-readable text.
+
+### D. Payload Archival & Derived Encryption
+
+Once verified, the message must be symmetrically encrypted for archival. The output file must be named `payload.encrypted` (Note: do not use the default .gpg extension). 
+
+The encryption passphrase is **not** static. It must be derived from the content of `message.txt` using the following algorithm:
+1.  Parse the value of the `X-Correlation-ID` header.
+2.  Reverse this string character-wise (e.g., "abc-123" becomes "321-cba").
+3.  Extract the integer value of the `amount` field from the JSON body.
+4.  Multiply this amount by the Protocol Constant `0x1F` (31 decimal).
+5.  Concatenate the reversed ID, a hyphen `-`, and the calculated product.
+    *   Example: If ID is `abc` and amount is `10`, Passphrase = `cba-310`.
+
+Use AES256 as the cipher. The input file `message.txt` must remain unmodified on disk.
+
+### E. Integrity Manifest
+
+Finally, generate a manifest file named `archival_manifest.chk`. This file must contain the SHA256 checksum of the `payload.encrypted` file, followed by two spaces and the filename, matching the standard output format of `sha256sum`.
+
+## 3. Deliverables checklist
+
+At the end of your execution, the `/home/user/work/integration/` directory must contain:
+1.  `secure_gnupg/` (Directory, mode 700, containing the imported key).
+2.  `verification_audit.json` (Valid JSON, correct schema, accurate data).
+3.  `payload.encrypted` (Symmetrically encrypted file, decryptable with the derived passphrase).
+4.  `archival_manifest.chk` (SHA256 checksum of the encrypted file).
+5.  Original files (`message.txt`, `message.txt.sig`, `correspondence.mbox`) must remain untouched.
+
+## 4. Constraints
+
+*   No root privileges.
+*   Work exclusively within the integration directory.
+*   Do not produce output to stdout/stderr containing the passphrase or file contents.
+*   The solution must run non-interactively.
+
+Current terminal state:
+Current Terminal Screen:
+root@fb6ac34e-364a-484b-9905-7cd722936e86:/home/user#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

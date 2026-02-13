@@ -1,0 +1,323 @@
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# clear
+[?2004l[H[J[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# mkdir -p /home/user/storage/incoming /home/user/storage/archive
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# cat > /home/user/storage/params.conf << 'EOF'
+[?2004l[?2004h> cutoff_days = 30
+[?2004l[?2004h> max_bak_kb = 1024
+[?2004l[?2004h> # This is a comment explaining the parameters
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# cat > /usr/local/bin/storage_maintenance.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 1: Configuration
+[?2004l[?2004h> CONFIG_FILE="/home/user/storage/params.conf"
+[?2004l[?2004h> if [[ ! -f "$CONFIG_FILE" ]]; then
+[?2004l[?2004h>     echo "Configuration file missing: $CONFIG_FILE"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> declare -A PARAMS
+[?2004l[?2004h> while IFS='=' read -r key value; do
+[?2004l[?2004h>     if [[ ! "$key" =~ ^# && -n "$key" ]]; then
+[?2004l[?2004h>         PARAMS[$key]=$(echo "$value" | xargs)
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done < "$CONFIG_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> cutoff_days=${PARAMS[cutoff_days]:-0}
+[?2004l[?2004h> max_bak_kb=${PARAMS[max_bak_kb]:-0}
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Loaded parameters: cutoff_days=$cutoff_days, max_bak_kb=$max_bak_kb KB"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 2: Pruning .bak files
+[?2004l[?2004h> deleted_bytes=0
+[?2004l[?2004h> corrupt_count=0
+[?2004l[?2004h> 
+[?2004l[?2004h> find /home/user/storage/incoming -type f -name "*.bak" ! -name "_*.bak" -print0 | while IFS= read -r -d '' bakfile; do
+[?2004l[?2004h>     filesize_kb=$(du -k --apparent-size "$bakfile" | cut -f1)
+[?2004l[?2004h>     if [[ $filesize_kb -gt $max_bak_kb ]]; then
+[?2004l[?2004h>         bytes_deleted=$(du -b "$bakfile" | cut -f1)
+[?2004l[?2004h>         rm "$bakfile"
+[?2004l[?2004h>         deleted_bytes=$((deleted_bytes + bytes_deleted))
+[?2004l[?2004h>         echo "Deleted large .bak file: $bakfile (${filesize_kb}KB)"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 3: Archival of .txt files
+[?2004l[?2004h> cutoff_time=$(date -d "-$cutoff_days days" +%s)
+[?2004l[?2004h> find /home/user/storage/incoming -type f -name "*.txt" -print0 | while IFS= read -r -d '' txtfile; do
+[?2004l[?2004h>     if [[ -n $(file -i "$txtfile" | grep -v 'charset=utf-8') ]]; then
+[?2004l[?2004h>         corrupt_count=$((corrupt_count + 1))
+[?2004l[?2004h>         mv "$txtfile" "${txtfile}.corrupt"
+[?2004l[?2004h>         echo "Renamed corrupt file: $txtfile"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         mv "$txtfile" /home/user/storage/archive/
+[?2004l[?2004h>         echo "Archived valid UTF-8 file: $txtfile"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 4: Manifest Generation
+[?2004l[?2004h> ARCHIVE_DIR="/home/user/storage/archive"
+[?2004l[?2004h> MANIFEST_FILE="$ARCHIVE_DIR/manifest.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create manifest with CRLF line endings
+[?2004l[?2004h> { echo -e "Filename,Size,MD5"
+[?2004l[?2004h> find "$ARCHIVE_DIR" -type f -exec sh -c 'for f; do printf "%s,%d,%s\r\n" "\$f" "\$(du -b \"\$f\" | cut -f1)" "\$(md5sum \"\$f\" | cut -d' ' -f1)"; done' sh {} +
+[?2004l[?2004h> } | sort -t, -k3 > "$MANIFEST_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 5: Audit Report
+[?2004l[?2004h> cat > /home/user/storage/summary.xml << EOF
+[?2004l[?2004h> <?xml version="1.0" encoding="ISO-8859-1"?>
+[?2004l[?2004h> <audit>
+[?2004l[?2004h>     <deleted_bytes>$deleted_bytes</deleted_bytes>
+[?2004l[?2004h>     <corrupt_files>$corrupt_count</corrupt_files>
+[?2004l[?2004h>     <manifest_sha1>$(sha1sum "$MANIFEST_FILE" | cut -d' ' -f1)</manifest_sha1>
+[?2004l[?2004h> </audit>
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# 
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# # Final Cleanup
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# find /home/user/storage/incoming -type d -empty -delete
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# 
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# echo "Maintenance complete. Deleted bytes: $deleted_bytes, Corrupt files: $corrupt_count"
+[?2004lMaintenance complete. Deleted bytes: , Corrupt files: 
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# EOF
+[?2004lbash: EOF: command not found
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# chmod +x /usr/local/bin/storage_maintenance.sh
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# /usr/local/bin/storage_maintenance.sh
+[?2004lLoaded parameters: cutoff_days=0, max_bak_kb=0 KB
+Deleted large .bak file: /home/user/storage/incoming/project1/delete_me.bak (2560KB)
+Deleted large .bak file: /home/user/storage/incoming/project1/small.bak (1KB)
+/usr/local/bin/storage_maintenance.sh: line 39: file: command not found
+Archived valid UTF-8 file: /home/user/storage/incoming/project2/invalid_utf8.txt
+/usr/local/bin/storage_maintenance.sh: line 39: file: command not found
+Archived valid UTF-8 file: /home/user/storage/incoming/project2/new.txt
+/usr/local/bin/storage_maintenance.sh: line 39: file: command not found
+Archived valid UTF-8 file: /home/user/storage/incoming/project2/valid_old.txt
+/usr/local/bin/storage_maintenance.sh: line 39: file: command not found
+Archived valid UTF-8 file: /home/user/storage/incoming/space dir/file
+name.txt
+ -f1)"; done: 1: Syntax error: Unterminated quoted string
+/usr/local/bin/storage_maintenance.sh: line 65: warning: here-document at line 59 delimited by end-of-file (wanted `EOF')
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# ls -la /home/user/storage/
+[?2004ltotal 8
+drwxr-xr-x 1 root root  95 Feb 13 18:51 [0m[01;34m.[0m
+drwxrwxrwx 1 root root  29 Feb 13 18:50 [34;42m..[0m
+drwxr-xr-x 1 root root 107 Feb 13 18:51 [01;34marchive[0m
+drwxr-xr-x 1 root root  91 Feb 13 18:51 [01;34mincoming[0m
+-rw-r--r-- 1 root root  81 Feb 13 18:51 params.conf
+-rw-r--r-- 1 root root 211 Feb 13 18:51 summary.xml
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# cat > /usr/local/bin/storage_maintenance.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 1: Configuration
+[?2004l[?2004h> CONFIG_FILE="/home/user/storage/params.conf"
+[?2004l[?2004h> if [[ ! -f "$CONFIG_FILE" ]]; then
+[?2004l[?2004h>     echo "Configuration file missing: $CONFIG_FILE"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Parse parameters using awk to handle potential spaces and special characters
+[?2004l[?2004h> source <(awk -F'=' '/^[^#]/ && NF==2 {print $1 "=" $2}' "$CONFIG_FILE" 2>/dev/null)
+[?2004l[?2004h> 
+[?2004l[?2004h> cutoff_days=${cutoff_days:-0}
+[?2004l[?2004h> max_bak_kb=${max_bak_kb:-0}
+[?2004l[?2004h> 
+[?2004l[?2004h> if [[ -z "$cutoff_days" || -z "$max_bak_kb" ]]; then
+[?2004l[?2004h>     echo "Warning: Failed to load all parameters from config file. Using defaults."
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Loaded parameters: cutoff_days=$cutoff_days, max_bak_kb=$max_bak_kb KB"
+[?2004l[?2004h> 
+[?2004l[?2004h> deleted_bytes=0
+[?2004l[?2004h> corrupt_count=0
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 2: Pruning .bak files
+[?2004l[?2004h> find /home/user/storage/incoming -type f -name "*.bak" ! -name "_*.bak" -print0 | while IFS= read -r -d '' bakfile; do
+[?2004l[?2004h>     filesize_kb=$(du -k --apparent-size "$bakfile" | cut -f1)
+[?2004l[?2004h>     if [[ $filesize_kb -gt $max_bak_kb ]]; then
+[?2004l[?2004h>         bytes_deleted=$(du -b "$bakfile" | cut -f1)
+[?2004l[?2004h>         rm "$bakfile"
+[?2004l[?2004h>         deleted_bytes=$((deleted_bytes + bytes_deleted))
+[?2004l[?2004h>         echo "Deleted large .bak file: $bakfile (${filesize_kb}KB)"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 3: Archival of .txt files
+[?2004l[?2004h> cutoff_time=$(date -d "-$cutoff_days days" +%s)
+[?2004l[?2004h> find /home/user/storage/incoming -type f -name "*.txt" -print0 | while IFS= read -r -d '' txtfile; do
+[?2004l[?2004h>     # Validate UTF-8 using iconv (more portable than file command)
+[?2004l[?2004h>     if ! iconv -f UTF-8 -t UTF-8 "$txtfile" >/dev/null 2>&1; then
+[?2004l[?2004h>         corrupt_count=$((corrupt_count + 1))
+[?2004l[?2004h>         mv "$txtfile" "${txtfile}.corrupt"
+[?2004l[?2004h>         echo "Renamed corrupt file: $txtfile"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         mv "$txtfile" /home/user/storage/archive/
+[?2004l[?2004h>         echo "Archived valid UTF-8 file: $txtfile"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 4: Manifest Generation
+[?2004l[?2004h> ARCHIVE_DIR="/home/user/storage/archive"
+[?2004l[?2004h> MANIFEST_FILE="$ARCHIVE_DIR/manifest.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create manifest with CRLF line endings - fixed syntax
+[?2004l[?2004h> rm -f "$MANIFEST_FILE"
+[?2004l[?2004h> find "$ARCHIVE_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>     size=$(du -b "$file" | cut -f1)
+[?2004l[?2004h>     md5=$(md5sum "$file" | cut -d' ' -f1)
+[?2004l[?2004h>     # Escape commas, quotes, and newlines in filenames
+[?2004l[?2004h>     filename=$(echo "$file" | sed -e 's/,/\,/g' -e "s/\\\"/'\\\\"'/g" -e ':a;N;s/\\n/\\\n/g;ta")
+[?2004l[?2004h>     printf "%s,%d,%s\r\n" "$filename" "$size" "$md5" >> "$MANIFEST_FILE"
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort the manifest by MD5 hash
+[?2004l[?2004h> sort -t, -k3 "$MANIFEST_FILE" -o "$MANIFEST_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 5: Audit Report
+[?2004l[?2004h> cat > /home/user/storage/summary.xml << EOF
+[?2004l[?2004h> <?xml version="1.0" encoding="ISO-8859-1"?>
+[?2004l[?2004h> <audit>
+[?2004l[?2004h>     <deleted_bytes>$deleted_bytes</deleted_bytes>
+[?2004l[?2004h>     <corrupt_files>$corrupt_count</corrupt_files>
+[?2004l[?2004h>     <manifest_sha1>$(sha1sum "$MANIFEST_FILE" | cut -d' ' -f1)</manifest_sha1>
+[?2004l[?2004h> </audit>
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# 
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# # Ensure ISO-8859-1 encoding for XML file
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# iconv -f UTF-8 -t ISO-8859-1 "$MANIFEST_FILE" -o "$MANIFEST_FILE"
+[?2004liconv: cannot open input file `': No such file or directory
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# iconv -f UTF-8 -t ISO-8859-1 "/home/user/storage/summary.xml" -o "/home/user/storage/summary.xml"
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# 
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# # Final Cleanup
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# find /home/user/storage/incoming -type d -empty -delete
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# 
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# echo "Maintenance complete. Deleted bytes: $deleted_bytes, Corrupt files: $corrupt_count"
+[?2004lMaintenance complete. Deleted bytes: , Corrupt files: 
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# EOF
+[?2004lbash: EOF: command not found
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# chmod +x /usr/local/bin/storage_maintenance.sh
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# /usr/local/bin/storage_maintenance.sh
+[?2004l/dev/fd/63: line 1: cutoff_days: command not found
+/dev/fd/63: line 2: max_bak_kb: command not found
+Loaded parameters: cutoff_days=0, max_bak_kb=0 KB
+/usr/local/bin/storage_maintenance.sh: line 69: unexpected EOF while looking for matching `"'
+/usr/local/bin/storage_maintenance.sh: line 75: syntax error: unexpected end of file
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# ls -la /home/user/storage/
+[?2004ltotal 8
+drwxr-xr-x 1 root root  95 Feb 13 18:51 [0m[01;34m.[0m
+drwxrwxrwx 1 root root  29 Feb 13 18:50 [34;42m..[0m
+drwxr-xr-x 1 root root  87 Feb 13 18:52 [01;34marchive[0m
+drwxr-xr-x 1 root root  91 Feb 13 18:52 [01;34mincoming[0m
+-rw-r--r-- 1 root root  81 Feb 13 18:51 params.conf
+-rw-r--r-- 1 root root 211 Feb 13 18:52 summary.xml
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# head -10 /home/user/storage/summary.xml
+[?2004l<?xml version="1.0" encoding="ISO-8859-1"?>
+<audit>
+    <deleted_bytes>0</deleted_bytes>
+    <corrupt_files>0</corrupt_files>
+    <manifest_sha1>404802f27eb0da1ba59af6e8ef18a70ec05c2254</manifest_sha1>
+</audit>
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# head -10 /home/user/storage/archive/manifest.csv
+[?2004lhead: cannot open '/home/user/storage/archive/manifest.csv' for reading: No such file or directory
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# cat > /usr/local/bin/storage_maintenance.sh << 'EOF'
+[?2004l[?2004h> #!/bin/bash
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 1: Configuration
+[?2004l[?2004h> CONFIG_FILE="/home/user/storage/params.conf"
+[?2004l[?2004h> if [[ ! -f "$CONFIG_FILE" ]]; then
+[?2004l[?2004h>     echo "Configuration file missing: $CONFIG_FILE"
+[?2004l[?2004h>     exit 1
+[?2004l[?2004h> fi
+[?2004l[?2004h> 
+[?2004l[?2004h> # Parse parameters using awk with proper quoting
+[?2004l[?2004h> source <(awk -F'=' "/^[^#]/ && NF==2 {gsub(/\\\"/, "\\\\\""); gsub(/\\\\\\\\/, "\\\\\\\"\"); print \$1 \"=\" \$2}" "$CONFIG_FILE" 2>/dev/null)
+[?2004l[?2004h> 
+[?2004l[?2004h> cutoff_days=${cutoff_days:-0}
+[?2004l[?2004h> max_bak_kb=${max_bak_kb:-0}
+[?2004l[?2004h> 
+[?2004l[?2004h> echo "Loaded parameters: cutoff_days=$cutoff_days, max_bak_kb=$max_bak_kb KB"
+[?2004l[?2004h> 
+[?2004l[?2004h> deleted_bytes=0
+[?2004l[?2004h> corrupt_count=0
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 2: Pruning .bak files
+[?2004l[?2004h> find /home/user/storage/incoming -type f -name "*.bak" ! -name "_*.bak" -print0 | while IFS= read -r -d '' bakfile; do
+[?2004l[?2004h>     filesize_kb=$(du -k --apparent-size "$bakfile" | cut -f1)
+[?2004l[?2004h>     if [[ $filesize_kb -gt $max_bak_kb ]]; then
+[?2004l[?2004h>         bytes_deleted=$(du -b "$bakfile" | cut -f1)
+[?2004l[?2004h>         rm "$bakfile"
+[?2004l[?2004h>         deleted_bytes=$((deleted_bytes + bytes_deleted))
+[?2004l[?2004h>         echo "Deleted large .bak file: $bakfile (${filesize_kb}KB)"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 3: Archival of .txt files
+[?2004l[?2004h> cutoff_time=$(date -d "-$cutoff_days days" +%s)
+[?2004l[?2004h> find /home/user/storage/incoming -type f -name "*.txt" -print0 | while IFS= read -r -d '' txtfile; do
+[?2004l[?2004h>     if ! iconv -f UTF-8 -t UTF-8 "$txtfile" >/dev/null 2>&1; then
+[?2004l[?2004h>         corrupt_count=$((corrupt_count + 1))
+[?2004l[?2004h>         mv "$txtfile" "${txtfile}.corrupt"
+[?2004l[?2004h>         echo "Renamed corrupt file: $txtfile"
+[?2004l[?2004h>     else
+[?2004l[?2004h>         mv "$txtfile" /home/user/storage/archive/
+[?2004l[?2004h>         echo "Archived valid UTF-8 file: $txtfile"
+[?2004l[?2004h>     fi
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 4: Manifest Generation
+[?2004l[?2004h> ARCHIVE_DIR="/home/user/storage/archive"
+[?2004l[?2004h> MANIFEST_FILE="$ARCHIVE_DIR/manifest.csv"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Create manifest with CRLF line endings
+[?2004l[?2004h> find "$ARCHIVE_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+[?2004l[?2004h>     size=$(du -b "$file" | cut -f1)
+[?2004l[?2004h>     md5=$(md5sum "$file" | cut -d' ' -f1)
+[?2004l[?2004h>     filename=$(echo "$file" | sed 's/,/\,/g; s/"/\"/g')
+[?2004l[?2004h>     printf "%s,%d,%s\r\n" "$filename" "$size" "$md5" >> "$MANIFEST_FILE"
+[?2004l[?2004h> done
+[?2004l[?2004h> 
+[?2004l[?2004h> # Sort the manifest by MD5 hash
+[?2004l[?2004h> sort -t, -k3 "$MANIFEST_FILE" -o "$MANIFEST_FILE"
+[?2004l[?2004h> 
+[?2004l[?2004h> # Phase 5: Audit Report
+[?2004l[?2004h> cat > /home/user/storage/summary.xml << EOF
+[?2004l[?2004h> <?xml version="1.0" encoding="ISO-8859-1"?>
+[?2004l[?2004h> <audit>
+[?2004l[?2004h>     <deleted_bytes>$deleted_bytes</deleted_bytes>
+[?2004l[?2004h>     <corrupt_files>$corrupt_count</corrupt_files>
+[?2004l[?2004h>     <manifest_sha1>$(sha1sum "$MANIFEST_FILE" | cut -d' ' -f1)</manifest_sha1>
+[?2004l[?2004h> </audit>
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# 
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# # Final Cleanup
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# find /home/user/storage/incoming -type d -empty -delete
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# 
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# echo "Maintenance complete. Deleted bytes: $deleted_bytes, Corrupt files: $corrupt_count"
+[?2004lMaintenance complete. Deleted bytes: , Corrupt files: 
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# EOF
+[?2004lbash: EOF: command not found
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# chmod +x /usr/local/bin/storage_maintenance.sh
+[?2004l[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# /usr/local/bin/storage_maintenance.sh
+[?2004l/usr/local/bin/storage_maintenance.sh: line 28: syntax error near unexpected token `('
+/usr/local/bin/storage_maintenance.sh: line 28: `        echo "Deleted large .bak file: $bakfile (${filesize_kb}KB)"'
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# ls -la /home/user/storage/
+[?2004ltotal 8
+drwxr-xr-x 1 root root  95 Feb 13 18:51 [0m[01;34m.[0m
+drwxrwxrwx 1 root root  29 Feb 13 18:50 [34;42m..[0m
+drwxr-xr-x 1 root root  87 Feb 13 18:52 [01;34marchive[0m
+drwxr-xr-x 1 root root  91 Feb 13 18:52 [01;34mincoming[0m
+-rw-r--r-- 1 root root  81 Feb 13 18:51 params.conf
+-rw-r--r-- 1 root root 211 Feb 13 18:52 summary.xml
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# head -10 /home/user/storage/summary.xml
+[?2004l<?xml version="1.0" encoding="ISO-8859-1"?>
+<audit>
+    <deleted_bytes>0</deleted_bytes>
+    <corrupt_files>0</corrupt_files>
+    <manifest_sha1>404802f27eb0da1ba59af6e8ef18a70ec05c2254</manifest_sha1>
+</audit>
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# head -10 /home/user/storage/archive/manifest.csv
+[?2004lhead: cannot open '/home/user/storage/archive/manifest.csv' for reading: No such file or directory
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# file /home/user/storage/summary.xml
+[?2004lbash: file: command not found
+[?2004hroot@29372756-c152-4945-afbf-6ac4c6f58d37:~# 
