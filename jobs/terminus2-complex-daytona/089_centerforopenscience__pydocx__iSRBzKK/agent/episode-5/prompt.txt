@@ -1,0 +1,133 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+    passroot@02ec8924-edae-4418-a0f7-94544bb8968a:/workspace/repo/pydocx/export# cat > numbering_span.py << 'EOF'
+> from __future__ import absolute_import, division, print_function, unicode_literals
+> import re
+> import string
+> from pydocx.openxml import wordprocessing
+> from pydocx.openxml.wordprocessing.run import Run
+> from pydocx.openxml.wordprocessing.tab_char import TabChar
+> from pydocx.openxml.wordprocessing.text import Text
+> from pydocx.util.memoize import memoized
+>
+> DEFAULT_AUTOMATIC_TAB_STOP_INTERVAL = 720
+> roman_numeral_map = tuple(zip((1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1), ('M', 'CM', 'D', 'CD', 'C', 'XC', 'L', 'XL', 'X', 'IX', 'V', 'IV', 'I'))
+)
+>
+> def int_to_roman(i):
+>     """Given any integer, return the roman numberal string."""
+>     result = []
+>     for (integer, numeral) in roman_numeral_map:
+>         count = i // integer
+>         result.append(numeral * count)
+>         i -= integer * count
+>     return ''.join(result)
+>
+> def roman_to_int(n):
+>     """Given a roman numberal string, return the decimal equivalent."""
+>     i = result = 0
+>     for (integer, numeral) in roman_numeral_map:
+>         while n[i:i + len(numeral)] == numeral:
+>             result += integer
+>             i += len(numeral)
+>     return result
+>
+> def alpha_to_int(n):
+>     """Given a ASCII lowercase base-26 string, return the decimal equivalent."""
+>     result = 0
+>     for (index, c) in enumerate(reversed(n.lower())):
+>         ascii_index = string.ascii_lowercase.find(c)
+>         if ascii_index < 0:
+>             raise ValueError
+>         result += (ascii_index + 1) * len(string.ascii_lowercase) ** index
+>     return result
+>
+> def int_to_alpha(i):
+>     """Given any integer, return the equivalent base-26 ASCII lowercase string."""
+>     result = []
+>     base = len(string.ascii_lowercase)
+>     while i >= 1:
+>         (div, mod) = divmod(i - 1, base)
+>         result.append(string.ascii_lowercase[mod])
+>         i = div
+>     return ''.join(reversed(result))
+>
+> class NumberingSpan(object):
+>     def __init__(self, numbering_level, numbering_definition, parent):
+>         self.children = []
+>         self._nested_level = 0
+>         self.is_separate_list = False
+>         self.numbering_level = numbering_level
+>         self.numbering_definition = numbering_definition
+>         self.parent = parent
+>         self.parent_child_map = {}
+>
+>     def append_child(self, child):
+>         assert isinstance(child, NumberingItem)
+>         self.children.append(child)
+>
+>     def get_first_child_of_first_item(self):
+>         if not self.children:
+>             return
+>         first_item = self.children[0]
+>         if not first_item.children:
+>             return
+>         return first_item.children[0]
+>
+>     def get_last_child(self):
+>         if not self.children:
+>             return
+>         last_item = self.children[-1]
+>         return last_item
+>
+>     def get_numbering_level(self):
+>         return self.numbering_level
+>
+>     @property
+>     def nested_level(self):
+>         return self._nested_level
+>
+>     def inc_nested_level(self):
+>         nested_level = 0
+>         if isinstance(self.parent, (NumberingSpan, NumberingItem)):
+>             nested_level = self.parent.nested_level
+>         self._nested_level = nested_level + 1
+>
+>     def detect_parent_child_map_for_items(self):
+>         for item in self.children:
+>             if item.children:
+>                 self.parent_child_map[item] = item.children
+>             else:
+>                 self.parent_child_map[item] = []
+>         return self.parent_child_map
+>
+> class NumberingItem(object):
+>     def __init__(self, numbering_span):
+>         self.numbering_span = numbering_span
+>         self.children = []
+>
+>     @property
+>     def parent(self):
+>         return self.numbering_span
+>
+>     def append_child(self, child):
+>         child.parent = self
+>         self.children.append(child)
+>
+>     @property
+>     def nested_level(self):
+>         return self.parent.nested_level
+>
+>     def get_first_child(self):
+>         if self.children:
+>             return self.children[0]
+>
+> class NumberingSpanBuilder(FakeNumberingDetection, BaseNumberingSpanBuilder):
+>     def __init__(self):
+>         super().__init__()
+> EOF
+root@02ec8924-edae-4418-a0f7-94544bb8968a:/workspace/repo/pydocx/export#

@@ -1,0 +1,95 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@d994f752-bac6-4a43-9160-48851821db4c:/workspace/repo/bloscpack# cd /workspace/repo
+root@d994f752-bac6-4a43-9160-48851821db4c:/workspace/repo# pytest test/test_memory_io.py::test_pack_unpack_mem -v
+===================================================================== test session starts ======================================================================
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pytest.ini
+plugins: mock-3.15.1, timeout-2.4.0
+collected 1 item
+
+test/test_memory_io.py::test_pack_unpack_mem FAILED                                                                                                      [100%]
+
+=========================================================================== FAILURES ===========================================================================
+_____________________________________________________________________ test_pack_unpack_mem _____________________________________________________________________
+
+    def test_pack_unpack_mem():
+>       pack_unpack_mem(1, chunk_size=reverse_pretty('1M'))
+
+test/test_memory_io.py:64:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+test/test_memory_io.py:44: in pack_unpack_mem
+    pack(source, sink, nchunks, chunk_size, last_chunk_size, metadata=metadata)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+source = <bloscpack.file_io.PlainFPSource object at 0x7c719f22e0b0>, sink = <bloscpack.memory_io.CompressedMemorySink object at 0x7c70fc7ef3d0>, nchunks = 16
+chunk_size = 1048576, last_chunk = 271360, metadata = None, blosc_args = BloscArgs(typesize=8, clevel=7, shuffle=True, cname='blosclz')
+bloscpack_args = BloscpackArgs(offsets=True, checksum='adler32', max_app_chunks=<function <lambda> at 0x7c70fc9b68c0>), metadata_args = None
+
+    def pack(source, sink,
+             nchunks, chunk_size, last_chunk,
+             metadata=None,
+             blosc_args=None,
+             bloscpack_args=None,
+             metadata_args=None):
+        """ Core packing function.  """
+
+        if not isinstance(source, PlainSource):
+            raise TypeError
+        if not isinstance(sink, CompressedSink):
+            raise TypeError
+
+        blosc_args = blosc_args or BloscArgs()
+        log.debug(blosc_args.pformat())
+        bloscpack_args = bloscpack_args or BloscpackArgs()
+        log.debug(bloscpack_args.pformat())
+        if metadata is not None:
+            metadata_args = metadata_args or MetadataArgs()
+            log.debug(metadata_args.pformat())
+        elif metadata_args is not None:
+            log.debug('metadata_args will be silently ignored')
+
+        max_app_chunks = _handle_max_apps(bloscpack_args.offsets,
+                nchunks,
+                bloscpack_args.max_app_chunks)
+        # create the bloscpack header
+        bloscpack_header = BloscpackHeader(
+                offsets=bloscpack_args.offsets,
+                metadata=metadata is not None,
+                checksum=bloscpack_args.checksum,
+                typesize=blosc_args.typesize,
+                chunk_size=chunk_size,
+                last_chunk=last_chunk,
+                nchunks=nchunks,
+                max_app_chunks=max_app_chunks
+                )
+        log.debug(bloscpack_header.pformat())
+
+        source.configure(chunk_size, last_chunk, nchunks)
+        sink.configure(blosc_args, bloscpack_header)
+        sink.write_bloscpack_header()
+        if metadata is not None:
+            sink.write_metadata(metadata, metadata_args)
+        sink.init_offsets()
+
+        compress_func = source.compress_func
+        # read-compress-write loop
+        for i, chunk in enumerate(source):
+            if log.LEVEL == log.DEBUG:
+                log.debug("Handle chunk '%d'%s" %
+                        (i, ' (last)' if i == nchunks - 1 else ''))
+            compressed = compress_func(chunk, blosc_args)
+>           sink.put(i, compressed)
+E           TypeError: CompressedMemorySink.put() takes 2 positional arguments but 3 were given
+
+bloscpack/abstract_io.py:161: TypeError
+=================================================================== short test summary info ====================================================================
+FAILED test/test_memory_io.py::test_pack_unpack_mem - TypeError: CompressedMemorySink.put() takes 2 positional arguments but 3 were given
+====================================================================== 1 failed in 0.41s =======================================================================
+root@d994f752-bac6-4a43-9160-48851821db4c:/workspace/repo#

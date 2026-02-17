@@ -1,0 +1,353 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@6babbbe4-ff3a-4bf7-b11d-cb09a10ddf8b:/workspace/repo/dotdrop# cat utils.py
+"""
+author: deadc0de6 (https://github.com/deadc0de6)
+Copyright (c) 2017, deadc0de6
+
+utilities
+"""
+import subprocess
+import tempfile
+import os
+import uuid
+import fnmatch
+import inspect
+import importlib
+import filecmp
+import itertools
+import shutil
+import json
+import sys
+from pathlib import PurePath
+import requests
+from packaging import version
+from dotdrop.logger import Logger
+from dotdrop.exceptions import UnmetDependency
+from dotdrop.version import __version__ as VERSION
+LOG = Logger()
+STAR = '*'
+ENV_TEMP = 'DOTDROP_TMPDIR'
+TMPDIR = None
+DONOTDELETE = [os.path.expanduser('~'), os.path.expanduser('~/.config')]
+NOREMOVE = [os.path.normpath(p) for p in DONOTDELETE]
+
+def run(cmd, debug=False):
+    """run a command (expects a list)"""
+    if debug:
+        fcmd = ' '.join(cmd)
+        LOG.dbg(f'exec: {fcmd}', force=True)
+    with subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as proc:
+        (out, _) = proc.communicate()
+        ret = proc.returncode
+    out = out.splitlines(keepends=True)
+    lines = ''.join([x.decode('utf-8', 'replace') for x in out])
+    return (ret == 0, lines)
+
+def write_to_tmpfile(content):
+    """write some content to a tmp file"""
+    path = get_tmpfile()
+    with open(path, 'wb') as file:
+        file.write(content)
+    return path
+
+def shellrun(cmd, debug=False):
+    """
+    run a command in the shell (expects a string)
+    returns True|False, output
+    """
+    if debug:
+        LOG.dbg(f'shell exec: "{cmd}"', force=True)
+    (ret, out) = subprocess.getstatusoutput(cmd)
+    if debug:
+        LOG.dbg(f'shell result ({ret}): {out}', force=True)
+    return (ret == 0, out)
+
+def userinput(prompt, debug=False):
+    """
+    get user input
+    return user input
+    """
+    if debug:
+        LOG.dbg(f'get user input for "{prompt}"', force=True)
+    pre = f'Please provide the value for "{prompt}": '
+    res = input(pre)
+    if debug:
+        LOG.dbg(f'user input result: {res}', force=True)
+    return res
+
+def fastdiff(left, right):
+    """fast compare files and returns True if different"""
+    return not filecmp.cmp(left, right, shallow=False)
+
+def diff(original, modified, diff_cmd='', debug=False):
+    """compare two files, returns '' if same"""
+    if not diff_cmd:
+        diff_cmd = 'diff -r -u {0} {1}'
+    replacements = {'{0}': original, '{original}': original, '{1}': modified, '{modified}': modified}
+    cmd = [replacements.get(x, x) for x in diff_cmd.split()]
+    (_, out) = run(cmd, debug=debug)
+    return out
+
+def get_tmpdir():
+    """create and return the temporary directory"""
+    global TMPDIR
+    if TMPDIR:
+        return TMPDIR
+    tmp = _get_tmpdir()
+    TMPDIR = tmp
+    return tmp
+
+def _get_tmpdir():
+    """create the tmpdir"""
+    try:
+        if ENV_TEMP in os.environ:
+            tmp = os.environ[ENV_TEMP]
+            tmp = os.path.expanduser(tmp)
+            tmp = os.path.abspath(tmp)
+            tmp = os.path.normpath(tmp)
+            os.makedirs(tmp, exist_ok=True)
+            return tmp
+    except OSError:
+        pass
+    return tempfile.mkdtemp(prefix='dotdrop-')
+
+def get_tmpfile():
+    """create a temporary file"""
+    tmpdir = get_tmpdir()
+    return tempfile.NamedTemporaryFile(prefix='dotdrop-', dir=tmpdir, delete=False).name
+
+def get_unique_tmp_name():
+    """get a unique file name (not created)"""
+    unique = str(uuid.uuid4())
+    tmpdir = get_tmpdir()
+    return os.path.join(tmpdir, unique)
+
+def removepath(path, logger=None):
+    """
+    remove a file/directory/symlink
+    raises OSError in case of error
+    unless logger is defined.
+
+    When logger is defined, a logger.warn
+    is printed and a boolean returned
+    """
+    if not path:
+        return True
+    if not os.path.lexists(path):
+        return True
+    if os.path.normpath(os.path.expanduser(path)) in NOREMOVE:
+        err = f'Dotdrop refuses to remove {path}'
+        if logger:
+            logger.warn(err)
+            return False
+        LOG.err(err)
+        raise OSError(err)
+    if logger:
+        logger.dbg(f'removing {path}')
+    try:
+        if os.path.islink(path) or os.path.isfile(path):
+            os.unlink(path)
+        elif os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            err = f'Unsupported file type for deletion: {path}'
+            raise OSError(err)
+    except Exception as exc:
+        err = str(exc)
+        if logger:
+            logger.warn(err)
+            return False
+        raise OSError(err) from exc
+    return True
+
+def samefile(path1, path2):
+    """return True if represent the same file"""
+    if not os.path.exists(path1):
+        return False
+    if not os.path.exists(path2):
+        return False
+    return os.path.samefile(path1, path2)
+
+def header():
+    """return dotdrop header"""
+    return 'This dotfile is managed using dotdrop'
+
+def content_empty(string):
+    """return True if is empty or only one CRL
+[... output limited to 10000 bytes; 70 interior bytes omitted ...]
+       if not hasattr(magic, 'from_file'):
+            LOG.warn(err)
+    except ImportError:
+        LOG.warn(err)
+    name = 'docopt'
+    err = f'missing python module "{name}"'
+    try:
+        from docopt import docopt
+        assert docopt
+    except ImportError as exc:
+        raise UnmetDependency(err) from exc
+    name = 'jinja2'
+    err = f'missing python module "{name}"'
+    try:
+        import jinja2
+        assert jinja2
+    except ImportError as exc:
+        raise UnmetDependency(err) from exc
+    name = 'ruamel.yaml'
+    err = f'missing python module "{name}"'
+    try:
+        from ruamel.yaml import YAML
+        assert YAML
+    except ImportError as exc:
+        raise UnmetDependency(err) from exc
+    if sys.version_info < (3, 11):
+        name = 'tomli'
+        err = f'missing python module "{name}"'
+        try:
+            import tomli
+            assert tomli
+        except ImportError as exc:
+            raise UnmetDependency(err) from exc
+    name = 'tomli_w'
+    err = f'missing python module "{name}"'
+    try:
+        import tomli_w
+        assert tomli_w
+    except ImportError as exc:
+        raise UnmetDependency(err) from exc
+    name = 'distro'
+    err = f'missing python module "{name}"'
+    try:
+        import distro
+        assert distro
+    except ImportError as exc:
+        raise UnmetDependency(err) from exc
+
+def mirror_file_rights(src, dst):
+    """mirror file rights of src to dst (can rise exc)"""
+    if not os.path.exists(src) or not os.path.exists(dst):
+        return
+    rights = get_file_perm(src)
+    os.chmod(dst, rights)
+
+def get_umask():
+    """return current umask value"""
+    cur = os.umask(0)
+    os.umask(cur)
+    return cur
+
+def get_default_file_perms(path, umask):
+    """get default rights for a file"""
+    base = 438
+    if os.path.isdir(path):
+        base = 511
+    return base - umask
+
+def adapt_workers(options, logger):
+    """adapt number of workers if safe/dry"""
+    if options.safe and options.workers > 1:
+        logger.warn('workers set to 1 when --force is not used')
+        options.workers = 1
+    if options.dry and options.workers > 1:
+        logger.warn('workers set to 1 when --dry is used')
+        options.workers = 1
+
+def categorize(function, iterable):
+    """separate an iterable into elements for which
+    function(element) is true for each element and
+    for which function(element) is false for each
+    element"""
+    return (tuple(filter(function, iterable)), tuple(itertools.filterfalse(function, iterable)))
+
+def debug_list(title, elems, debug):
+    """pretty print list"""
+    if not debug:
+        return
+    LOG.dbg(f'{title}:', force=debug)
+    for elem in elems:
+        LOG.dbg(f'\t- {elem}', force=debug)
+
+def debug_dict(title, elems, debug):
+    """pretty print dict"""
+    if not debug:
+        return
+    LOG.dbg(f'{title}:', force=debug)
+    for (k, val) in elems.items():
+        if isinstance(val, list):
+            LOG.dbg(f'\t- "{k}":', force=debug)
+            for i in val:
+                LOG.dbg(f'\t\t- {i}', force=debug)
+        else:
+            LOG.dbg(f'\t- "{k}": {val}', force=debug)
+
+def check_version():
+    """
+    get dotdrop latest version on github
+    compare with "version"
+    and emit warning in case new version is available
+    """
+    url = 'https://api.github.com/repos/deadc0de6/dotdrop/releases/latest'
+    try:
+        req = requests.get(url, timeout=1)
+    except requests.exceptions.RequestException:
+        return
+    if not req:
+        return
+    if req.status_code != 200:
+        return
+    try:
+        latest = req.json()['name']
+    except json.decoder.JSONDecodeError:
+        return
+    except ValueError:
+        return
+    if latest.startswith('v'):
+        latest = latest[1:]
+    if version.parse(VERSION) < version.parse(latest):
+        msg = f'A new version of dotdrop is available ({latest})'
+        LOG.warn(msg)
+
+def pivot_path(path, newdir, striphome=False, logger=None):
+    """change path to be under newdir"""
+    if logger:
+        logger.dbg(f'pivot new dir: "{newdir}"')
+        logger.dbg(f'strip home: {striphome}')
+    if striphome:
+        path = strip_home(path)
+    sub = path.lstrip(PurePath(path).anchor)
+    new = os.path.join(newdir, sub)
+    if logger:
+        logger.dbg(f'pivot "{path}" to "{new}"')
+    return new
+
+def dir_empty(path):
+    """return true if directory is empty"""
+    if not os.path.exists(path) or not os.path.isdir(path):
+        return True
+    return len(os.listdir(path)) < 1
+
+def is_bin_in_path(command):
+    """
+    check binary from command is in path
+    """
+    bpath = ''
+    if not command:
+        return False
+    try:
+        binary = command.split(' ')[0]
+    except ValueError:
+        return False
+    if not binary:
+        return False
+    try:
+        bpath = shutil.which(binary)
+    except shutil.Error:
+        return False
+    if not bpath:
+        return False
+    return os.path.exists(bpath)root@6babbbe4-ff3a-4bf7-b11d-cb09a10ddf8b:/workspace/repo/dotdrop#

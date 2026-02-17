@@ -1,0 +1,1023 @@
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo# clear
+[?2004l[H[J[3J[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo# cd src/databricks/labs/ucx/azure/
+[?2004l[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# vi resources.py
+[?2004lbash: vi: command not found
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# nano resources.py
+[?2004lbash: nano: command not found
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# cat resources.py
+[?2004limport urllib.parse
+import time
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from datetime import timedelta
+from typing import Any
+from databricks.sdk.core import ApiClient, AzureCliTokenSource, Config, CredentialsProvider, CredentialsStrategy, credentials_strategy
+from databricks.sdk.errors import NotFound, PermissionDenied, ResourceConflict
+from databricks.sdk.retries import retried
+from databricks.labs.ucx.assessment.crawlers import logger
+_ROLES = {'STORAGE_BLOB_DATA_READER': '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1', 'STORAGE_BLOB_DATA_CONTRIBUTOR': 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'}
+
+@dataclass
+class AzureSubscription:
+    name: str
+    subscription_id: str
+    tenant_id: str
+
+class AzureResource:
+
+    def __init__(self, resource_id: str):
+        self._pairs = {}
+        self._resource_id = resource_id
+        split = resource_id.lstrip('/').split('/')
+        if len(split) % 2 != 0:
+            msg = f'not a list of pairs: {resource_id}'
+            raise ValueError(msg)
+        i = 0
+        while i < len(split):
+            k = split[i]
+            value = split[i + 1]
+            i += 2
+            self._pairs[k] = value
+
+    @property
+    def subscription_id(self):
+        return self._pairs.get('subscriptions')
+
+    @property
+    def resource_group(self):
+        return self._pairs.get('resourceGroups')
+
+    @property
+    def storage_account(self):
+        return self._pairs.get('storageAccounts')
+
+    @property
+    def container(self):
+        return self._pairs.get('containers')
+
+    @property
+    def access_connector(self):
+        return self._pairs.get('accessConnectors')
+
+    def __eq__(self, other):
+        if not isinstance(other, AzureResource):
+            return NotImplemented
+        return self._resource_id == other._resource_id
+
+    def __repr__(self):
+        properties = ['subscription_id', 'resource_group', 'storage_account', 'container', 'access_connector']
+        pairs = [f'{_}={getattr(self, _)}' for _ in properties]
+        return f"AzureResource<{', '.join(pairs)}>"
+
+    def __str__(self):
+        return self._resource_id
+
+class RawResource:
+
+    def __init__(self, raw_resource: dict[str, Any]):
+        if 'id' not in raw_resource:
+            raise KeyError("Raw resource must contain an 'id' field")
+        self._id = AzureResource(raw_resource['id'])
+        self._raw_resource = raw_resource
+
+    @property
+    def id(self) -> AzureResource:
+        return self._id
+
+    def get(self, key: str, default: Any) -> Any:
+        return self._raw_resource.get(key, default)
+
+@dataclass
+class Principal:
+    client_id: str
+    display_name: str
+    object_id: str
+    type: str
+    directory_id: str | None = None
+
+@dataclass
+class StorageAccount:
+    id: AzureResource
+    name: str
+    location: str
+    default_network_action: str
+
+    @classmethod
+    def from_raw_resource(cls, raw: RawResource) -> 'StorageAccount':
+        if raw.id is None:
+            raise KeyError(f'Missing id: {raw}')
+        name = raw.get('name', '')
+        if name == '':
+            raise KeyError(f'Missing name: {raw}')
+        location = raw.get('location', '')
+        if location == '':
+            raise KeyError(f'Missing location: {raw}')
+        default_network_action = raw.get('properties', {}).get('networkAcls', {}).get('defaultAction', 'Unknown')
+        storage_account = cls(id=raw.id, name=name, location=location, default_network_action=default_network_action)
+        return storage_account
+
+@dataclass
+class PrincipalSecret:
+    client: Principal
+    secret: str
+
+@dataclass
+class AzureRoleAssignment:
+    id: str
+    resource: AzureResource
+    scope: AzureResource
+    principal: Principal
+    role_name: str
+    role_type: str
+    role_permissions: list[str]
+
+@dataclass
+class AzureRoleDetails:
+    role_name: str | None
+    role_type: str
+    role_permissions: list[str]
+
+@dataclass
+class AccessConnector:
+    id: AzureResource
+    name: str
+    location: str
+    provisioning_state: str
+    identity_type: str
+    principal_id: str
+    managed_identity_type: str | None = None
+    client_id: str | None = None
+    tenant_id: str | None = None
+    tags: dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_raw_resource(cls, raw: RawResource) -> 'AccessConnector':
+        if raw.id is None:
+            raise KeyError(f'Missing id: {raw}')
+        name = raw.get('name', '')
+        if name == '':
+            raise KeyError(f'Missing name: {raw}')
+        location = raw.get('location', '')
+        if location == '':
+            raise KeyError(f'Missing location: {raw}')
+        provisioning_state = raw.get('properties', {}).get('provisioningState', '')
+        if provisioning_state == '':
+            raise KeyError(f'Missing provisioning state: {raw}')
+        identity = raw.get('identity', {})
+        identity_type = identity.get('type')
+        if identity_type == 'UserAssigned':
+            if len(identity.keys()) > 1:
+                raise KeyError(f'Multiple user assigned identities: {identity.keys()}')
+            if len(identity.keys()) == 0:
+                raise KeyError(f'No user assigned identity: {identity.keys()}')
+            managed_identity_id = list(identity.keys())[0]
+            principal_id = identity[managed_identity_id]['principalId']
+            client_id = identity[managed_identity_id]['clientId']
+            tenant_id = None
+        elif identity_type == 'SystemAssigned':
+            principal_id = identity['principalId']
+            managed_identity_id = client_id = None
+            tenant_id = identity['tenantId']
+        else:
+            raise KeyError(f'Unsupported identity type: {identity_type}')
+        access_connector = cls(id=raw.id, name=name, location=location, provisioning_state=provisioning_state, identity_type=identity_type, principal_id=principal_id, managed_identity_type=managed_identity_id, client_id=client_id, tenant_id=tenant_id, tags=raw.get('tags', {}))
+        return access_connector
+
+class AzureAPIClient:
+
+    def __init__(self, host_endpoint: str, service_endpoint: str):
+        self.api_client = ApiClient(Config(host=host_endpoint, credentials_strategy=self._strategy_for(service_endpoint)))
+        self._token_source = AzureCliTokenSource(host_endpoint)
+
+    @staticmethod
+    def _strategy_for(endpoint: str) -> CredentialsStrategy:
+
+        @credentials_strategy('azure-cli', ['host'])
+        def _credentials(_: Config) -> CredentialsProvider:
+            token_source = AzureCliTokenSource(endpoint)
+
+            def inner() -> dict[str, str]:
+                token = token_source.token()
+                return {'Authorization': f'{token.token_type} {token.access_token}'}
+            return inner
+        return _credentials
+
+    def get(self, path: str, api_version: str | None=None, query: dict[str, str] | None=None):
+        headers = {'Accept': 'application/json'}
+        _query: dict[str, str] = query or {}
+        if api_version is not None:
+            _query['api-version'] = api_version
+        return self.api_client.do('GET', path, query=_query, headers=headers)
+
+    def put(self, path: str, api_version: str | None=None, body: dict | None=None):
+        headers = {'Content-Type': 'application/json'}
+        query: dict[str, str] = {}
+        if api_version is not None:
+            query['api-version'] = api_version
+        if body is not None:
+            return self.api_client.do('PUT', path, query=query, headers=headers, body=body)
+        return None
+
+    def post(self, path: str, body: dict | None=None):
+        headers = {'Content-Type': 'application/json'}
+        query: dict[str, str] = {}
+        if body is not None:
+            return self.api_client.do('POST', path, query=query, headers=headers, body=body)
+        return self.api_client.do('POST', path, query=query, headers=headers)
+
+    def delete(self, path: str, api_version: str | None=None):
+        """
+        TODO: Implement this function
+        """
+        ...
+
+    def token(self):
+        return self._token_source.token()
+
+class AzureResources:
+
+    def __init__(self, azure_mgmt: AzureAPIClient, azure_graph: AzureAPIClient, include_subscriptions=None):
+        if not include_subscriptions:
+            include_subscriptions = []
+        self._mgmt = azure_mgmt
+        self._graph = azure_graph
+        self._include_subscriptions = include_subscriptions
+        self._role_definitions = {}
+        self._principals: dict[str, Principal | None] = {}
+
+    def _get_subscriptions(self) -> Iterable[AzureSubscription]:
+        for subscription in self._mgmt.get('/subscriptions', '2022-12-01').get('value', []):
+            yield AzureSubscription(name=subscription['displayName'], subscription_id=subscription['subscriptionId'], tenant_id=subscription['tenantId'])
+
+    def create_service_principal(self, display_name: str) -> PrincipalSecret:
+        try:
+            application_info: dict[str, str] = self._graph.post('/v1.0/applications', {'displayName': display_name})
+            app_id = application_info.get('appId')
+            assert app_id is not None
+            service_principal_info: dict[str, str] = self._graph.post('/v1.0/servicePrincipals', {'appId': app_id})
+            object_id = service_principal_info.get('id')
+            assert object_id is not None
+            secret_info: dict[str, str] = self._graph.post(f'/v1.0/servicePrincipals/{object_id}/addPassword')
+        except PermissionDenied:
+            msg = 'Permission denied. Please run this cmd under the identity of a user who has create service principal permission.'
+            logger.error(msg)
+            raise PermissionDenied(msg) from None
+        secret = secret_info.get('secretText')
+        client_id = service_principal_info.get('appId')
+        principal_type = service_principal_info.get('servicePrincipalType')
+        directory_id = service_principal_info.get('appOwnerOrganizationId')
+        assert client_id is not None
+        assert object_id is not None
+        assert principal_type is not None
+        assert directory_id is not None
+        assert secret is not None
+        principal_secret = PrincipalSecret(Principal(client_id, display_name, object_id, principal_type, directory_id), secret)
+        logger.info(f'Created service principal ({principal_secret.client.client_id}) with access to used storage accounts: ' + principal_secret.client.display_name)
+        return principal_secret
+
+    def delete_service_principal(self, principal_id: str, *, safe: bool=False):
+        """Delete the service principal.
+
+        Parameters
+        ----------
+        principal_id : str
+            The principal id to delete.
+        safe : bool, optional (default: True)
+            If True, will not raise an error if the service principal does not exists.
+
+        Raises
+        ------
+        NotFound :
+            If the principal is not found.
+        PermissionDenied :
+            If missing permission to delete the service principal
+        """
+        try:
+            self._graph.delete(f"/v1.0/applications(appId='{principal_id}')")
+        except PermissionDenied:
+            msg = f'User doesnt have permission to delete application {principal_id}'
+            logger.error(msg)
+            raise PermissionDenied(msg) from None
+        except NotFound:
+            if safe:
+                return
+            raise
+
+    def _log_permission_denied_error_for_storage_permission(self, path: str) -> None:
+        logger.error(f'Permission denied. Please run this cmd under the identity of a user who has create service principal permission: {path}')
+
+    def get_storage_permission(self, storage_account: StorageAccount, role_guid: str, *, timeout: timedelta=timedelta(seconds=1)) -> AzureRoleAssignment | None:
+        """Get a storage permission.
+
+        Parameters
+        ----------
+        storage_account : StorageAccount
+            The storage account to get the permission for.
+        role_guid : str
+            The role guid to get the permission for.
+        timeout : timedelta, optional (default: timedelta(seconds=1))
+            The timeout to wait for the permission to be found.
+
+        Raises
+        ------
+        PermissionDenied :
+            If user is missing permission to get the storage permission.
+        """
+        retry = retried(on=[NotFound], timeout=timeout)
+        path = f'{storage_account.id}/providers/Microsoft.Authorization/roleAssignments/{role_guid}'
+        try:
+            response = retry(self._mgmt.get)(path, '2022-04-01')
+            assignment = self._role_assignment(response, str(storage_account.id))
+            return assignment
+        except TimeoutError:
+            logger.warning(f'Storage permission not found: {path}')
+            return None
+        except PermissionDenied:
+            self._log_permission_denied_error_for_storage_permission(path)
+            raise
+
+    def _get_storage_permissions(self, principal_id: str, storage_account: StorageAccount) -> Iterable[AzureRoleAssignment]:
+        """Get storage permissions for a principal.
+
+        Parameters
+        ----------
+        principal_id : str
+            The principal id to get the storage permissions for.
+        storage_account : StorageAccount
+            The storage account to get the permission for.
+
+        Yields
+        ------
+        AzureRoleAssignment :
+            The role assignment
+
+        Raises
+        ------
+        PermissionDenied :
+            If user is missing permission to get the storage permission.
+        """
+        path = f"{storage_account.id}/providers/Microsoft.Authorization/roleAssignments?$filter=principalId%20eq%20'{principal_id}'"
+        try:
+            response = self._mgmt.get(path, '2022-04-01')
+        except PermissionDenied:
+            self._log_permission_denied_error_for_storage_permission(path)
+            raise
+        for role_assignment in response.get('value', []):
+            assignment = self._role_assignment(role_assignment, str(storage_account.id))
+            if assignment:
+                yield assignment
+
+    def apply_storage_permission(self, principal_id: str, storage_account: StorageAccount, role_name: str, role_guid: str):
+        role_id = _ROLES[role_name]
+        path = f'{storage_account.id}/providers/Microsoft.Authorization/roleAssignments/{role_guid}'
+        try:
+            role_definition_id = f'/subscriptions/{storage_account.id.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/{role_id}'
+            body = {'properties': {'roleDefinitionId': role_definition_id, 'principalId': principal_id, 'principalType': 'ServicePrincipal'}}
+            self._mgmt.put(path, '2022-04-01', body)
+        except ResourceConflict:
+            logger.warning(f'Role assignment already exists for role {role_guid} on storage {storage_account.name} for spn {principal_id}.')
+        except PermissionDenied:
+            self._log_permission_denied_error_for_storage_permission(path)
+            raise
+
+    def _delete_storage_permission(self, principal_id: str, storage_account: StorageAccount, *, safe: bool=False) -> None:
+        """See meth:delete_storage_permission"""
+        try:
+            storage_permissions = list(self._get_storage_permissions(principal_id, storage_account))
+        except NotFound:
+            if safe:
+                return
+            raise
+        permission_denied_ids = []
+        for permission in storage_permissions:
+            try:
+                self._mgmt.delete(permission.id, '2022-04-01')
+            except PermissionDenied:
+                self._log_permission_denied_error_for_storage_permission(permission.id)
+                permission_denied_ids.append(permission.id)
+            except NotFound:
+                continue
+        if permission_denied_ids:
+            raise PermissionDenied(f"Permission denied for deleting role assignments: {', '.join(permission_denied_ids)}")
+
+    def delete_storage_permission(self, principal_id: str, *storage_accounts: StorageAccount, safe: bool=False) -> None:
+        """Delete storage permission(s) for a principal
+
+        Parameters
+        ----------
+        principal_id : str
+            The principal id to delete the role assignment(s) for.
+        storage_accounts : StorageAccount
+            The storage account(s) to delete permission for.
+        safe : bool, optional (default: False)
+            If True, will not raise an exception if no role assignment are found.
+
+        Raises
+        ------
+        PermissionDenied :
+            If user is missing permission to get the storage permission.
+        """
+        for storage_account in storage_accounts:
+            self._delete_storage_permission(principal_id, storage_account, safe=safe)
+
+    def tenant_id(self):
+        token = self._mgmt.token()
+        return token.jwt_claims().get('tid')
+
+    def subscriptions(self):
+        tenant_id = self.tenant_id()
+        for subscription in self._get_subscriptions():
+            if subscription.tenant_id != tenant_id:
+                continue
+            if subscription.subscription_id not in self._include_subscriptions:
+                continue
+            yield subscription
+
+    def storage_accounts(self) -> Iterable[StorageAccount]:
+        for subscription in self.subscriptions():
+            logger.info(f'Checking in subscription {subscription.name} for storage accounts')
+            path = f'/subscriptions/{subscription.subscription_id}/providers/Microsoft.Storage/storageAccounts'
+            for response in self._mgmt.get(path, '2023-01-01').get('value', []):
+                try:
+                    storage_account = StorageAccount.from_raw_resource(RawResource(response))
+                except KeyError:
+                    logger.warning(f'Failed parsing storage account: {response}')
+                else:
+                    yield storage_account
+
+    def containers(self, storage: AzureResource):
+        for raw in self._mgmt.get(f'{storage}/blobServices/default/containers', '2023-01-01').get('value', []):
+            resource_id = raw.get('id')
+            if not resource_id:
+                continue
+            yield AzureResource(resource_id)
+
+    def _get_principal(self, principal_id: str) -> Principal | None:
+        if principal_id in self._principals:
+            return self._principals[principal_id]
+        try:
+            path = f'/v1.0/directoryObjects/{principal_id}'
+            raw: dict[str, str] = self._graph.get(path)
+        except NotFound:
+            self._principals[principal_id] = None
+            return self._principals[principal_id]
+        client_id = raw.get('appId')
+        display_name = raw.get('displayName')
+        object_id = raw.get('id')
+        principal_type = raw.get('servicePrincipalType')
+        directory_id = raw.get('appOwnerOrganizationId')
+        assert client_id is not None
+        assert display_name is not None
+        assert object_id is not None
+        assert principal_type is not None
+        if principal_type == 'Application':
+            assert directory_id is not None
+        self._principals[principal_id] = Principal(client_id, display_name, object_id, principal_type, directory_id)
+        return self._principals[principal_id]
+
+    def role_assignments(self, resource_id: str, *, principal_types: list[str] | None=None) -> Iterable[AzureRoleAssignment]:
+        """See https://learn.microsoft.com/en-us/rest/api/authorization/role-assignments/list-for-resource"""
+        if not principal_types:
+            principal_types = ['ServicePrincipal']
+        result = self._mgmt.get(f'{resource_id}/providers/Microsoft.Authorization/roleAssignments', '2022-04-01')
+        for role_assignment in result.get('value', []):
+            principal_type = role_assignment.get('properties', {}).get('principalType')
+            if not principal_type or principal_type not in principal_types:
+                continue
+            assignment = self._role_assignment(role_assignment, resource_id)
+            if not assignment:
+                continue
+            yield assignment
+
+    def _role_assignment(self, role_assignment: dict, resource_id: str) -> AzureRoleAssignment | None:
+        id_ = role_assignment.get('id')
+        if not id_:
+            return None
+        assignment_properties = role_assignment.get('properties', {})
+        principal_type = assignment_properties.get('principalType')
+        if not principal_type:
+            return None
+        principal_id = assignment_properties.get('principalId')
+        if not principal_id:
+            return None
+        role_definition_id = assignment_properties.get('roleDefinitionId')
+        if not role_definition_id:
+            return None
+        scope = assignment_properties.get('scope')
+        if not scope:
+            return None
+        role_details = self._role_name(role_definition_id)
+        role_name = role_details.role_name
+        if not role_name:
+            return None
+        principal = self._get_principal(principal_id)
+        if not principal:
+            return None
+        if scope == '/':
+            scope = resource_id
+        return AzureRoleAssignment(id=id_, resource=AzureResource(resource_id), scope=AzureResource(scope), principal=principal, role_name=role_name, role_type=role_details.role_type, role_permissions=role_details.role_permissions)
+
+    def _role_name(self, role_definition_id) -> AzureRoleDetails:
+        if role_definition_id not in self._role_definitions:
+            role_definition = self._mgmt.get(role_definition_id, '2022-04-01')
+            definition_properties = role_definition.get('properties', {})
+            role_name = definition_properties.get('roleName')
+            if not role_name:
+                return AzureRoleDetails(role_name=None, role_type='BuiltInRole', role_permissions=[])
+            role_type = definition_properties.get('type', 'BuiltInRole')
+            role_permissions = []
+            if role_type == 'CustomRole':
+                role_permissions_list = definition_properties.get('permissions', [])
+                for each_role_permissions in role_permissions_list:
+                    role_permissions = each_role_permissions.get('actions', []) + each_role_permissions.get('dataActions', [])
+            self._role_definitions[role_definition_id] = AzureRoleDetails(role_name=role_name, role_type=role_type, role_permissions=role_permissions)
+        return self._role_definitions[role_definition_id]
+
+    def managed_identity_client_id(self, access_connector_id: str, user_assigned_identity_id: str | None=None) -> str | None:
+        try:
+            identity = self._mgmt.get(access_connector_id, '2023-05-01').get('identity')
+        except NotFound:
+            logger.warning(f'Access connector {access_connector_id} no longer exists')
+            return None
+        if not identity:
+            return None
+        if identity.get('type') == 'UserAssigned':
+            if not user_assigned_identity_id:
+                return None
+            identities = identity.get('userAssignedIdentities')
+            if user_assigned_identity_id in identities:
+                return identities.get(user_assigned_identity_id).get('clientId')
+            alternative_identity_id = user_assigned_identity_id.replace('resourcegroups', 'resourceGroups')
+            if alternative_identity_id in identities:
+                return identities.get(alternative_identity_id).get('clientId')
+            return None
+        if identity.get('type') == 'SystemAssigned':
+            principal = self._get_principal(identity.get('principalId'))
+            if not principal:
+                return None
+            return principal.client_id
+        return None
+
+    def get_access_connector(self, subscription_id: str, resource_group_name: str, name: str) -> AccessConnector | None:
+        """Get an access connector.
+
+        Docs:
+            https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/get?view=rest-databricks-2023-05-01&tabs=HTTP
+        """
+        url = f'/subscriptions/{subscription_id}/resourceGroups/{resource_group_name}/providers/Microsoft.Databricks/accessConnectors/{name}'
+        response = self._mgmt.get(url, api_version='2023-05-01')
+        raw = RawResource(response)
+        try:
+            access_connector = AccessConnector.from_raw_resource(raw)
+        except KeyError:
+            logger.warning(f'Tried getting non-existing access connector: {url}')
+            access_connector = None
+        return access_connector
+
+    def list_resources(self, subscription: AzureSubscription, resource_type: str) -> Iterable[RawResource]:
+        """List all resources of a type within subscription"""
+        query = {'api-version': '2020-06-01', '$filter': f"resourceType eq '{resource_type}'"}
+        while True:
+            res = self._mgmt.get(f'/subscriptions/{subscription.subscription_id}/resources', query=query)
+            for resource in res['value']:
+                try:
+                    yield RawResource(resource)
+                except KeyError:
+                    logger.warning(f'Could not parse resource: {resource}')
+            next_link = res.get('nextLink', None)
+            if not next_link:
+                break
+            parsed_link = urllib.parse.urlparse(next_link)
+            query = dict(urllib.parse.parse_qsl(parsed_link.query))
+
+    def access_connectors(self) -> Iterable[AccessConnector]:
+        """List all access connector within subscription
+
+        Docs:
+            https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/list-by-subscription?view=rest-databricks-2023-05-01&tabs=HTTP
+        """
+        for subscription in self.subscriptions():
+            for raw in self.list_resources(subscription, 'Microsoft.Databricks/accessConnectors'):
+                try:
+                    yield AccessConnector.from_raw_resource(raw)
+                except KeyError:
+                    logger.warning(f'Could not parse access connector: {raw}')
+
+    def create_or_update_access_connector(self, subscription_id: str, resource_group_name: str, name: str, location: str, tags: dict[str, str] | None, *, wait_for_provisioning: bool=False, wait_for_provisioning_timeout_in_seconds: int=300) -> AccessConnector:
+        """Create access connector.
+
+        Docs:
+            https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/create-or-update?view=rest-databricks-2023-05-01&tabs=HTTP
+        """
+        url = f'/subscriptions/{subscription_id}/resourceGroups/{resource_group_name}/providers/Microsoft.Databricks/accessConnectors/{name}'
+        body = {'location': location, 'identity': {'type': 'SystemAssigned'}}
+        if tags is not None:
+            body['tags'] = tags
+        self._mgmt.put(url, api_version='2023-05-01', body=body)
+        access_connector = self.get_access_connector(subscription_id, resource_group_name, name)
+        start_time = time.time()
+        if access_connector is None or (wait_for_provisioning and access_connector.provisioning_state != 'Succeeded'):
+            if time.time() - start_time > wait_for_provisioning_timeout_in_seconds:
+                raise TimeoutError(f'Timeout waiting for creating or updating access connector: {url}')
+            time.sleep(5)
+            access_connector = self.get_access_connector(subscription_id, resource_group_name, name)
+            assert access_connector is not None
+        return access_connector
+
+    def delete_access_connector(self, url: str) -> None:
+        """Delete an access connector.
+
+        Docs:
+            https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/delete?view=rest-databricks-2023-05-01&tabs=HTTP
+        """
+        self._mgmt.delete(url, api_version='2023-05-01')[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# echo'       """Delete an access connector.\n\n        Docs:\n            https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/delete?view=rest-databricks-2023-05-01&tabs=HTTP\n        """\n        self._mgmt.delete(url, api_version=\'2023-05-01\')' > resources.py
+[?2004lbash: syntax error near unexpected token `)'
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# printf '        """Delete an access connector.\n\n        Docs:\n            https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/delete?view=rest-databricks-2023-05-01&tabs=HTTP\n        """\n        self._mgmt.delete(url, api_version=\'2023-05-01\')\n' > resources.py
+[?2004lbash: syntax error near unexpected token `)'
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# cat > resources.py <<'EOF'
+[?2004l[?2004h>         """Delete an access connector.
+[?2004l[?2004h> 
+[?2004l[?2004h>         Docs:
+[?2004l[?2004h>             https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/delete?view=rest-databricks-2023-05-01&tabs=HTTP
+[?2004l[?2004h>         """
+[?2004l[?2004h>         self._mgmt.delete(url, api_version='2023-05-01')
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# pytest tests/unit/azure/test_resources.py::test_azure_client_api_delete_spn -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+[1mcollecting ... [0m[1mcollected 0 items                                                                                                                                              [0m
+
+[33m==================================================================== [33mno tests ran[0m[33m in 0.00s[0m[33m =====================================================================[0m
+[31mERROR: file or directory not found: tests/unit/azure/test_resources.py::test_azure_client_api_delete_spn
+[0m
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# ls -la tests/unit/azure/
+[?2004lls: cannot access 'tests/unit/azure/': No such file or directory
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# cd /workspace/repo
+[?2004l[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo# ls -la
+[?2004ltotal 968
+drwxr-xr-x 1 root root     42 Feb  9 20:36 .
+drwxr-xr-x 1 root root     18 Feb  9 20:23 ..
+-rw-rw-r-- 1 root root    378 Jan 21 15:55 .codegen.json
+-rw-rw-r-- 1 root root    294 Jan 21 15:55 .editorconfig
+drwxr-xr-x 4 root root    142 Feb  9 20:23 .github
+-rw-rw-r-- 1 root root   2161 Jan 21 15:55 .gitignore
+drwxr-xr-x 3 root root     34 Feb  9 20:36 .venv
+-rw-rw-r-- 1 root root 895135 Jan 21 15:55 CHANGELOG.md
+-rw-rw-r-- 1 root root     38 Jan 21 15:55 CODEOWNERS
+-rw-rw-r-- 1 root root   3862 Jan 21 15:55 LICENSE
+-rw-rw-r-- 1 root root    841 Jan 21 15:55 Makefile
+-rw-rw-r-- 1 root root   1206 Jan 21 15:55 NOTICE
+-rw-rw-r-- 1 root root   2279 Jan 21 15:55 README.md
+-rw-rw-r-- 1 root root   1152 Jan 21 15:55 SECURITY.md
+drwxr-xr-x 3 root root     25 Feb  9 20:23 docs
+-rw-rw-r-- 1 root root  17767 Jan 21 15:55 labs.yml
+-rw-rw-r-- 1 root root  29386 Jan 21 15:55 pyproject.toml
+drwxr-xr-x 1 root root     24 Feb  9 20:23 src
+drwxr-xr-x 4 root root     72 Feb  9 20:23 tests
+-rw-rw-r-- 1 root root    597 Jan 21 15:55 ucx.iml
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo# cd tests
+[?2004l[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/tests# ls -la
+[?2004ltotal 8
+drwxr-xr-x  4 root root   72 Feb  9 20:23 .
+drwxr-xr-x  1 root root   42 Feb  9 20:36 ..
+-rw-rw-r--  1 root root    0 Jan 21 15:55 __init__.py
+drwxr-xr-x 14 root root 4096 Feb  9 20:23 integration
+drwxr-xr-x 16 root root 4096 Feb  9 20:23 unit
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/tests# cd unit
+[?2004l[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/tests/unit# ls -la
+[?2004ltotal 136
+drwxr-xr-x 16 root root  4096 Feb  9 20:23 .
+drwxr-xr-x  4 root root    72 Feb  9 20:23 ..
+-rw-rw-r--  1 root root  7482 Jan 21 15:55 __init__.py
+drwxr-xr-x  2 root root   122 Feb  9 20:23 account
+drwxr-xr-x  9 root root  4096 Feb  9 20:23 assessment
+drwxr-xr-x  2 root root    90 Feb  9 20:23 aws
+drwxr-xr-x  3 root root   165 Feb  9 20:23 azure
+-rw-rw-r--  1 root root 10210 Jan 21 15:55 conftest.py
+drwxr-xr-x  2 root root    97 Feb  9 20:23 contexts
+drwxr-xr-x  2 root root   137 Feb  9 20:23 framework
+drwxr-xr-x  3 root root  4096 Feb  9 20:23 hive_metastore
+drwxr-xr-x  2 root root   121 Feb  9 20:23 install
+drwxr-xr-x  2 root root   143 Feb  9 20:23 installer
+drwxr-xr-x  2 root root    74 Feb  9 20:23 mixins
+-rw-rw-r--  1 root root  1151 Jan 21 15:55 no_cheat.py
+drwxr-xr-x  2 root root  4096 Feb  9 20:23 progress
+drwxr-xr-x  2 root root  4096 Feb  9 20:23 recon
+drwxr-xr-x  7 root root  4096 Feb  9 20:23 source_code
+-rw-rw-r--  1 root root 50159 Jan 21 15:55 test_cli.py
+-rw-rw-r--  1 root root  7533 Jan 21 15:55 test_collection.py
+-rw-rw-r--  1 root root  1345 Jan 21 15:55 test_config.py
+-rw-rw-r--  1 root root  3444 Jan 21 15:55 test_factories.py
+-rw-rw-r--  1 root root  1951 Jan 21 15:55 test_github.py
+-rw-rw-r--  1 root root  2181 Jan 21 15:55 test_no_cheat.py
+-rw-rw-r--  1 root root  2722 Jan 21 15:55 test_useragent.py
+-rw-rw-r--  1 root root   442 Jan 21 15:55 test_workflows.py
+drwxr-xr-x  2 root root  4096 Feb  9 20:23 workspace_access
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/tests/unit# cd azure
+[?2004l[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/tests/unit/azure# ls -la
+[?2004ltotal 128
+drwxr-xr-x  3 root root   165 Feb  9 20:23 .
+drwxr-xr-x 16 root root  4096 Feb  9 20:23 ..
+-rw-rw-r--  1 root root  1314 Jan 21 15:55 __init__.py
+drwxr-xr-x  2 root root    27 Feb  9 20:23 azure
+-rw-rw-r--  1 root root 47736 Jan 21 15:55 test_access.py
+-rw-rw-r--  1 root root 23323 Jan 21 15:55 test_credentials.py
+-rw-rw-r--  1 root root 23020 Jan 21 15:55 test_locations.py
+-rw-rw-r--  1 root root 22785 Jan 21 15:55 test_resources.py
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/tests/unit/azure# pytest tests/unit/azure/test_resources.py::test_azure_client_api_delete_spn -v
+[?2004l[31mImportError while loading conftest '/workspace/repo/tests/unit/conftest.py'.[0m
+[31m../conftest.py:23: in <module>[0m
+[31m    from databricks.labs.ucx.contexts.workflow_task import RuntimeContext[0m
+[31m../../../src/databricks/labs/ucx/contexts/workflow_task.py:23: in <module>[0m
+[31m    from databricks.labs.ucx.contexts.application import GlobalContext[0m
+[31m../../../src/databricks/labs/ucx/contexts/application.py:38: in <module>[0m
+[31m    from databricks.labs.ucx.hive_metastore.catalog_schema import CatalogSchema[0m
+[31m../../../src/databricks/labs/ucx/hive_metastore/catalog_schema.py:12: in <module>[0m
+[31m    from databricks.labs.ucx.hive_metastore.grants import MigrateGrants[0m
+[31m../../../src/databricks/labs/ucx/hive_metastore/grants.py:30: in <module>[0m
+[31m    from databricks.labs.ucx.azure.access import ([0m
+[31m../../../src/databricks/labs/ucx/azure/access.py:38: in <module>[0m
+[31m    from databricks.labs.ucx.azure.resources import ([0m
+[31mE     File "/workspace/repo/src/databricks/labs/ucx/azure/resources.py", line 1[0m
+[31mE       """Delete an access connector.[0m
+[31mE   IndentationError: unexpected indent[0m
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/tests/unit/azure# cd /workspace/repo/src/databricks/labs/ucx/azure
+[?2004l[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# cat > resources.py <<'EOF'
+[?2004l[?2004h> import urllib.parse
+[?2004l[?2004h> import time
+[?2004l[?2004h> from collections.abc import Iterable
+[?2004l[?2004h> from dataclasses import dataclass, field
+[?2004l[?2004h> from datetime import timedelta
+[?2004l[?2004h> from typing import Any
+[?2004l[?2004h> from databricks.sdk.core import ApiClient, AzureCliTokenSource, Config, CredentialsProvider, CredentialsStrategy, credentials_strategy
+[?2004l[?2004h> from databricks.sdk.errors import NotFound, PermissionDenied, ResourceConflict
+[?2004l[?2004h> from databricks.sdk.retries import retried
+[?2004l[?2004h> from databricks.labs.ucx.assessment.crawlers import logger
+[?2004l[?2004h> _ROLES = {'STORAGE_BLOB_DATA_READER': '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1', 'STORAGE_BLOB_DATA_CONTRIBUTOR': 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'}
+[?2004l[?2004h> 
+[?2004l[?2004h> @dataclass
+[?2004l[?2004h> class AzureSubscription:
+[?2004l[?2004h>     name: str
+[?2004l[?2004h>     subscription_id: str
+[?2004l[?2004h>     tenant_id: str
+[?2004l[?2004h> 
+[?2004l[?2004h> class AzureResource:
+[?2004l[?2004h> 
+[?2004l[?2004h>     def __init__(self, resource_id: str):
+[?2004l[?2004h>         self._pairs = {}
+[?2004l[?2004h>         self._resource_id = resource_id
+[?2004l[?2004h>         split = resource_id.lstrip('/').split('/')
+[?2004l[?2004h>         if len(split) % 2 != 0:
+[?2004l[?2004h>             msg = f'not a list of pairs: {resource_id}'
+[?2004l[?2004h>             raise ValueError(msg)
+[?2004l[?2004h>         i = 0
+[?2004l[?2004h>         while i < len(split):
+[?2004l[?2004h>             k = split[i]
+[?2004l[?2004h>             value = split[i + 1]
+[?2004l[?2004h>             i += 2
+[?2004l[?2004h>             self._pairs[k] = value
+[?2004l[?2004h> 
+[?2004l[?2004h>     @property
+[?2004l[?2004h>     def subscription_id(self):
+[?2004l[?2004h>         return self._pairs.get('subscriptions')
+[?2004l[?2004h> 
+[?2004l[?2004h>     @property
+[?2004l[?2004h>     def resource_group(self):
+[?2004l[?2004h>         return self._pairs.get('resourceGroups')
+[?2004l[?2004h> 
+[?2004l[?2004h>     @property
+[?2004l[?2004h>     def storage_account(self):
+[?2004l[?2004h>         return self._pairs.get('storageAccounts')
+[?2004l[?2004h> 
+[?2004l[?2004h>     @property
+[?2004l[?2004h>     def container(self):
+[?2004l[?2004h>         return self._pairs.get('containers')
+[?2004l[?2004h> 
+[?2004l[?2004h>     @property
+[?2004l[?2004h>     def access_connector(self):
+[?2004l[?2004h>         return self._pairs.get('accessConnectors')
+[?2004l[?2004h> 
+[?2004l[?2004h>     def __eq__(self, other):
+[?2004l[?2004h>         if not isinstance(other, AzureResource):
+[?2004l[?2004h>             return NotImplemented
+[?2004l[?2004h>         return self._resource_id == other._resource_id
+[?2004l[?2004h> 
+[?2004l[?2004h>     def __repr__(self):
+[?2004l[?2004h>         properties = ['subscription_id', 'resource_group', 'storage_account', 'container', 'access_connector']
+[?2004l[?2004h>         pairs = [f'{_}={getattr(self, _)}' for _ in properties]
+[?2004l[?2004h>         return f"AzureResource<{', '.join(pairs)}>"
+[?2004l[?2004h> 
+[?2004l[?2004h>     def __str__(self):
+[?2004l[?2004h>         return self._resource_id
+[?2004l[?2004h> 
+[?2004l[?2004h> class RawResource:
+[?2004l[?2004h> 
+[?2004l[?2004h>     def __init__(self, raw_resource: dict[str, Any]):
+[?2004l[?2004h>         if 'id' not in raw_resource:
+[?2004l[?2004h>             raise KeyError("Raw resource must contain an 'id' field")
+[?2004l[?2004h>         self._id = AzureResource(raw_resource['id'])
+[?2004l[?2004h>         self._raw_resource = raw_resource
+[?2004l[?2004h> 
+[?2004l[?2004h>     @property
+[?2004l[?2004h>     def id(self) -> AzureResource:
+[?2004l[?2004h>         return self._id
+[?2004l[?2004h> 
+[?2004l[?2004h>     def get(self, key: str, default: Any) -> Any:
+[?2004l[?2004h>         return self._raw_resource.get(key, default)
+[?2004l[?2004h> 
+[?2004l[?2004h> @dataclass
+[?2004l[?2004h> class Principal:
+[?2004l[?2004h>     client_id: str
+[?2004l[?2004h>     display_name: str
+[?2004l[?2004h>     object_id: str
+[?2004l[?2004h>     type: str
+[?2004l[?2004h>     directory_id: str | None = None
+[?2004l[?2004h> 
+[?2004l[?2004h> @dataclass
+[?2004l[?2004h> class StorageAccount:
+[?2004l[?2004h>     id: AzureResource
+[?2004l[?2004h>     name: str
+[?2004l[?2004h>     location: str
+[?2004l[?2004h>     default_network_action: str
+[?2004l[?2004h> 
+[?2004l[?2004h>     @classmethod
+[?2004l[?2004h>     def from_raw_resource(cls, raw: RawResource) -> 'StorageAccount':
+[?2004l[?2004h>         if raw.id is None:
+[?2004l[?2004h>             raise KeyError(f'Missing id: {raw}')
+[?2004l[?2004h>         name = raw.get('name', '')
+[?2004l[?2004h>         if name == '':
+[?2004l[?2004h>             raise KeyError(f'Missing name: {raw}')
+[?2004l[?2004h>         location = raw.get('location', '')
+[?2004l[?2004h>         if location == '':
+[?2004l[?2004h>             raise KeyError(f'Missing location: {raw}')
+[?2004l[?2004h>         default_network_action = raw.get('properties', {}).get('networkAcls', {}).get('defaultAction', 'Unknown')
+[?2004l[?2004h>         storage_account = cls(id=raw.id, name=name, location=location, default_network_action=default_network_action)
+[?2004l[?2004h>         return storage_account
+[?2004l[?2004h> 
+[?2004l[?2004h> @dataclass
+[?2004l[?2004h> class PrincipalSecret:
+[?2004l[?2004h>     client: Principal
+[?2004l[?2004h>     secret: str
+[?2004l[?2004h> 
+[?2004l[?2004h> @dataclass
+[?2004l[?2004h> class AzureRoleAssignment:
+[?2004l[?2004h>     id: str
+[?2004l[?2004h>     resource: AzureResource
+[?2004l[?2004h>     scope: AzureResource
+[?2004l[?2004h>     principal: Principal
+[?2004l[?2004h>     role_name: str
+[?2004l[?2004h>     role_type: str
+[?2004l[?2004h>     role_permissions: list[str]
+[?2004l[?2004h> 
+[?2004l[?2004h> @dataclass
+[?2004l[?2004h> class AzureRoleDetails:
+[?2004l[?2004h>     role_name: str | None
+[?2004l[?2004h>     role_type: str
+[?2004l[?2004h>     role_permissions: list[str]
+[?2004l[?2004h> 
+[?2004l[?2004h> @dataclass
+[?2004l[?2004h> class AccessConnector:
+[?2004l[?2004h>     id: AzureResource
+[?2004l[?2004h>     name: str
+[?2004l[?2004h>     location: str
+[?2004l[?2004h>     provisioning_state: str
+[?2004l[?2004h>     identity_type: str
+[?2004l[?2004h>     principal_id: str
+[?2004l[?2004h>     managed_identity_type: str | None = None
+[?2004l[?2004h>     client_id: str | None = None
+[?2004l[?2004h>     tenant_id: str | None = None
+[?2004l[?2004h>     tags: dict[str, str] = field(default_factory=dict)
+[?2004l[?2004h> 
+[?2004l[?2004h>     @classmethod
+[?2004l[?2004h>     def from_raw_resource(cls, raw: RawResource) -> 'AccessConnector':
+[?2004l[?2004h>         if raw.id is None:
+[?2004l[?2004h>             raise KeyError(f'Missing id: {raw}')
+[?2004l[?2004h>         name = raw.get('name', '')
+[?2004l[?2004h>         if name == '':
+[?2004l[?2004h>             raise KeyError(f'Missing name: {raw}')
+[?2004l[?2004h>         location = raw.get('location', '')
+[?2004l[?2004h>         if location == '':
+[?2004l[?2004h>             raise KeyError(f'Missing location: {raw}')
+[?2004l[?2004h>         provisioning_state = raw.get('properties', {}).get('provisioningState', '')
+[?2004l[?2004h>         if provisioning_state == '':
+[?2004l[?2004h>             raise KeyError(f'Missing provisioning state: {raw}')
+[?2004l[?2004h>         identity = raw.get('identity', {})
+[?2004l[?2004h>         identity_type = identity.get('type')
+[?2004l[?2004h>         principal_id = identity.get('principalId')
+[?2004l[?2004h>         managed_identity_type = identity.get('type')
+[?2004l[?2004h>         client_id = None
+[?2004l[?2004h>         tenant_id = None
+[?2004l[?2004h>         if identity.get('type') == 'UserAssigned':
+[?2004l[?2004h>             if not user_assigned_identity_id:
+[?2004l[?2004h>                 return None
+[?2004l[?2004h>             identities = identity.get('userAssignedIdentities')
+[?2004l[?2004h>             if user_assigned_identity_id in identities:
+[?2004l[?2004h>                 return identities.get(user_assigned_identity_id).get('clientId')
+[?2004l[?2004h>             alternative_identity_id = user_assigned_identity_id.replace('resourcegroups', 'resourceGroups')
+[?2004l[?2004h>             if alternative_identity_id in identities:
+[?2004l[?2004h>                 return identities.get(alternative_identity_id).get('clientId')
+[?2004l[?2004h>             return None
+[?2004l[?2004h>         if identity.get('type') == 'SystemAssigned':
+[?2004l[?2004h>             principal = self._get_principal(identity.get('principalId'))
+[?2004l[?2004h>             if not principal:
+[?2004l[?2004h>                 return None
+[?2004l[?2004h>             return principal.client_id
+[?2004l[?2004h>         return None
+[?2004l[?2004h> 
+[?2004l[?2004h>     def get_access_connector(self, subscription_id: str, resource_group_name: str, name: str) -> AccessConnector | None:
+[?2004l[?2004h>         """Get an access connector.
+[?2004l[?2004h> 
+[?2004l[?2004h>         Docs:
+[?2004l[?2004h>             https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/get?view=rest-databricks-2023-05-01&tabs=HTTP
+[?2004l[?2004h>         """
+[?2004l[?2004h>         url = f'/subscriptions/{subscription_id}/resourceGroups/{resource_group_name}/providers/Microsoft.Databricks/accessConnectors/{name}'
+[?2004l[?2004h>         response = self._mgmt.get(url, api_version='2023-05-01')
+[?2004l[?2004h>         raw = RawResource(response)
+[?2004l[?2004h>         try:
+[?2004l[?2004h>             access_connector = AccessConnector.from_raw_resource(raw)
+[?2004l[?2004h>         except KeyError:
+[?2004l[?2004h>             logger.warning(f'Tried getting non-existing access connector: {url}')
+[?2004l[?2004h>             access_connector = None
+[?2004l[?2004h>         return access_connector
+[?2004l[?2004h> 
+[?2004l[?2004h>     def list_resources(self, subscription: AzureSubscription, resource_type: str) -> Iterable[RawResource]:
+[?2004l[?2004h>         """List all resources of a type within subscription"""
+[?2004l[?2004h>         query = {'api-version': '2020-06-01', '$filter': f"resourceType eq '{resource_type}'"}
+[?2004l[?2004h>         while True:
+[?2004l[?2004h>             res = self._mgmt.get(f'/subscriptions/{subscription.subscription_id}/resources', query=query)
+[?2004l[?2004h>             for resource in res['value']:
+[?2004l[?2004h>                 try:
+[?2004l[?2004h>                     yield RawResource(resource)
+[?2004l[?2004h>                 except KeyError:
+[?2004l[?2004h>                     logger.warning(f'Could not parse resource: {resource}')
+[?2004l[?2004h>             next_link = res.get('nextLink', None)
+[?2004l[?2004h>             if not next_link:
+[?2004l[?2004h>                 break
+[?2004l[?2004h>             parsed_link = urllib.parse.urlparse(next_link)
+[?2004l[?2004h>             query = dict(urllib.parse.parse_qsl(parsed_link.query))
+[?2004l[?2004h> 
+[?2004l[?2004h>     def access_connectors(self) -> Iterable[AccessConnector]:
+[?2004l[?2004h>         """List all access connector within subscription
+[?2004l[?2004h> 
+[?2004l[?2004h>         Docs:
+[?2004l[?2004h>             https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/list-by-subscription?view=rest-databricks-2023-05-01&tabs=HTTP
+[?2004l[?2004h>         """
+[?2004l[?2004h>         for subscription in self.subscriptions():
+[?2004l[?2004h>             for raw in self.list_resources(subscription, 'Microsoft.Databricks/accessConnectors'):
+[?2004l[?2004h>                 try:
+[?2004l[?2004h>                     yield AccessConnector.from_raw_resource(raw)
+[?2004l[?2004h>                 except KeyError:
+[?2004l[?2004h>                     logger.warning(f'Could not parse access connector: {raw}')
+[?2004l[?2004h> 
+[?2004l[?2004h>     def create_or_update_access_connector(self, subscription_id: str, resource_group_name: str, name: str, location: str, tags: dict[str, str] | None, *, wait_for_provisioning: bool=False, wait_for_provisioning_timeout_in_seconds: int=300) -> AccessConnector:
+[?2004l[?2004h>         """Create access connector.
+[?2004l[?2004h> 
+[?2004l[?2004h>         Docs:
+[?2004l[?2004h>             https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/create-or-update?view=rest-databricks-2023-05-01&tabs=HTTP
+[?2004l[?2004h>         """
+[?2004l[?2004h>         url = f'/subscriptions/{subscription_id}/resourceGroups/{resource_group_name}/providers/Microsoft.Databricks/accessConnectors/{name}'
+[?2004l[?2004h>         body = {'location': location, 'identity': {'type': 'SystemAssigned'}}
+[?2004l[?2004h>         if tags is not None:
+[?2004l[?2004h>             body['tags'] = tags
+[?2004l[?2004h>         self._mgmt.put(url, api_version='2023-05-01', body=body)
+[?2004l[?2004h>         access_connector = self.get_access_connector(subscription_id, resource_group_name, name)
+[?2004l[?2004h>         start_time = time.time()
+[?2004l[?2004h>         if access_connector is None or (wait_for_provisioning and access_connector.provisioning_state != 'Succeeded'):
+[?2004l[?2004h>             if time.time() - start_time > wait_for_provisioning_timeout_in_seconds:
+[?2004l[?2004h>                 raise TimeoutError(f'Timeout waiting for creating or updating access connector: {url}')
+[?2004l[?2004h>             time.sleep(5)
+[?2004l[?2004h>             access_connector = self.get_access_connector(subscription_id, resource_group_name, name)
+[?2004l[?2004h>             assert access_connector is not None
+[?2004l[?2004h>         return access_connector
+[?2004l[?2004h> 
+[?2004l[?2004h>     def delete_access_connector(self, url: str) -> None:
+[?2004l[?2004h>         """Delete an access connector.
+[?2004l[?2004h> 
+[?2004l[?2004h>         Docs:
+[?2004l[?2004h>             https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/delete?view=rest-databricks-2023-05-01&tabs=HTTP
+[?2004l[?2004h>         """
+[?2004l[?2004h>         self._mgmt.delete(url, api_version='2023-05-01')
+[?2004l[?2004h> EOF
+[?2004l[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# cd /workspace/repo/tests/unit/azure
+[?2004l[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/tests/unit/azure# pytest tests/unit/azure/test_resources.py::test_azure_client_api_delete_spn -v
+[?2004l[31mImportError while loading conftest '/workspace/repo/tests/unit/conftest.py'.[0m
+[31m../conftest.py:23: in <module>[0m
+[31m    from databricks.labs.ucx.contexts.workflow_task import RuntimeContext[0m
+[31m../../../src/databricks/labs/ucx/contexts/workflow_task.py:23: in <module>[0m
+[31m    from databricks.labs.ucx.contexts.application import GlobalContext[0m
+[31m../../../src/databricks/labs/ucx/contexts/application.py:38: in <module>[0m
+[31m    from databricks.labs.ucx.hive_metastore.catalog_schema import CatalogSchema[0m
+[31m../../../src/databricks/labs/ucx/hive_metastore/catalog_schema.py:12: in <module>[0m
+[31m    from databricks.labs.ucx.hive_metastore.grants import MigrateGrants[0m
+[31m../../../src/databricks/labs/ucx/hive_metastore/grants.py:30: in <module>[0m
+[31m    from databricks.labs.ucx.azure.access import ([0m
+[31m../../../src/databricks/labs/ucx/azure/access.py:38: in <module>[0m
+[31m    from databricks.labs.ucx.azure.resources import ([0m
+[31m../../../src/databricks/labs/ucx/azure/resources.py:134: in <module>[0m
+[31m    class AccessConnector:[0m
+[31m../../../src/databricks/labs/ucx/azure/resources.py:182: in AccessConnector[0m
+[31m    def get_access_connector(self, subscription_id: str, resource_group_name: str, name: str) -> AccessConnector | None:[0m
+[31mE   NameError: name 'AccessConnector' is not defined[0m
+[?2004hroot@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/tests/unit/azure# 

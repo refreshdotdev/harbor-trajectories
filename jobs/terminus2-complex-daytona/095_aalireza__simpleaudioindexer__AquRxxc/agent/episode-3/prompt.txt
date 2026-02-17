@@ -1,0 +1,262 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@26d6a169-b679-46b5-b7d8-88e408125ac2:/workspace/repo/SimpleAudioIndexer# cat __init__.py
+"""
+  Copyright 2016-2017 Alireza Rafiei
+
+  Licensed under the Apache License, Version 2.0 (the "License"); you may
+  not use this file except in compliance with the License. You may obtain
+  a copy of the License at:
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+"""
+from __future__ import absolute_import, division, print_function
+from collections import Counter, defaultdict
+from distutils.spawn import find_executable
+from functools import reduce, wraps
+from math import floor
+from shutil import rmtree
+from string import ascii_letters
+from time import time
+import json
+import os
+import re
+import requests
+import subprocess
+import sys
+if sys.version_info >= (3, 0):
+    from contextlib import ContextDecorator
+    import pickle
+    unicode = str
+    long = int
+else:
+    import cPickle as pickle
+
+    class ContextDecorator(object):
+        """
+        A base class or mixin that enables context managers to work as
+        decorators.
+
+        Code is from Python's source:
+        https://hg.python.org/cpython/file/3.6/Lib/contextlib.py
+        """
+
+        def _recreate_cm(self):
+            return self
+
+        def __call__(self, func):
+
+            @wraps(func)
+            def inner(*args, **kwds):
+                with self._recreate_cm():
+                    return func(*args, **kwds)
+            return inner
+
+class _PrettyDefaultDict(defaultdict):
+    __repr__ = dict.__repr__
+
+class _WordBlock(object):
+    """
+    Holds a word with its starting second and ending second (with respect to
+    an audio file)
+
+    Attributes
+    ----------
+    word : str
+    start : float
+    end : float
+    """
+
+    def __init__(self, word, start, end):
+        self.word = word
+        self.start = round(start, 2)
+        self.end = round(end, 2)
+
+    def __eq__(self, other):
+        if type(other) is not _WordBlock:
+            raise TypeError
+        return self.word == other.word and self.start == other.start and (self.end == other.end)
+
+    def __getitem__(self, i):
+        if type(i) is not int:
+            raise TypeError
+        if i == 0:
+            return self.word
+        elif i == 1:
+            return self.start
+        elif i == 2:
+            return self.end
+        raise IndexError
+
+    def __repr__(self):
+        return '("{}", {}, {})'.format(self.word, self.start, self.end)
+
+class _Subdirectory_Managing_Decorator(ContextDecorator):
+
+    def __init__(self, src_dir, needed_directories):
+        self.src_dir = src_dir
+        self.needed_directories = needed_directories
+
+    def __enter__(self):
+        """
+            Creates the needed directories for audio processing.
+            """
+        if self.src_dir is not None:
+            for directory in self.needed_directories:
+                if not os.path.exists('{}/{}'.format(self.src_dir, directory)):
+                    os.mkdir('{}/{}'.format(self.src_dir, directory))
+        return self
+
+    def __exit__(self, *args):
+        """
+            Removes the works of __enter__.
+            """
+        if self.src_dir is not None:
+            for directory in self.needed_directories:
+                if os.path.exists('{}/{}'.format(self.src_dir, directory)):
+                    rmtree('{}/{}'.format(self.src_dir, directory))
+
+class SimpleAudioIndexer(object):
+    """
+    Indexes audio and searches for a string within it or matches a regex
+    pattern.
+
+    Audio files that are intended to be indexed should be in wav format, placed
+    in a same directory and the absolute path to that directory should be
+    passed as `src_dir` upon initialization.
+
+    Call the method `index_audio` (which results in calling `index_audio_ibm`
+    or `index_audio_cmu` based on the given mode) prior to searching
+    or accessing timestamps, unless you have saved the data for your
+    previously indexed audio (in that case, `load_indexed_audio` method must
+    be used)
+
+    You may see timestamps of the words that have been indexed so far sorted
+    by audio files and the time of their occurance, by calling the method
+    `get_audio_timestamps`.
+
+    You may saved the indexed audio data (which is basically just the time-
+    regularized timestamps) via `save_indexed_audio` method and load it back
+    via `load_indexed_audio`
+
+    Do exhustive search with the method `search_all`, do iterative search with
+    the method `search_gen` or do regex based search with the method
+    `search_regexp`
+
+    For more information see the docs and read usage guide.
+
+    Attributes
+    ----------
+    mode : {"ibm", "cmu"}
+        specifying whether speech to text engine is 
+[... output limited to 10000 bytes; 71 interior bytes omitted ...]
+les
+            whose first element is the starting second of the query and whose
+            values are the ending second. e.g.
+            {"apple": {"fruits.wav" : [(1.1, 1.12)]}}
+
+        Raises
+        ------
+        TypeError
+            if `queries` is neither a list nor a str
+        """
+        search_gen_rest_of_kwargs = {'audio_basename': audio_basename, 'case_sensitive': case_sensitive, 'subsequence': subsequence, 'supersequence': superseque
+nce, 'timing_error': timing_error, 'anagram': anagram, 'missing_word_tolerance': missing_word_tolerance}
+        if not isinstance(queries, (list, str)):
+            raise TypeError('Invalid query type.')
+        if type(queries) is not list:
+            queries = [queries]
+        search_results = _PrettyDefaultDict(lambda : _PrettyDefaultDict(list))
+        for query in queries:
+            search_gen = self.search_gen(query=query, **search_gen_rest_of_kwargs)
+            for search_result in search_gen:
+                search_results[query][search_result['File Name']].append(search_result['Result'])
+        return search_results
+
+    def search_regexp(self, pattern, audio_basename=None):
+        """
+        First joins the words of the word_blocks of timestamps with space, per
+        audio_basename. Then matches `pattern` and calculates the index of the
+        word_block where the first and last word of the matched result appears
+        in. Then presents the output like `search_all` method.
+
+        Note that the leading and trailing spaces from the matched results
+        would be removed while determining which word_block they belong to.
+
+        Parameters
+        ----------
+        pattern : str
+            A regex pattern.
+        audio_basename : str, optional
+            Search only within the given audio_basename.
+
+            Default is `False`.
+
+        Returns
+        -------
+        search_results : {str: {str: [(float, float)]}}
+            A dictionary whose keys are queries and whose values are
+            dictionaries whose keys are all the audiofiles in which the query
+            is present and whose values are a list whose elements are 2-tuples
+            whose first element is the starting second of the query and whose
+            values are the ending second. e.g.
+            {"apple": {"fruits.wav" : [(1.1, 1.12)]}}
+        """
+
+        def indexes_in_transcript_to_start_end_second(index_tup, audio_basename):
+            """
+            Calculates the word block index by having the beginning and ending
+            index of the matched result from the transcription
+
+            Parameters
+            ----------
+            index_tup : (int, tup)
+                index_tup is of the form tuple(index_start, index_end)
+            audio_basename : str
+
+            Retrun
+            ------
+            [float, float]
+                The time of the output of the matched result. Derived from two
+                separate word blocks belonging to the beginning and the end of
+                the index_start and index_end.
+            """
+            space_indexes = [i for (i, x) in enumerate(transcription[audio_basename]) if x == ' ']
+            space_indexes.sort(reverse=True)
+            (index_start, index_end) = index_tup
+            index_end -= 1
+            while transcription[audio_basename][index_start] == ' ':
+                index_start += 1
+            while transcription[audio_basename][index_end] == ' ':
+                index_end -= 1
+            block_number_start = 0
+            block_number_end = len(space_indexes)
+            for (block_cursor, space_index) in enumerate(space_indexes):
+                if index_start > space_index:
+                    block_number_start = len(space_indexes) - block_cursor
+                    break
+            for (block_cursor, space_index) in enumerate(space_indexes):
+                if index_end > space_index:
+                    block_number_end = len(space_indexes) - block_cursor
+                    break
+            return (timestamps[audio_basename][block_number_start].start, timestamps[audio_basename][block_number_end].end)
+        timestamps = self.get_timestamps()
+        if audio_basename is not None:
+            timestamps = {audio_basename: timestamps[audio_basename]}
+        transcription = {audio_basename: ' '.join([word_block.word for word_block in timestamps[audio_basename]]) for audio_basename in timestamps}
+        match_map = map(lambda audio_basename: tuple((audio_basename, re.finditer(pattern, transcription[audio_basename]))), transcription.keys())
+        search_results = _PrettyDefaultDict(lambda : _PrettyDefaultDict(list))
+        for (audio_basename, match_iter) in match_map:
+            for match in match_iter:
+                search_results[match.group()][audio_basename].append(tuple(indexes_in_transcript_to_start_end_second(match.span(), audio_basename)))
+        return search_resultsroot@26d6a169-b679-46b5-b7d8-88e408125ac2:/workspace/repo/SimpleAudioIndexer#

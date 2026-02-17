@@ -1,0 +1,45 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+Current Terminal Screen:
+class Interface(HasTraits, metaclass=MetaInterface):
+    """ The base class for all interfaces.
+    """
+
+def provides(*protocols):
+    """ Class decorator to declare the protocols that a class provides.
+
+    Parameters
+    ----------
+    *protocols :
+        A list of protocols (Interface classes or Python ABCs) that the
+        decorated class provides.
+
+    """
+    from abc import ABCMeta
+    if len(protocols) == 0:
+        return lambda klass: klass
+    for protocol in protocols:
+        if not issubclass(type(protocol), ABCMeta):
+            raise TraitError("All arguments to 'provides' must be subclasses of Interface or be a Python ABC.")
+
+    def wrapped_class(klass):
+        for protocol in protocols:
+            type(protocol).register(protocol, klass)
+        if CHECK_INTERFACES:
+            from .interface_checker import check_implements
+            warnings.warn('In the future, the @provides decorator will not perform interface checks. Set has_traits.CHECK_INTERFACES to 0 to suppress this warni
+ng.', DeprecationWarning, stacklevel=2)
+            check_implements(klass, protocols, CHECK_INTERFACES)
+        return klass
+    return wrapped_class
+
+def isinterface(klass):
+    """ Return True if the class is an Interface. """
+    return isinstance(klass, MetaInterface)
+
+class ISerializable(Interface):
+    """ A class that implemented ISerializable requires that all HasTraits
+        objects saved as part of its state also implement ISerializable.
+    """root@d1c550e3-5d1a-4687-974b-fc5976cac236:/workspace/repo/traits#

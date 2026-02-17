@@ -1,0 +1,1205 @@
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# asciinema rec --stdin /logs/agent/recording.cast
+[?2004l[0;32masciinema: recording asciicast to /logs/agent/recording.cast[0m
+[0;32masciinema: press <ctrl-d> or type "exit" when you're done[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# clear
+[?2004l[H[J[3J[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# cd boto3/s3
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo/boto3/s3# vi inject.py
+[?2004lbash: vi: command not found
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo/boto3/s3# nano inject.py
+[?2004lbash: nano: command not found
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo/boto3/s3# cat inject.py
+[?2004limport copy as python_copy
+import logging
+from functools import partial
+from botocore.exceptions import ClientError
+from boto3 import utils
+from boto3.compat import is_append_mode
+from boto3.s3.transfer import ProgressCallbackInvoker, S3Transfer, TransferConfig, create_transfer_manager
+try:
+    from botocore.context import with_current_context
+except ImportError:
+    from functools import wraps
+
+    def with_current_context(hook=None):
+
+        def decorator(func):
+
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                return func(*args, **kwargs)
+            return wrapper
+        return decorator
+try:
+    from botocore.useragent import register_feature_id
+except ImportError:
+
+    def register_feature_id(feature_id):
+        pass
+logger = logging.getLogger(__name__)
+
+def inject_s3_transfer_methods(class_attributes, **kwargs):
+    utils.inject_attribute(class_attributes, 'upload_file', upload_file)
+    utils.inject_attribute(class_attributes, 'download_file', download_file)
+    utils.inject_attribute(class_attributes, 'copy', copy)
+    utils.inject_attribute(class_attributes, 'upload_fileobj', upload_fileobj)
+    utils.inject_attribute(class_attributes, 'download_fileobj', download_fileobj)
+
+def inject_bucket_methods(class_attributes, **kwargs):
+    utils.inject_attribute(class_attributes, 'load', bucket_load)
+    utils.inject_attribute(class_attributes, 'upload_file', bucket_upload_file)
+    utils.inject_attribute(class_attributes, 'download_file', bucket_download_file)
+    utils.inject_attribute(class_attributes, 'copy', bucket_copy)
+    utils.inject_attribute(class_attributes, 'upload_fileobj', bucket_upload_fileobj)
+    utils.inject_attribute(class_attributes, 'download_fileobj', bucket_download_fileobj)
+
+def inject_object_methods(class_attributes, **kwargs):
+    utils.inject_attribute(class_attributes, 'upload_file', object_upload_file)
+    utils.inject_attribute(class_attributes, 'download_file', object_download_file)
+    utils.inject_attribute(class_attributes, 'copy', object_copy)
+    utils.inject_attribute(class_attributes, 'upload_fileobj', object_upload_fileobj)
+    utils.inject_attribute(class_attributes, 'download_fileobj', object_download_fileobj)
+
+def inject_object_summary_methods(class_attributes, **kwargs):
+    utils.inject_attribute(class_attributes, 'load', object_summary_load)
+
+def bucket_load(self, *args, **kwargs):
+    """
+    Calls s3.Client.list_buckets() to update the attributes of the Bucket
+    resource.
+    """
+    self.meta.data = {}
+    try:
+        response = self.meta.client.list_buckets()
+        for bucket_data in response['Buckets']:
+            if bucket_data['Name'] == self.name:
+                self.meta.data = bucket_data
+                break
+    except ClientError as e:
+        if not e.response.get('Error', {}).get('Code') == 'AccessDenied':
+            raise
+
+def object_summary_load(self, *args, **kwargs):
+    """
+    Calls s3.Client.head_object to update the attributes of the ObjectSummary
+    resource.
+    """
+    response = self.meta.client.head_object(Bucket=self.bucket_name, Key=self.key)
+    if 'ContentLength' in response:
+        response['Size'] = response.pop('ContentLength')
+    self.meta.data = response
+
+@with_current_context(partial(register_feature_id, 'S3_TRANSFER'))
+def upload_file(self, Filename, Bucket, Key, ExtraArgs=None, Callback=None, Config=None):
+    """Upload a file to an S3 object.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.client('s3')
+        s3.upload_file('/tmp/hello.txt', 'amzn-s3-demo-bucket', 'hello.txt')
+
+    Similar behavior as S3Transfer's upload_file() method, except that
+    argument names are capitalized. Detailed examples can be found at
+    :ref:`S3Transfer's Usage <ref_s3transfer_usage>`.
+
+    :type Filename: str
+    :param Filename: The path to the file to upload.
+
+    :type Bucket: str
+    :param Bucket: The name of the bucket to upload to.
+
+    :type Key: str
+    :param Key: The name of the key to upload to.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed upload arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_UPLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the upload.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        transfer.
+    """
+    with S3Transfer(self, Config) as transfer:
+        return transfer.upload_file(filename=Filename, bucket=Bucket, key=Key, extra_args=ExtraArgs, callback=Callback)
+
+@with_current_context(partial(register_feature_id, 'S3_TRANSFER'))
+def download_file(self, Bucket, Key, Filename, ExtraArgs=None, Callback=None, Config=None):
+    """Download an S3 object to a file.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.client('s3')
+        s3.download_file('amzn-s3-demo-bucket', 'hello.txt', '/tmp/hello.txt')
+
+    Similar behavior as S3Transfer's download_file() method,
+    except that parameters are capitalized. Detailed examples can be found at
+    :ref:`S3Transfer's Usage <ref_s3transfer_usage>`.
+
+    :type Bucket: str
+    :param Bucket: The name of the bucket to download from.
+
+    :type Key: str
+    :param Key: The name of the key to download from.
+
+    :type Filename: str
+    :param Filename: The path to the file to download to.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed download arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_DOWNLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the download.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        transfer.
+    """
+    with S3Transfer(self, Config) as transfer:
+        return transfer.download_file(bucket=Bucket, key=Key, filename=Filename, extra_args=ExtraArgs, callback=Callback)
+
+def bucket_upload_file(self, Filename, Key, ExtraArgs=None, Callback=None, Config=None):
+    """Upload a file to an S3 object.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.resource('s3')
+        s3.Bucket('amzn-s3-demo-bucket').upload_file('/tmp/hello.txt', 'hello.txt')
+
+    Similar behavior as S3Transfer's upload_file() method,
+    except that parameters are capitalized. Detailed examples can be found at
+    :ref:`S3Transfer's Usage <ref_s3transfer_usage>`.
+
+    :type Filename: str
+    :param Filename: The path to the file to upload.
+
+    :type Key: str
+    :param Key: The name of the key to upload to.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed upload arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_UPLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the upload.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        transfer.
+    """
+    return self.meta.client.upload_file(Filename=Filename, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, Config=Config)
+
+def bucket_download_file(self, Key, Filename, ExtraArgs=None, Callback=None, Config=None):
+    """Download an S3 object to a file.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.resource('s3')
+        s3.Bucket('amzn-s3-demo-bucket').download_file('hello.txt', '/tmp/hello.txt')
+
+    Similar behavior as S3Transfer's download_file() method,
+    except that parameters are capitalized. Detailed examples can be found at
+    :ref:`S3Transfer's Usage <ref_s3transfer_usage>`.
+
+    :type Key: str
+    :param Key: The name of the key to download from.
+
+    :type Filename: str
+    :param Filename: The path to the file to download to.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed download arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_DOWNLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the download.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        transfer.
+    """
+    return self.meta.client.download_file(Bucket=self.name, Key=Key, Filename=Filename, ExtraArgs=ExtraArgs, Callback=Callback, Config=Config)
+
+def object_upload_file(self, Filename, ExtraArgs=None, Callback=None, Config=None):
+    """Upload a file to an S3 object.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.resource('s3')
+        s3.Object('amzn-s3-demo-bucket', 'hello.txt').upload_file('/tmp/hello.txt')
+
+    Similar behavior as S3Transfer's upload_file() method,
+    except that parameters are capitalized. Detailed examples can be found at
+    :ref:`S3Transfer's Usage <ref_s3transfer_usage>`.
+
+    :type Filename: str
+    :param Filename: The path to the file to upload.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed upload arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_UPLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the upload.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        transfer.
+    """
+    return self.meta.client.upload_file(Filename=Filename, Bucket=self.bucket_name, Key=self.key, ExtraArgs=ExtraArgs, Callback=Callback, Config=Config)
+
+def object_download_file(self, Filename, ExtraArgs=None, Callback=None, Config=None):
+    """Download an S3 object to a file.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.resource('s3')
+        s3.Object('amzn-s3-demo-bucket', 'hello.txt').download_file('/tmp/hello.txt')
+
+    Similar behavior as S3Transfer's download_file() method,
+    except that parameters are capitalized. Detailed examples can be found at
+    :ref:`S3Transfer's Usage <ref_s3transfer_usage>`.
+
+    :type Filename: str
+    :param Filename: The path to the file to download to.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed download arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_DOWNLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the download.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        transfer.
+    """
+    return self.meta.client.download_file(Bucket=self.bucket_name, Key=self.key, Filename=Filename, ExtraArgs=ExtraArgs, Callback=Callback, Config=Config)
+
+@with_current_context(partial(register_feature_id, 'S3_TRANSFER'))
+def copy(self, CopySource, Bucket, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):
+    """Copy an object from one S3 location to another.
+
+    This is a managed transfer which will perform a multipart copy in
+    multiple threads if necessary.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.resource('s3')
+        copy_source = {
+            'Bucket': 'amzn-s3-demo-bucket1',
+            'Key': 'mykey'
+        }
+        s3.meta.client.copy(copy_source, 'amzn-s3-demo-bucket2', 'otherkey')
+
+    :type CopySource: dict
+    :param CopySource: The name of the source bucket, key name of the
+        source object, and optional version ID of the source object. The
+        dictionary format is:
+        ``{'Bucket': 'bucket', 'Key': 'key', 'VersionId': 'id'}``. Note
+        that the ``VersionId`` key is optional and may be omitted.
+
+    :type Bucket: str
+    :param Bucket: The name of the bucket to copy to
+
+    :type Key: str
+    :param Key: The name of the key to copy to
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed copy arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_COPY_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the copy.
+
+    :type SourceClient: botocore or boto3 Client
+    :param SourceClient: The client to be used for operation that
+        may happen at the source object. For example, this client is
+        used for the head_object that determines the size of the copy.
+        If no client is provided, the current client is used as the client
+        for the source object.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        copy.
+    """
+    subscribers = None
+    if Callback is not None:
+        subscribers = [ProgressCallbackInvoker(Callback)]
+    config = Config
+    if config is None:
+        config = TransferConfig()
+    new_config = python_copy.copy(config)
+    new_config.preferred_transfer_client = 'classic'
+    with create_transfer_manager(self, new_config) as manager:
+        future = manager.copy(copy_source=CopySource, bucket=Bucket, key=Key, extra_args=ExtraArgs, subscribers=subscribers, source_client=SourceClient)
+        return future.result()
+
+def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):
+    """
+    TODO: Implement this function
+    """
+    ...
+
+def object_copy(self, CopySource, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):
+    """Copy an object from one S3 location to this object.
+
+    This is a managed transfer which will perform a multipart copy in
+    multiple threads if necessary.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.resource('s3')
+        copy_source = {
+            'Bucket': 'amzn-s3-demo-bucket1',
+            'Key': 'mykey'
+        }
+        bucket = s3.Bucket('amzn-s3-demo-bucket2')
+        obj = bucket.Object('otherkey')
+        obj.copy(copy_source)
+
+    :type CopySource: dict
+    :param CopySource: The name of the source bucket, key name of the
+        source object, and optional version ID of the source object. The
+        dictionary format is:
+        ``{'Bucket': 'bucket', 'Key': 'key', 'VersionId': 'id'}``. Note
+        that the ``VersionId`` key is optional and may be omitted.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed copy arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_COPY_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the copy.
+
+    :type SourceClient: botocore or boto3 Client
+    :param SourceClient: The client to be used for operation that
+        may happen at the source object. For example, this client is
+        used for the head_object that determines the size of the copy.
+        If no client is provided, the current client is used as the client
+        for the source object.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        copy.
+    """
+    return self.meta.client.copy(CopySource=CopySource, Bucket=self.bucket_name, Key=self.key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)
+
+@with_current_context(partial(register_feature_id, 'S3_TRANSFER'))
+def upload_fileobj(self, Fileobj, Bucket, Key, ExtraArgs=None, Callback=None, Config=None):
+    """Upload a file-like object to S3.
+
+    The file-like object must be in binary mode.
+
+    This is a managed transfer which will perform a multipart upload in
+    multiple threads if necessary.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.client('s3')
+
+        with open('filename', 'rb') as data:
+            s3.upload_fileobj(data, 'amzn-s3-demo-bucket', 'mykey')
+
+    :type Fileobj: a file-like object
+    :param Fileobj: A file-like object to upload. At a minimum, it must
+        implement the `read` method, and must return bytes.
+
+    :type Bucket: str
+    :param Bucket: The name of the bucket to upload to.
+
+    :type Key: str
+    :param Key: The name of the key to upload to.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed upload arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_UPLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the upload.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        upload.
+    """
+    if not hasattr(Fileobj, 'read'):
+        raise ValueError('Fileobj must implement read')
+    subscribers = None
+    if Callback is not None:
+        subscribers = [ProgressCallbackInvoker(Callback)]
+    config = Config
+    if config is None:
+        config = TransferConfig()
+    with create_transfer_manager(self, config) as manager:
+        future = manager.upload(fileobj=Fileobj, bucket=Bucket, key=Key, extra_args=ExtraArgs, subscribers=subscribers)
+        return future.result()
+
+def bucket_upload_fileobj(self, Fileobj, Key, ExtraArgs=None, Callback=None, Config=None):
+    """Upload a file-like object to this bucket.
+
+    The file-like object must be in binary mode.
+
+    This is a managed transfer which will perform a multipart upload in
+    multiple threads if necessary.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.resource('s3')
+        bucket = s3.Bucket('amzn-s3-demo-bucket')
+
+        with open('filename', 'rb') as data:
+            bucket.upload_fileobj(data, 'mykey')
+
+    :type Fileobj: a file-like object
+    :param Fileobj: A file-like object to upload. At a minimum, it must
+        implement the `read` method, and must return bytes.
+
+    :type Key: str
+    :param Key: The name of the key to upload to.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed upload arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_UPLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the upload.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        upload.
+    """
+    return self.meta.client.upload_fileobj(Fileobj=Fileobj, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, Config=Config)
+
+def object_upload_fileobj(self, Fileobj, ExtraArgs=None, Callback=None, Config=None):
+    """Upload a file-like object to this object.
+
+    The file-like object must be in binary mode.
+
+    This is a managed transfer which will perform a multipart upload in
+    multiple threads if necessary.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.resource('s3')
+        bucket = s3.Bucket('amzn-s3-demo-bucket')
+        obj = bucket.Object('mykey')
+
+        with open('filename', 'rb') as data:
+            obj.upload_fileobj(data)
+
+    :type Fileobj: a file-like object
+    :param Fileobj: A file-like object to upload. At a minimum, it must
+        implement the `read` method, and must return bytes.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed upload arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_UPLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the upload.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        upload.
+    """
+    return self.meta.client.upload_fileobj(Fileobj=Fileobj, Bucket=self.bucket_name, Key=self.key, ExtraArgs=ExtraArgs, Callback=Callback, Config=Config)
+
+def disable_threading_if_append_mode(config, fileobj):
+    """Set `TransferConfig.use_threads` to `False` if file-like
+        object is in append mode.
+
+    :type config: boto3.s3.transfer.TransferConfig
+    :param config: The transfer configuration to be used when performing the
+        download.
+
+    :type fileobj: A file-like object
+    :param fileobj: A file-like object to inspect for append mode.
+    """
+    if is_append_mode(fileobj):
+        config.use_threads = False
+        logger.warning('A single thread will be used because the provided file object is in append mode. Writes may always be appended to the end of the file regardless of seek position, so a single thread must be used to ensure sequential writes.')
+
+@with_current_context(partial(register_feature_id, 'S3_TRANSFER'))
+def download_fileobj(self, Bucket, Key, Fileobj, ExtraArgs=None, Callback=None, Config=None):
+    """Download an object from S3 to a file-like object.
+
+    The file-like object must be in binary mode.
+
+    This is a managed transfer which will perform a multipart download in
+    multiple threads if necessary.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.client('s3')
+
+        with open('filename', 'wb') as data:
+            s3.download_fileobj('amzn-s3-demo-bucket', 'mykey', data)
+
+    :type Bucket: str
+    :param Bucket: The name of the bucket to download from.
+
+    :type Key: str
+    :param Key: The name of the key to download from.
+
+    :type Fileobj: a file-like object
+    :param Fileobj: A file-like object to download into. At a minimum, it must
+        implement the `write` method and must accept bytes.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed download arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_DOWNLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the download.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        download.
+    """
+    if not hasattr(Fileobj, 'write'):
+        raise ValueError('Fileobj must implement write')
+    subscribers = None
+    if Callback is not None:
+        subscribers = [ProgressCallbackInvoker(Callback)]
+    config = Config
+    if config is None:
+        config = TransferConfig()
+    new_config = python_copy.copy(config)
+    disable_threading_if_append_mode(new_config, Fileobj)
+    with create_transfer_manager(self, new_config) as manager:
+        future = manager.download(bucket=Bucket, key=Key, fileobj=Fileobj, extra_args=ExtraArgs, subscribers=subscribers)
+        return future.result()
+
+def bucket_download_fileobj(self, Key, Fileobj, ExtraArgs=None, Callback=None, Config=None):
+    """Download an object from this bucket to a file-like-object.
+
+    The file-like object must be in binary mode.
+
+    This is a managed transfer which will perform a multipart download in
+    multiple threads if necessary.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.resource('s3')
+        bucket = s3.Bucket('amzn-s3-demo-bucket')
+
+        with open('filename', 'wb') as data:
+            bucket.download_fileobj('mykey', data)
+
+    :type Fileobj: a file-like object
+    :param Fileobj: A file-like object to download into. At a minimum, it must
+        implement the `write` method and must accept bytes.
+
+    :type Key: str
+    :param Key: The name of the key to download from.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed download arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_DOWNLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the download.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        download.
+    """
+    return self.meta.client.download_fileobj(Bucket=self.name, Key=Key, Fileobj=Fileobj, ExtraArgs=ExtraArgs, Callback=Callback, Config=Config)
+
+def object_download_fileobj(self, Fileobj, ExtraArgs=None, Callback=None, Config=None):
+    """Download this object from S3 to a file-like object.
+
+    The file-like object must be in binary mode.
+
+    This is a managed transfer which will perform a multipart download in
+    multiple threads if necessary.
+
+    Usage::
+
+        import boto3
+        s3 = boto3.resource('s3')
+        bucket = s3.Bucket('amzn-s3-demo-bucket')
+        obj = bucket.Object('mykey')
+
+        with open('filename', 'wb') as data:
+            obj.download_fileobj(data)
+
+    :type Fileobj: a file-like object
+    :param Fileobj: A file-like object to download into. At a minimum, it must
+        implement the `write` method and must accept bytes.
+
+    :type ExtraArgs: dict
+    :param ExtraArgs: Extra arguments that may be passed to the
+        client operation. For allowed download arguments see
+        :py:attr:`boto3.s3.transfer.S3Transfer.ALLOWED_DOWNLOAD_ARGS`.
+
+    :type Callback: function
+    :param Callback: A method which takes a number of bytes transferred to
+        be periodically called during the download.
+
+    :type Config: boto3.s3.transfer.TransferConfig
+    :param Config: The transfer configuration to be used when performing the
+        download.
+    """
+    return self.meta.client.download_fileobj(Bucket=self.bucket_name, Key=self.key, Fileobj=Fileobj, ExtraArgs=ExtraArgs, Callback=Callback, Config=Config)[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo/boto3/s3# sed -i '/def bucket_copy(/,+4 c\def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another.\    """\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)\' inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo/boto3/s3# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items                                                                                                                                              [0m
+
+[33m==================================================================== [33mno tests ran[0m[33m in 0.00s[0m[33m =====================================================================[0m
+[31mERROR: file or directory not found: tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo/boto3/s3# cd /workspace/repo
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 351
+E       def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another.\    """\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)
+E                                                                                                              ^
+E   SyntaxError: unexpected character after line continuation character[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.18s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 c\def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)\' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 351
+E       def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)
+E                                                                                                              ^
+E   SyntaxError: unexpected character after line continuation character[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.14s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 c\def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)\' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 351
+E       def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)
+E                                                                                                              ^
+E   SyntaxError: unexpected character after line continuation character[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.13s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 c\def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(\         CopySource=CopySource, Bucket=self.name, Key=Key, \         ExtraArgs=ExtraArgs, Callback=Callback, \         SourceClient=SourceClient, Config=Config\    )\' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 351
+E       def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(\         CopySource=CopySource, Bucket=self.name, Key=Key, \         ExtraArgs=ExtraArgs, Callback=Callback, \         SourceClient=SourceClient, Config=Config\    )
+E                                                                                                              ^
+E   SyntaxError: unexpected character after line continuation character[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.15s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 c\def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(\        CopySource=CopySource, Bucket=self.name, Key=Key, \        ExtraArgs=ExtraArgs, Callback=Callback, \        SourceClient=SourceClient, Config=Config\    )\' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 351
+E       def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(\        CopySource=CopySource, Bucket=self.name, Key=Key, \        ExtraArgs=ExtraArgs, Callback=Callback, \        SourceClient=SourceClient, Config=Config\    )
+E                                                                                                              ^
+E   SyntaxError: unexpected character after line continuation character[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.14s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 c\def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(\        CopySource=CopySource, Bucket=self.name, Key=Key, \        ExtraArgs=ExtraArgs, Callback=Callback, \        SourceClient=SourceClient, Config=Config\    )\' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 351
+E       def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(\        CopySource=CopySource, Bucket=self.name, Key=Key, \        ExtraArgs=ExtraArgs, Callback=Callback, \        SourceClient=SourceClient, Config=Config\    )
+E                                                                                                              ^
+E   SyntaxError: unexpected character after line continuation character[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.14s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 c\def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)\' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 351
+E       def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)
+E                                                                                                              ^
+E   SyntaxError: unexpected character after line continuation character[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.13s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 c\def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)\' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 351
+E       def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)
+E                                                                                                              ^
+E   SyntaxError: unexpected character after line continuation character[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.14s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 c\def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)\' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 351
+E       def bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\    """Copy an object from one bucket to another."""\    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)
+E                                                                                                              ^
+E   SyntaxError: unexpected character after line continuation character[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.13s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 cdef bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\n    """Copy an object from one bucket to another."""\n    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)\n' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 646
+E       """
+E       ^
+E   SyntaxError: unterminated triple-quoted string literal (detected at line 647)[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.18s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 cdef bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\n    """Copy an object from one bucket to another."""\n    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)\n' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 646
+E       """
+E       ^
+E   SyntaxError: unterminated triple-quoted string literal (detected at line 647)[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.14s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 cdef bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\n    """Copy an object from one bucket to another."""\n    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)\n' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 646
+E       """
+E       ^
+E   SyntaxError: unterminated triple-quoted string literal (detected at line 647)[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.14s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# sed -i '/def bucket_copy(/,+3 cdef bucket_copy(self, CopySource, Key, ExtraArgs=None, Callback=None, SourceClient=None, Config=None):\n    """Copy an object from one bucket to another."""\n    return self.meta.client.copy_object(CopySource=CopySource, Bucket=self.name, Key=Key, ExtraArgs=ExtraArgs, Callback=Callback, SourceClient=SourceClient, Config=Config)\n' boto3/s3/inject.py
+[?2004l[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# pytest tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy -v
+[?2004l[1m===================================================================== test session starts ======================================================================[0m
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/repo
+configfile: pyproject.toml
+plugins: mock-3.15.1, timeout-2.4.0
+[1mcollecting ... [0m[1mcollected 0 items / 1 error                                                                                                                                    [0m
+
+============================================================================ ERRORS ============================================================================
+[31m[1m________________________________________________________ ERROR collecting tests/unit/s3/test_inject.py _________________________________________________________[0m
+[31m/usr/local/lib/python3.10/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/usr/local/lib/python3.10/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/usr/local/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+/usr/local/lib/python3.10/site-packages/_pytest/assertion/rewrite.py:197: in exec_module
+    exec(co, module.__dict__)
+tests/unit/s3/test_inject.py:19: in <module>
+    from boto3.s3 import inject
+E     File "/workspace/repo/boto3/s3/inject.py", line 646
+E       """
+E       ^
+E   SyntaxError: unterminated triple-quoted string literal (detected at line 647)[0m
+[36m[1m=================================================================== short test summary info ====================================================================[0m
+[31mERROR[0m tests/unit/s3/test_inject.py
+[31m======================================================================= [31m[1m1 error[0m[31m in 0.15s[0m[31m =======================================================================[0m
+[31mERROR: found no collectors for /workspace/repo/tests/unit/s3/test_inject.py::TestBucketTransferMethods::test_copy
+[0m
+[?2004hroot@985cbe9c-a0ff-4d9b-bc96-484f28d855a5:/workspace/repo# 

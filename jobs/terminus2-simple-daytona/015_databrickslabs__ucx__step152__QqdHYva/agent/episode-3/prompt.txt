@@ -1,0 +1,260 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure# cat resources.py
+import urllib.parse
+import time
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from datetime import timedelta
+from typing import Any
+from databricks.sdk.core import ApiClient, AzureCliTokenSource, Config, CredentialsProvider, CredentialsStrategy, credentials_strategy
+from databricks.sdk.errors import NotFound, PermissionDenied, ResourceConflict
+from databricks.sdk.retries import retried
+from databricks.labs.ucx.assessment.crawlers import logger
+_ROLES = {'STORAGE_BLOB_DATA_READER': '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1', 'STORAGE_BLOB_DATA_CONTRIBUTOR': 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'}
+
+@dataclass
+class AzureSubscription:
+    name: str
+    subscription_id: str
+    tenant_id: str
+
+class AzureResource:
+
+    def __init__(self, resource_id: str):
+        self._pairs = {}
+        self._resource_id = resource_id
+        split = resource_id.lstrip('/').split('/')
+        if len(split) % 2 != 0:
+            msg = f'not a list of pairs: {resource_id}'
+            raise ValueError(msg)
+        i = 0
+        while i < len(split):
+            k = split[i]
+            value = split[i + 1]
+            i += 2
+            self._pairs[k] = value
+
+    @property
+    def subscription_id(self):
+        return self._pairs.get('subscriptions')
+
+    @property
+    def resource_group(self):
+        return self._pairs.get('resourceGroups')
+
+    @property
+    def storage_account(self):
+        return self._pairs.get('storageAccounts')
+
+    @property
+    def container(self):
+        return self._pairs.get('containers')
+
+    @property
+    def access_connector(self):
+        return self._pairs.get('accessConnectors')
+
+    def __eq__(self, other):
+        if not isinstance(other, AzureResource):
+            return NotImplemented
+        return self._resource_id == other._resource_id
+
+    def __repr__(self):
+        properties = ['subscription_id', 'resource_group', 'storage_account', 'container', 'access_connector']
+        pairs = [f'{_}={getattr(self, _)}' for _ in properties]
+        return f"AzureResource<{', '.join(pairs)}>"
+
+    def __str__(self):
+        return self._resource_id
+
+class RawResource:
+
+    def __init__(self, raw_resource: dict[str, Any]):
+        if 'id' not in raw_resource:
+            raise KeyError("Raw resource must contain an 'id' field")
+        self._id = AzureResource(raw_resource['id'])
+        self._raw_resource = raw_resource
+
+    @property
+    def id(self) -> AzureResource:
+        return self._id
+
+    def get(self, key: str, default: Any) -> Any:
+        return self._raw_resource.get(key, default)
+
+@dataclass
+class Principal:
+    client_id: str
+    display_name: str
+    object_id: str
+    type: str
+    directory_id: str | None = None
+
+@dataclass
+class StorageAccount:
+    id: AzureResource
+    name: str
+    location: str
+    default_network_action: str
+
+    @classmethod
+    def from_raw_resource(cls, raw: RawResource) -> 'StorageAccount':
+        if raw.id is None:
+            raise KeyError(f'Missing id: {raw}')
+        name = raw.get('name', '')
+        if name == '':
+            raise KeyError(f'Missing name: {raw}')
+        location = raw.get('location', '')
+        if location == '':
+            raise KeyError(f'Missing location: {raw}')
+        default_network_action = raw.get('properties', {}).get('networkAcls', {}).get('defaultAction', 'Unknown')
+        storage_account = cls(id=raw.id, name=name, location=location, default_network_action=default_network_action)
+        return storage_account
+
+@dataclass
+class PrincipalSecret:
+    client: Principal
+    secret: str
+
+@dataclass
+class AzureRoleAssignment:
+    id: str
+    resource: AzureResource
+    scope: AzureResource
+    principal: Principal
+    role_name: str
+    role_type: str
+    role_permissions: list[str]
+
+@dataclass
+class AzureRoleDetails:
+    role_name: str | None
+    role_type: str
+    role_permissions: list[str]
+
+@dataclass
+class AccessConnector:
+    id: AzureResource
+    name: str
+    location: str
+    provisioning_state: str
+    identity_type: str
+    principal_id: str
+    managed_identity_type: str | None = None
+    client_id: str | None = None
+    tenant_id: str | None = None
+    tags: dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_raw_resource(cls, raw: RawResource) -> 'AccessConnector':
+        if raw.id is None:
+            raise KeyError(f'Missing id: {raw}')
+        name = raw.get('name', '')
+        if name == '':
+            raise KeyError(f'Missing name: {raw}')
+        location = raw.get('location', '')
+        if location == '':
+            raise KeyError(f'Missing location: {raw}')
+        provisioning_state = raw.get('properties', {}).get('provisioningState', '')
+        if provisioning_state == '':
+            raise KeyError(f'Missing provisioning state: {raw}')
+        identity = raw.get('identity', {})
+        identity_type = iden
+[... output limited to 10000 bytes; 71 interior bytes omitted ...]
+n None
+        if identity.get('type') == 'UserAssigned':
+            if not user_assigned_identity_id:
+                return None
+            identities = identity.get('userAssignedIdentities')
+            if user_assigned_identity_id in identities:
+                return identities.get(user_assigned_identity_id).get('clientId')
+            alternative_identity_id = user_assigned_identity_id.replace('resourcegroups', 'resourceGroups')
+            if alternative_identity_id in identities:
+                return identities.get(alternative_identity_id).get('clientId')
+            return None
+        if identity.get('type') == 'SystemAssigned':
+            principal = self._get_principal(identity.get('principalId'))
+            if not principal:
+                return None
+            return principal.client_id
+        return None
+
+    def get_access_connector(self, subscription_id: str, resource_group_name: str, name: str) -> AccessConnector | None:
+        """Get an access connector.
+
+        Docs:
+            https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/get?view=rest-databricks-2023-05-01&tabs=HTTP
+        """
+        url = f'/subscriptions/{subscription_id}/resourceGroups/{resource_group_name}/providers/Microsoft.Databricks/accessConnectors/{name}'
+        response = self._mgmt.get(url, api_version='2023-05-01')
+        raw = RawResource(response)
+        try:
+            access_connector = AccessConnector.from_raw_resource(raw)
+        except KeyError:
+            logger.warning(f'Tried getting non-existing access connector: {url}')
+            access_connector = None
+        return access_connector
+
+    def list_resources(self, subscription: AzureSubscription, resource_type: str) -> Iterable[RawResource]:
+        """List all resources of a type within subscription"""
+        query = {'api-version': '2020-06-01', '$filter': f"resourceType eq '{resource_type}'"}
+        while True:
+            res = self._mgmt.get(f'/subscriptions/{subscription.subscription_id}/resources', query=query)
+            for resource in res['value']:
+                try:
+                    yield RawResource(resource)
+                except KeyError:
+                    logger.warning(f'Could not parse resource: {resource}')
+            next_link = res.get('nextLink', None)
+            if not next_link:
+                break
+            parsed_link = urllib.parse.urlparse(next_link)
+            query = dict(urllib.parse.parse_qsl(parsed_link.query))
+
+    def access_connectors(self) -> Iterable[AccessConnector]:
+        """List all access connector within subscription
+
+        Docs:
+            https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/list-by-subscription?view=rest-databricks-2023-05-01&tabs=HTTP
+        """
+        for subscription in self.subscriptions():
+            for raw in self.list_resources(subscription, 'Microsoft.Databricks/accessConnectors'):
+                try:
+                    yield AccessConnector.from_raw_resource(raw)
+                except KeyError:
+                    logger.warning(f'Could not parse access connector: {raw}')
+
+    def create_or_update_access_connector(self, subscription_id: str, resource_group_name: str, name: str, location: str, tags: dict[str, str] | None, *, wait_f
+or_provisioning: bool=False, wait_for_provisioning_timeout_in_seconds: int=300) -> AccessConnector:
+        """Create access connector.
+
+        Docs:
+            https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/create-or-update?view=rest-databricks-2023-05-01&tabs=HTTP
+        """
+        url = f'/subscriptions/{subscription_id}/resourceGroups/{resource_group_name}/providers/Microsoft.Databricks/accessConnectors/{name}'
+        body = {'location': location, 'identity': {'type': 'SystemAssigned'}}
+        if tags is not None:
+            body['tags'] = tags
+        self._mgmt.put(url, api_version='2023-05-01', body=body)
+        access_connector = self.get_access_connector(subscription_id, resource_group_name, name)
+        start_time = time.time()
+        if access_connector is None or (wait_for_provisioning and access_connector.provisioning_state != 'Succeeded'):
+            if time.time() - start_time > wait_for_provisioning_timeout_in_seconds:
+                raise TimeoutError(f'Timeout waiting for creating or updating access connector: {url}')
+            time.sleep(5)
+            access_connector = self.get_access_connector(subscription_id, resource_group_name, name)
+            assert access_connector is not None
+        return access_connector
+
+    def delete_access_connector(self, url: str) -> None:
+        """Delete an access connector.
+
+        Docs:
+            https://learn.microsoft.com/en-us/rest/api/databricks/access-connectors/delete?view=rest-databricks-2023-05-01&tabs=HTTP
+        """
+        self._mgmt.delete(url, api_version='2023-05-01')root@bc4f9015-dd8b-49bb-a762-ee6c1a2231b2:/workspace/repo/src/databricks/labs/ucx/azure#

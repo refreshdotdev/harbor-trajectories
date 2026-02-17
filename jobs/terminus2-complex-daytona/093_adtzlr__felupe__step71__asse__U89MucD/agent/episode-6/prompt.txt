@@ -1,0 +1,144 @@
+Previous response had warnings:
+WARNINGS: - Extra text detected before JSON object
+- Extra text detected after JSON object
+
+New Terminal Output:
+
+root@a6b30481-b24d-44bd-aee4-a7a40957bb21:/workspace/repo/src/felupe/assembly# cat _axi.py
+"""
+This file is part of FElupe.
+
+FElupe is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+FElupe is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with FElupe.  If not, see <http://www.gnu.org/licenses/>.
+"""
+import numpy as np
+from ..field import Field, FieldAxisymmetric
+from ._cartesian import IntegralFormCartesian
+
+class IntegralFormAxisymmetric(IntegralFormCartesian):
+    """An Integral Form for axisymmetric fields.
+
+    Parameters
+    ----------
+    fun : array
+        The pre-evaluated function array. If the array is not contiguous, a C-contiguous
+        copy is made.
+    v : FieldAxisymmetric
+        The axisymmetric test field.
+    dV : array
+        The differential volumes.
+    u : FieldAxisymmetric, optional
+        If a field is passed, a bilinear form is created (default is None).
+    grad_v : bool, optional
+        Flag to activate the gradient on the test field ``v`` (default is False).
+    grad_u : bool, optional
+        Flag to activate the gradient on the trial field ``u`` (default is False).
+
+    Notes
+    -----
+    Axisymmetric integral forms are created with a two-dimensional mesh, a two-
+    dimensional element formulation and an axisymmetric field.
+
+    ..  note::
+
+        The rotation axis is chosen along the global X-axis
+        :math:`(X,Y,Z) \\widehat{=} (Z,R,\\varphi)`.
+
+    The three-dimensional deformation gradient consists of four in-plane components and
+    one additional non-zero entry for the out-of-plane stretch, which is equal to the
+    ratio of the deformed and the undeformed radius.
+
+    ..  math::
+
+        \\boldsymbol{F} = \\begin{bmatrix}
+                \\boldsymbol{F}_{(2D)} & \\boldsymbol{0} \\\\
+                \\boldsymbol{0}^T & \\frac{r}{R}
+            \\end{bmatrix}
+
+    The variation of the deformation gradient consists of both in- and out-of-plane
+    contributions.
+
+    ..  math::
+
+        \\delta \\boldsymbol{F}_{(2D)} = \\delta \\left( \\frac{
+                \\partial \\boldsymbol{u}}{\\partial \\boldsymbol{X}
+            } \\right) \\qquad \\text{and} \\qquad \\delta \\left(\\frac{r}{R}\\right)
+            = \\frac{\\delta u_r}{R}
+
+    Again, the internal virtual work leads to two seperate terms.
+
+    ..  math::
+
+        -\\delta W_{int} = \\int_V \\boldsymbol{P} : \\delta \\boldsymbol{F} \\ dV
+            = \\int_V \\boldsymbol{P}_{(2D)} : \\delta \\boldsymbol{F}_{(2D)} \\ dV
+            + \\int_V \\frac{P_{33}}{R} : \\delta u_r \\ dV
+
+    The differential volume is further expressed as a product of the differential
+    in-plane area and the differential arc length. The arc length integral is finally
+    pre-evaluated.
+
+    ..  math::
+
+        \\int_V dV = \\int_{\\varphi=0}^{2\\pi} \\int_A R\\ dA\\ d\\varphi = 2\\pi \\int_A R\\ dA
+
+    Inserting the differential volume integral into the expression of internal virtual
+    work, this leads to:
+
+    ..  math::
+
+        -\\delta W_{int} = 2\\pi \\int_A \\boldsymbol{P}_{(2D)}
+            : \\delta \\boldsymbol{F}_{(2D)} \\ R \\ dA
+            + 2\\pi \\int_A P_{33} : \\delta u_r \\ dA
+
+    A Linearization of the internal virtual work expression gives four terms.
+
+    ..  math::
+
+        -\\Delta \\delta W_{int} &= \\Delta_{(2D)} \\delta_{(2D)} W_{int}
+            + \\Delta_{33} \\delta_{(2D)} W_{int} + \\Delta_{(2D)} \\delta_{33} W_{int}
+            + \\Delta_{33} \\delta_{33} W_{int}
+
+        -\\Delta_{(2D)} \\delta_{(2D)} W_{int} &= 2\\pi \\int_A
+            \\delta \\boldsymbol{F}_{(2D)} : \\mathbb{A}_{(2D),(2D)} :
+                \\Delta \\boldsymbol{F}_{(2D)} \\ R \\ dA
+
+        -\\Delta_{33} \\delta_{(2D)} W_{int} &= 2\\pi \\int_A
+            \\delta \\boldsymbol{F}_{(2D)} : \\mathbb{A}_{(2D),33} : \\Delta u_r \\ dA
+
+        -\\Delta_{(2D)} \\delta_{33} W_{int} &= 2\\pi \\int_A
+            \\delta u_r : \\mathbb{A}_{33,(2D)} : \\Delta \\boldsymbol{F}_{(2D)} \\ dA
+
+        -\\Delta_{33} \\delta_{33} W_{int} &= 2\\pi \\int_A
+            \\delta u_r : \\frac{\\mathbb{A}_{33,33}}{R} : \\Delta u_r \\ dA
+
+    with
+
+    ..  math::
+
+        \\mathbb{A}_{(2D)~(2D)} &= \\frac{
+            \\partial \\psi}{\\partial \\boldsymbol{F}_{(2D)}~\\partial \\boldsymbol{F}_{(2D)}
+        }
+
+        \\mathbb{A}_{(2D)~33} &= \\frac{
+            \\partial \\psi}{\\partial \\boldsymbol{F}_{(2D)}\\ \\partial F_{33}}
+            \\left ( = \\mathbb{A}_{33~(2D)} \\right )
+
+        \\mathbb{A}_{33~33} &= \\frac{\\partial \\psi}{\\partial F_{33}~\\partial F_{33}}
+
+    See Also
+    --------
+    felupe.IntegralForm : Mixed-field integral form container with methods for
+        integration and assembly.
+    felupe.assembly.IntegralFormCartesian : Single-field integral form.
+
+    """root@a6b30481-b24d-44bd-aee4-a7a40957bb21:/workspace/repo/src/felupe/assembly#
